@@ -6,9 +6,9 @@ import { getFood } from '../data/foods';
 import { findTemplate } from '../data/exercises';
 import { addDays, today, weekDays, weekStart } from '../domain/dates';
 import { calculateTargets, foodMacros, logFromMeal, roundMacros } from '../domain/nutrition';
-import { suggestWeek } from '../domain/planner';
+import { seededRandom, suggestWeek } from '../domain/planner';
 import { activeWorkouts, createWorkout, detectRecords, workoutVolume } from '../domain/training';
-import { applyWeekChange, dayTargetFor, type CascadeResult, type WeekChange } from '../domain/week';
+import { applyWeekChange, dayTargetFor, pantryEstimate, type CascadeResult, type WeekChange } from '../domain/week';
 import { currentWeight } from '../domain/progress';
 import { newId } from '../lib/id';
 import type {
@@ -57,6 +57,8 @@ export function completeOnboarding(input: OnboardingResult): void {
         targetFor: (d) => dayTargetFor(s, d),
         profile: input.nutritionProfile,
         existing: s.plannedMeals.filter((m) => dates.includes(m.date)),
+        pantry: pantryEstimate(s),
+        random: seededRandom(dates[0] ?? t),
       }),
     );
   });
@@ -82,6 +84,9 @@ export function suggestMealsForWeek(start: ISODate): number {
     targetFor: (d) => dayTargetFor(s, d),
     profile: s.nutritionProfile,
     existing: s.plannedMeals.filter((m) => dates.includes(m.date)),
+    // Ingredients at home are reused; same week + same plan → same suggestion.
+    pantry: pantryEstimate(s),
+    random: seededRandom(start),
   });
   update((d) => {
     d.plannedMeals.push(...added);
