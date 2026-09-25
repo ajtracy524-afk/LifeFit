@@ -1,0 +1,110 @@
+.checkin {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.step,
+.stepActive,
+.stepDone {
+  flex: 1;
+  text-align: center;
+  padding-top: 6px;
+  border-top: 3px solid var(--border);
+  color: var(--text-3);
+}
+
+.stepActive {
+  border-top-color: var(--accent);
+  color: var(--accent);
+}
+
+.stepDone {
+  border-top-color: var(--accent);
+  color: var(--text-2);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.question {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.muted {
+  color: var(--text-2);
+  font-size: 13px;
+  margin: 0;
+}
+
+.error {
+  color: var(--danger, var(--text));
+  font-weight: 600;
+  margin: 0;
+}
+
+.dayRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dayLabel {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+
+.previewTitle {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 6px 0 0;
+}
+
+.previewList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.previewList li {
+  display: flex;
+  gap: 12px;
+}
+
+.previewList li span:first-child {
+  width: 28px;
+  flex-shrink: 0;
+  font-weight: 650;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.primary {
+  flex: 1;
+}

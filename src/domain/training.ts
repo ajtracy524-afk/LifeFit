@@ -15,11 +15,16 @@ const EPOCH_MONDAY = '2024-01-01';
  * Training days of a week with their template. Templates rotate continuously
  * across weeks, so a 3-day full-body plan alternates A/B/A → B/A/B.
  */
+/** Training days of one week: the weekly check-in's choice, otherwise the default. */
+export function trainingWeekdays(setup: TrainingSetup, weekStartDate: ISODate): number[] {
+  return setup.weekOverrides?.[weekStartDate] ?? setup.weekdays;
+}
+
 export function scheduleForWeek(setup: TrainingSetup | null, weekStartDate: ISODate): ScheduledWorkout[] {
   if (!setup) return [];
   const program = getProgram(setup.programId);
   if (!program || program.templates.length === 0) return [];
-  const days = [...setup.weekdays].sort((a, b) => a - b);
+  const days = [...trainingWeekdays(setup, weekStartDate)].sort((a, b) => a - b);
   const weekIndex = Math.floor(daysBetween(EPOCH_MONDAY, weekStartDate) / 7);
   const dates = weekDays(weekStartDate);
   return days.map((weekday, k) => ({

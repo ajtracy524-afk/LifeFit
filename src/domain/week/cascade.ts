@@ -1,12 +1,12 @@
 import { getFood } from '../../data/foods';
 import { getRecipe } from '../../data/recipes';
 import { newId } from '../../lib/id';
-import { weekdayLong, weekdayShort } from '../../lib/format';
+import { SLOT_LABEL, weekdayLong, weekdayShort } from '../../lib/format';
 import { addDays, toISODate, weekDays, weekStart, weekdayIndex } from '../dates';
 import { logFromMeal, plannedMealMacros, recipeMacros, roundServings, sumMacros } from '../nutrition';
-import { effectivePrepMin, SLOT_ORDER } from '../planner';
-import { effectiveTimeBudget, TIME_BUDGETS } from '../timeBudget';
-import { estimateMinutes, resolveWorkouts } from '../training';
+import { effectivePrepMin, SLOT_ORDER, slotShare } from '../planner';
+import { DAY_MODE_LABEL, effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
+import { activeWorkouts, estimateMinutes, resolveWorkouts, trainingWeekdays } from '../training';
 import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, ShoppingWeekState } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { addToPantry, purchaseAmount, setPantryQuantity } from './pantry';
@@ -36,7 +36,12 @@ export type WeekChange =
   | { type: 'undoPurchase'; week: ISODate; foodId: string }
   | { type: 'haveAtHome'; week: ISODate; foodId: string }
   | { type: 'notAtHome'; week: ISODate; foodId: string }
-  | { type: 'setPantry'; foodId: string; quantityG: number | null };
+  | { type: 'setPantry'; foodId: string; quantityG: number | null }
+  /**
+   * F1 weekly check-in: training days and day contexts of one week, then the
+   * week is (re)planned from today on. One change → one undo.
+   */
+  | { type: 'planWeek'; week: ISODate; trainingDays: number[]; days: Record<ISODate, DayContext> };
 
 export interface ChangeSummary {
   title: string;
@@ -53,7 +58,9 @@ export interface ChangeSummary {
 export type CascadeResult = { ok: true; state: AppState; summary: ChangeSummary } | { ok: false; reason: string };
 
 type Replacement = { from: string; to: string };
-type Mutation = { ok: true; title: string; trainingChanged?: boolean; replaced?: Replacement[] } | { ok: false; reason: string };
+type Mutation =
+  | { ok: true; title: string; trainingChanged?: boolean; replaced?: Replacement[]; notes?: string[] }
+  | { ok: false; reason: string };
 
 const fail = (reason: string): Mutation => ({ ok: false, reason });
 
@@ -69,7 +76,7 @@ export function applyWeekChange(state: AppState, change: WeekChange, now: Date =
   const shopping = diffShopping(state, next, week, today);
   const training = diffTraining(state, next, week);
 
-  const details: string[] = [];
+  const details: string[] = [...(result.notes ?? [])];
   if (result.replaced?.length) {
     const r = result.replaced;
     details.push(`${r.length} ${r.length === 1 ? 'Mahlzeit' : 'Mahlzeiten'} ersetzt: ${r.map((x) => `${x.from} → ${x.to}`).join(', ')}`);
@@ -128,12 +135,16 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
     case 'setDayContext': {
       const before = dayContextFor(s, change.date);
       const merged = { ...before, ...change.context };
-      if (merged.timeBudget === DEFAULT_DAY_CONTEXT.timeBudget && merged.mode === DEFAULT_DAY_CONTEXT.mode) delete s.dayContexts[change.date];
-      else s.dayContexts[change.date] = merged;
-      // Training follows automatically (resolveWorkouts reads the context); meals are re-planned here.
+      storeDayContext(s, change.date, merged);
+      // Training follows automatically (resolveWorkouts reads the context); meals are adapted here.
+      const notes = applyModeToMeals(s, change.date, before, merged, today);
       const replaced = effectiveTimeBudget(merged) !== effectiveTimeBudget(before) ? replanForTimeBudget(s, change.date, today) : [];
-      return { ok: true, title: `${weekdayLong(weekdayIndex(change.date))}: ${TIME_BUDGETS[merged.timeBudget].label}`, replaced };
+      const label = merged.mode !== before.mode ? DAY_MODE_LABEL[merged.mode] : TIME_BUDGETS[merged.timeBudget].label;
+      return { ok: true, title: `${weekdayLong(weekdayIndex(change.date))}: ${label}`, replaced, notes };
     }
+
+    case 'planWeek':
+      return planWeek(s, change, today);
 
     case 'addMeal': {
       if (!getRecipe(change.recipeId)) return fail('Rezept nicht gefunden.');
@@ -225,6 +236,88 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
   }
 }
 
+// ---------- Day modes & weekly check-in (F1) ----------
+
+function storeDayContext(s: AppState, date: ISODate, context: DayContext) {
+  if (context.timeBudget === DEFAULT_DAY_CONTEXT.timeBudget && context.mode === DEFAULT_DAY_CONTEXT.mode) delete s.dayContexts[date];
+  else s.dayContexts[date] = { timeBudget: context.timeBudget, mode: context.mode };
+}
+
+/**
+ * "Auswärts": the planned dinner is marked skipped – it leaves the shopping
+ * list, stays visible, and comes back when the exception is removed.
+ */
+function applyModeToMeals(s: AppState, date: ISODate, before: DayContext, after: DayContext, today: ISODate): string[] {
+  if (date < today) return [];
+  const wasOut = excludedSlots(before);
+  const isOut = excludedSlots(after);
+  const notes: string[] = [];
+
+  const leaving = s.plannedMeals.filter((m) => m.date === date && isOut.includes(m.slot) && !wasOut.includes(m.slot) && m.status === 'planned');
+  for (const m of leaving) m.status = 'skipped';
+  if (leaving.length) notes.push(`${leaving.map((m) => SLOT_LABEL[m.slot]).join(', ')} auswärts – aus dem Plan genommen`);
+
+  const back = wasOut.filter((slot) => !isOut.includes(slot));
+  if (back.length) {
+    const restored = s.plannedMeals.filter((m) => m.date === date && back.includes(m.slot) && m.status === 'skipped');
+    for (const m of restored) m.status = 'planned';
+    const missing = back.filter((slot) => !s.plannedMeals.some((m) => m.date === date && m.slot === slot && m.status !== 'skipped'));
+    if (missing.length) s.plannedMeals.push(...planMeals(s, { dates: [date], today, seed: `${date}:${after.mode}`, slots: missing }));
+    notes.push(`${back.map((slot) => SLOT_LABEL[slot]).join(', ')} wieder eingeplant`);
+  }
+  return notes;
+}
+
+/**
+ * Weekly check-in. Only what the check-in owns is replaced: training days of
+ * this week, the day contexts and the planner's suggestions from today on.
+ * Past days, eaten meals and meals the user picked or sized stay.
+ */
+function planWeek(s: AppState, change: Extract<WeekChange, { type: 'planWeek' }>, today: ISODate): Mutation {
+  const { week } = change;
+  if (!s.training || !s.nutritionProfile || !dayTargetFor(s, week)) return fail('Bitte zuerst Ziel und Profil einrichten.');
+  const dates = weekDays(week);
+  const open = dates.filter((d) => d >= today);
+  if (open.length === 0) return fail('Diese Woche ist schon vorbei.');
+  const isOpen = (weekday: number) => dates[weekday]! >= today;
+
+  // 1. Training days of this week – past days stay as they were (rotation is calendar-based).
+  const current = trainingWeekdays(s.training, week);
+  const days = [...new Set([...current.filter((d) => !isOpen(d)), ...change.trainingDays.filter(isOpen)])].sort((a, b) => a - b);
+  s.training.weekOverrides = { ...(s.training.weekOverrides ?? {}) };
+  if (days.join() === [...s.training.weekdays].sort((a, b) => a - b).join()) delete s.training.weekOverrides[week];
+  else s.training.weekOverrides[week] = days;
+  // Session ids of this week are re-numbered – moves/skips of open sessions no longer apply.
+  const completed = new Set(s.workouts.filter((w) => w.status === 'completed' && w.plannedId).map((w) => w.plannedId));
+  for (const id of Object.keys(s.workoutOverrides)) if (id.startsWith(`${week}#`) && !completed.has(id)) delete s.workoutOverrides[id];
+
+  // 2. Day contexts; 3. meal exceptions of the chosen modes.
+  const notes: string[] = [];
+  for (const date of open) {
+    const before = dayContextFor(s, date);
+    const after = change.days[date] ?? DEFAULT_DAY_CONTEXT;
+    storeDayContext(s, date, after);
+    applyModeToMeals(s, date, before, after, today);
+  }
+
+  // 4. Re-plan: planner suggestions are replaced, everything else is fixed input.
+  const last = dates[6]!;
+  s.plannedMeals = s.plannedMeals.filter(
+    (m) => !(m.date >= today && m.date >= week && m.date <= last && m.status === 'planned' && m.source === 'suggest' && !m.servingsLocked),
+  );
+  const added = planMeals(s, { dates: open, today, seed: week });
+  const slots = s.nutritionProfile.slots;
+  const freeSlots = open.some((d) => slots.some((slot) => !excludedSlots(dayContextFor(s, d)).includes(slot) && !s.plannedMeals.some((m) => m.date === d && m.slot === slot)));
+  if (added.length === 0 && freeSlots) return fail('Für diese Vorgaben gibt es keine passenden Rezepte. Deine bisherige Woche bleibt unverändert.');
+  s.plannedMeals.push(...added);
+
+  const sessions = activeWorkouts(s.training, s.workoutOverrides, s.workouts, week, s.dayContexts).filter((w) => w.date >= today);
+  const exceptions = open.filter((d) => dayContextFor(s, d).mode !== 'normal');
+  notes.push(`${sessions.length} ${sessions.length === 1 ? 'Training' : 'Trainings'} · ${added.length} Mahlzeiten geplant`);
+  if (exceptions.length) notes.push(exceptions.map((d) => `${weekdayShort(weekdayIndex(d))} ${DAY_MODE_LABEL[dayContextFor(s, d).mode]}`).join(', '));
+  return { ok: true, title: 'Woche geplant', notes };
+}
+
 // ---------- Recalculation ----------
 
 /**
@@ -295,7 +388,11 @@ function rebalanceWeek(before: AppState, after: AppState, week: ISODate, today: 
     const to = dayTargetFor(after, date)?.kcal;
     if (from === undefined || to === undefined || from === to) continue;
     targetChanges.push({ date, fromKcal: from, toKcal: to });
-    rebalanced.push(...rebalanceDay(after, date, to - from));
+    // On an eating-out day the dinner's share of the change belongs to the restaurant meal.
+    const profileSlots = after.nutritionProfile?.slots ?? [];
+    const out = excludedSlots(dayContextFor(after, date)).filter((sl) => profileSlots.includes(sl));
+    const share = out.length ? 1 - slotShare(out, profileSlots) : 1;
+    rebalanced.push(...rebalanceDay(after, date, (to - from) * share));
   }
   return { targetChanges, rebalanced };
 }
@@ -349,6 +446,8 @@ function weekOf(state: AppState, change: WeekChange, today: ISODate): ISODate {
     case 'setDayContext':
     case 'addMeal':
       return weekStart(change.date);
+    case 'planWeek':
+      return change.week;
     case 'replaceMeal':
     case 'removeMeal':
     case 'setServings': {

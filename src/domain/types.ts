@@ -132,8 +132,10 @@ export interface NutritionTarget extends Macros {
 
 export interface TrainingSetup {
   programId: string;
-  /** 0 = Monday … 6 = Sunday */
+  /** 0 = Monday … 6 = Sunday – the default for every week. */
   weekdays: number[];
+  /** F1: training days of single weeks chosen in the weekly check-in (keyed by week start). */
+  weekOverrides?: Record<ISODate, number[]>;
 }
 
 export type PlannedMealStatus = 'planned' | 'eaten' | 'skipped';

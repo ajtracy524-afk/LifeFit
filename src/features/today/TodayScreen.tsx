@@ -10,7 +10,7 @@ import { fmt, formatDateLong, formatDuration, greeting, relativeDay, weekdayShor
 import { href, navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
 import { withUndo } from '../../lib/undo';
-import { markEaten, startWorkoutFrom, suggestMealsForWeek } from '../../store/actions';
+import { markEaten, startWorkoutFrom } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen } from '../../components/Screen';
 import { Button } from '../../components/ui/Button';
@@ -25,6 +25,7 @@ import { MealSheet } from '../nutrition/MealSheet';
 import { WeightSheet } from '../progress/WeightSheet';
 import { estimateMinutes } from '../training/trainingUtils';
 import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
+import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { CoachCard } from './CoachCard';
 import { TimeBudgetControl } from './TimeBudgetControl';
 import styles from './today.module.css';
@@ -51,6 +52,7 @@ export function TodayScreen() {
   const week = useMemo(() => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, start]);
   const schedule = week.filter((s) => s.status !== 'skipped');
   const [planOpen, setPlanOpen] = useState(false);
+  const [planningWeek, setPlanningWeek] = useState<string | null>(null);
   const todaysSession = schedule.find((s) => s.date === t);
   const doneToday = isCompletedOn(state.workouts, t);
   const running = state.workouts.find((w) => w.status === 'in_progress');
@@ -114,6 +116,10 @@ export function TodayScreen() {
         })}
       </nav>
 
+      <button type="button" className={styles.planWeek} onClick={() => setPlanningWeek(start)}>
+        <Icon name="calendar" size={16} /> Woche planen
+      </button>
+
       <Card>
         <TimeBudgetControl date={t} />
       </Card>
@@ -136,7 +142,7 @@ export function TodayScreen() {
             <strong>Nächste Woche planen</strong>
             <p className={styles.muted}>In 2 Minuten steht dein Plan – inklusive Einkaufsliste.</p>
           </div>
-          <Button onClick={() => navigate('nutrition', { view: 'week', date: nextWeekStart })}>Planen</Button>
+          <Button onClick={() => setPlanningWeek(nextWeekStart)}>Planen</Button>
         </Card>
       )}
 
@@ -178,16 +184,8 @@ export function TodayScreen() {
             title="Deine Woche ist noch leer"
             text="Wir schlagen dir passende Mahlzeiten vor – die Einkaufsliste entsteht automatisch."
             action={
-              <Button
-                icon="sparkle"
-                onClick={() => {
-                  const added = suggestMealsForWeek(start);
-                  showToast(added ? `${added} Mahlzeiten geplant` : 'Keine passenden Rezepte gefunden – prüfe deine Ernährungsvorlieben.', {
-                    tone: added ? 'default' : 'error',
-                  });
-                }}
-              >
-                Woche vorschlagen
+              <Button icon="sparkle" onClick={() => setPlanningWeek(start)}>
+                Woche planen
               </Button>
             }
           />
@@ -358,6 +356,14 @@ export function TodayScreen() {
         </div>
       </Sheet>
 
+      <WeekAutopilot
+        week={planningWeek}
+        onClose={() => setPlanningWeek(null)}
+        onDone={(w) => {
+          setPlanningWeek(null);
+          navigate('nutrition', { view: 'week', date: w === start ? undefined : w });
+        }}
+      />
       <WorkoutPlanSheet session={planOpen ? (todaysSession ?? null) : null} week={week} today={t} onClose={() => setPlanOpen(false)} />
       <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} onLogInstead={(m) => setLogTarget({ date: m.date, slot: m.slot })} />
       <LogFoodSheet target={logTarget} onClose={() => setLogTarget(null)} />

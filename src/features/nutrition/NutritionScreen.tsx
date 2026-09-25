@@ -1,16 +1,15 @@
 import { useMemo, useState } from 'react';
 import { addDays, isoWeekNumber, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
 import { dayTotals, plannedMealMacros, sumMacros } from '../../domain/nutrition';
-import { SLOT_ORDER } from '../../domain/planner';
+import { SLOT_ORDER, slotShare } from '../../domain/planner';
 import { activeWorkouts } from '../../domain/training';
-import { TIME_BUDGETS } from '../../domain/timeBudget';
+import { DAY_MODE_LABEL, excludedSlots, TIME_BUDGETS } from '../../domain/timeBudget';
 import { dayContextFor, dayTargetFor, weekShopping } from '../../domain/week';
 import type { ISODate, LogEntry, MealSlot, PlannedMeal } from '../../domain/types';
 import { fmt, formatDateLong, relativeDay, SLOT_LABEL, weekdayShort } from '../../lib/format';
 import { href, navigate, useRoute } from '../../lib/router';
-import { showToast } from '../../lib/toast';
 import { withUndo } from '../../lib/undo';
-import { removeLogEntry, suggestMealsForWeek } from '../../store/actions';
+import { removeLogEntry } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen } from '../../components/Screen';
 import { Button, IconButton } from '../../components/ui/Button';
@@ -24,6 +23,7 @@ import { MealRow } from './MealRow';
 import { MealSheet } from './MealSheet';
 import { RecipePicker, type PickerTarget } from './RecipePicker';
 import { TimeBudgetControl } from '../today/TimeBudgetControl';
+import { WeekAutopilot } from '../plan/WeekAutopilot';
 import styles from './nutrition.module.css';
 
 type View = 'day' | 'week';
@@ -196,23 +196,22 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
   const training = useMemo(() => activeWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, start]);
   const shoppingCount = useMemo(() => weekShopping(state, start, t).filter((i) => i.state === 'open').length, [state, start, t]);
 
-  const openSlots = days.filter((d) => d >= t).reduce((n, d) => n + slots.filter((s) => !state.plannedMeals.some((m) => m.date === d && m.slot === s)).length, 0);
+  // Slots eaten out are free on purpose – not "open".
+  const openSlots = days
+    .filter((d) => d >= t)
+    .reduce((n, d) => n + slots.filter((s) => !excludedSlots(dayContextFor(state, d)).includes(s) && !state.plannedMeals.some((m) => m.date === d && m.slot === s)).length, 0);
   const isPastWeek = end < t;
   const thisWeek = weekStart(t);
 
   const go = (s: ISODate) => navigate('nutrition', { view: 'week', date: s === thisWeek ? undefined : s }, { replace: true });
 
-  const suggest = () => {
-    const added = suggestMealsForWeek(start);
-    if (added > 0) {
-      showToast(`${added} Mahlzeiten geplant – Einkaufsliste ist aktuell`, { action: { label: 'Liste', onClick: () => navigate('shopping', start === thisWeek ? undefined : { week: start }) } });
-    } else {
-      showToast('Alle Mahlzeiten sind schon geplant.');
-    }
-  };
+  // One planning path: the weekly check-in (same planner as everywhere else).
+  const [planning, setPlanning] = useState(false);
 
   return (
     <>
+      <WeekAutopilot week={planning ? start : null} onClose={() => setPlanning(false)} onDone={() => setPlanning(false)} />
+
       <div className={styles.dateSwitch}>
         <IconButton icon="chevronLeft" label="Vorherige Woche" onClick={() => go(addDays(start, -7))} />
         <div className={styles.dateLabel}>
@@ -224,14 +223,20 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
         <IconButton icon="chevronRight" label="Nächste Woche" onClick={() => go(addDays(start, 7))} />
       </div>
 
+      {!isPastWeek && openSlots === 0 && (
+        <Button variant="ghost" size="sm" icon="calendar" className={styles.planWeek} onClick={() => setPlanning(true)}>
+          Woche neu planen
+        </Button>
+      )}
+
       {!isPastWeek && openSlots > 0 && (
         <Card tone="accent" className={styles.suggestCard}>
           <div>
             <strong>{openSlots === days.filter((d) => d >= t).length * slots.length ? 'Deine Woche ist noch leer' : `${openSlots} Mahlzeiten offen`}</strong>
-            <p className={styles.muted}>Wir füllen die freien Plätze passend zu deinem Ziel. Du kannst danach alles tauschen.</p>
+            <p className={styles.muted}>Trainingstage, Zeit und Ausnahmen angeben – Essen, Training und Einkauf passen dann zusammen.</p>
           </div>
-          <Button icon="sparkle" onClick={suggest}>
-            Woche vorschlagen
+          <Button icon="sparkle" onClick={() => setPlanning(true)}>
+            Woche planen
           </Button>
         </Card>
       )}
@@ -240,7 +245,10 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
         const dayMeals = state.plannedMeals.filter((m) => m.date === d);
         const target = dayTargetFor(state, d);
         const planned = sumMacros(dayMeals.filter((m) => m.status !== 'skipped').map(plannedMealMacros));
-        const fit = target && dayMeals.length > 0 ? planned.kcal / target.kcal : undefined;
+        // On an eating-out day the planned meals cover only their share of the target.
+        const out = excludedSlots(dayContextFor(state, d)).filter((sl) => slots.includes(sl));
+        const plannedShare = out.length ? 1 - slotShare(out, slots) : 1;
+        const fit = target && dayMeals.length > 0 ? planned.kcal / (target.kcal * plannedShare) : undefined;
         const session = training.find((s) => s.date === d);
         const past = d < t;
         return (
@@ -255,9 +263,14 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
                   <Icon name="dumbbell" size={14} /> {session.template.name}
                 </span>
               )}
-              {dayContextFor(state, d).timeBudget !== 'normal' && (
+              {dayContextFor(state, d).timeBudget !== 'normal' && dayContextFor(state, d).mode === 'normal' && (
                 <span className={styles.trainingTag}>
                   <Icon name="clock" size={14} /> {TIME_BUDGETS[dayContextFor(state, d).timeBudget].label}
+                </span>
+              )}
+              {dayContextFor(state, d).mode !== 'normal' && (
+                <span className={styles.trainingTag}>
+                  <Icon name="calendar" size={14} /> {DAY_MODE_LABEL[dayContextFor(state, d).mode]}
                 </span>
               )}
               <span className={styles.flex} />

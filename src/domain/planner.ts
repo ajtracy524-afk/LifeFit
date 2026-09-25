@@ -11,6 +11,12 @@ export const SLOT_ORDER: MealSlot[] = ['breakfast', 'snack', 'lunch', 'dinner'];
 /** Share of the day's calories per slot – used to size a single added meal. */
 const SLOT_SHARE: Record<MealSlot, number> = { breakfast: 0.25, snack: 0.15, lunch: 0.32, dinner: 0.28 };
 
+/** Share of the day's calories that `part` of the day's `slots` stands for. */
+export function slotShare(part: MealSlot[], slots: MealSlot[]): number {
+  const all = slots.reduce((sum, sl) => sum + SLOT_SHARE[sl], 0) || 1;
+  return part.reduce((sum, sl) => sum + SLOT_SHARE[sl], 0) / all;
+}
+
 export function slotsFor(mealsPerDay: 3 | 4): MealSlot[] {
   return mealsPerDay === 3 ? ['breakfast', 'lunch', 'dinner'] : SLOT_ORDER;
 }
@@ -78,6 +84,8 @@ interface SuggestInput {
   pantry?: Record<string, number>;
   /** F5: time budget per day (default "normal"). */
   timeBudgetFor?: (date: ISODate) => TimeBudget;
+  /** F1: slots a day does not plan (e.g. dinner when eating out). */
+  excludedSlotsFor?: (date: ISODate) => MealSlot[];
   random?: () => number;
   weights?: Partial<PlannerWeights>;
 }
@@ -272,6 +280,7 @@ export function suggestWeek({
   existing,
   pantry = {},
   timeBudgetFor = () => 'normal',
+  excludedSlotsFor = () => [],
   random = Math.random,
   weights = {},
 }: SuggestInput): PlannedMeal[] {
@@ -297,7 +306,10 @@ export function suggestWeek({
     const fixed = existing.filter((m) => m.date === date && m.status !== 'skipped');
     // Slots without any matching recipe (strict diet combinations) stay empty
     // instead of blocking the whole day.
-    const emptySlots = slots.filter((s) => !existing.some((m) => m.date === date && m.slot === s) && recipesForSlot(s, profile).length > 0);
+    const excluded = excludedSlotsFor(date);
+    const emptySlots = slots.filter(
+      (s) => !excluded.includes(s) && !existing.some((m) => m.date === date && m.slot === s) && recipesForSlot(s, profile).length > 0,
+    );
     if (emptySlots.length === 0) continue;
 
     const fixedMacros = sumMacros(fixed.map(plannedMealMacros));

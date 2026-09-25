@@ -361,3 +361,19 @@
   font-size: 13px;
   text-align: center;
 }
+
+/* ---------- Weekly check-in entry (F1) ---------- */
+.planWeek {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 2px 0 0;
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-weight: 650;
+  font-size: 14px;
+  cursor: pointer;
+}

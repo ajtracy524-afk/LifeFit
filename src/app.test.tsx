@@ -383,6 +383,67 @@ describe('pantry in the shopping list (F2)', () => {
   });
 });
 
+describe('weekly autopilot (F1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 10, 0));
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const inDialog = (label: string) => {
+    const found = [...container.querySelectorAll('dialog[open] button')].find((b) => b.textContent?.trim() === label) as HTMLButtonElement | undefined;
+    if (!found) throw new Error(`"${label}" not found in dialog`);
+    return found;
+  };
+  const tab = (group: string, label: string) => {
+    const list = container.querySelector(`[role="tablist"][aria-label="${group}"]`);
+    const found = [...(list?.querySelectorAll('button') ?? [])].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
+    if (!found) throw new Error(`${group} / ${label} not found`);
+    return found;
+  };
+
+  it('check-in → preview → "Woche erstellen" builds training, meals and shopping; undo restores', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const before = store.getState();
+
+    await click('Woche planen');
+    // Training: Tue / Thu / Sat instead of Mon / Wed / Fri.
+    for (const day of ['Mo', 'Mi', 'Fr', 'Di', 'Do', 'Sa']) await act(async () => inDialog(day).click());
+    await act(async () => inDialog('Weiter').click());
+    await act(async () => tab('Zeit Do 24.', 'Wenig Zeit').click());
+    await act(async () => inDialog('Weiter').click());
+    await act(async () => tab('Ausnahme Mi 23.', 'Auswärts').click());
+    await act(async () => inDialog('Weiter').click());
+
+    // Preview – nothing stored yet.
+    expect(store.getState()).toBe(before);
+    const dialog = () => container.querySelector('dialog[open]')?.textContent ?? '';
+    expect(dialog()).toMatch(/Di\s*Ganzkörper/);
+    expect(dialog()).toMatch(/Mi\s*2 Mahlzeiten · Auswärts/);
+    expect(dialog()).toMatch(/\d+ Artikel/);
+
+    await act(async () => inDialog('Woche erstellen').click());
+    const after = store.getState();
+    expect(after.training!.weekOverrides!['2026-09-21']).toEqual([1, 3, 5]);
+    expect(after.dayContexts['2026-09-24']?.timeBudget).toBe('low');
+    expect(after.dayContexts['2026-09-23']?.mode).toBe('eating_out');
+    expect(after.plannedMeals.filter((m) => m.date === '2026-09-23' && m.status === 'planned').map((m) => m.slot).sort()).toEqual(['breakfast', 'lunch']);
+    expect(window.location.hash).toMatch(/#\/nutrition/);
+    expect(text()).toMatch(/Woche geplant/);
+
+    await click('Rückgängig');
+    expect(store.getState()).toBe(before);
+  });
+});
+
 describe('error boundary', () => {
   it('shows a fallback with "Neu laden" instead of a blank page', async () => {
     vi.doMock('./features/onboarding/Onboarding', () => ({

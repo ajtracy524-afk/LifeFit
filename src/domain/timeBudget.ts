@@ -1,4 +1,4 @@
-import type { DayContext, TimeBudget } from './types';
+import type { DayContext, DayMode, MealSlot, TimeBudget } from './types';
 
 /**
  * F5 – time budget per day. One place defines what "wenig / normal / viel
@@ -26,6 +26,27 @@ export const TIME_BUDGET_ORDER: TimeBudget[] = ['low', 'normal', 'high'];
 export const LEFTOVER_PREP_MIN = 5;
 export const LEFTOVER_DAYS = 2;
 export const MEAL_PREP_TAG = 'Meal Prep';
+
+export const DAY_MODE_ORDER: DayMode[] = ['normal', 'eating_out', 'busy', 'travel'];
+
+export const DAY_MODE_LABEL: Record<DayMode, string> = {
+  normal: 'Normal',
+  eating_out: 'Auswärts',
+  busy: 'Busy',
+  travel: 'Reise',
+};
+
+/**
+ * "Auswärts essen" = dinner is eaten out. The slot is not planned (an already
+ * planned dinner is marked skipped) – no restaurant dishes are invented, the
+ * day target stays, the user logs what they eat.
+ */
+export const EATING_OUT_SLOTS: MealSlot[] = ['dinner'];
+
+/** Meal slots a day does not plan because of its mode. */
+export function excludedSlots(context: DayContext | undefined): MealSlot[] {
+  return context?.mode === 'eating_out' ? EATING_OUT_SLOTS : [];
+}
 
 /**
  * The budget that actually applies to a day: "Busy" and "Reise" mean little

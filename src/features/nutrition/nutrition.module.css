@@ -516,3 +516,8 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Weekly check-in for an already planned week (F1) */
+.planWeek {
+  align-self: flex-end;
+}

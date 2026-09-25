@@ -1,9 +1,9 @@
 import { weekDays, weekStart } from '../dates';
-import { seededRandom, suggestWeek } from '../planner';
+import { seededRandom, slotShare, suggestWeek } from '../planner';
 import type { AppState, ISODate, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { availablePantry, dayContextFor } from './weekPlan';
-import { effectiveTimeBudget } from '../timeBudget';
+import { effectiveTimeBudget, excludedSlots } from '../timeBudget';
 
 /**
  * The ONE entry into the week planner. Onboarding, "Woche vorschlagen",
@@ -25,8 +25,15 @@ export function planMeals(
     target,
     targetFor: (d) => {
       const t = dayTargetFor(state, d);
+      if (!t) return t;
       const kcal = opts.targetKcalFor?.(d);
-      return t && kcal !== undefined ? { ...t, kcal } : t;
+      if (kcal !== undefined) return { ...t, kcal };
+      // Slots eaten out keep their share of the day for the restaurant meal –
+      // the planned meals do not grow to make up for it.
+      const out = excludedSlots(dayContextFor(state, d)).filter((sl) => profile.slots.includes(sl));
+      if (out.length === 0) return t;
+      const share = 1 - slotShare(out, profile.slots);
+      return { ...t, kcal: t.kcal * share, protein: t.protein * share };
     },
     profile,
     existing: opts.existing ?? weekMeals(state, first),
@@ -34,6 +41,7 @@ export function planMeals(
     // earlier weeks still need is reserved – never counted twice.
     pantry: availablePantry(state, maxDate(weekStart(first), today), today),
     timeBudgetFor: (d) => effectiveTimeBudget(dayContextFor(state, d)),
+    excludedSlotsFor: (d) => excludedSlots(dayContextFor(state, d)),
     random: seededRandom(opts.seed),
   });
 }
