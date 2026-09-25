@@ -1,0 +1,313 @@
+import { describe, expect, it } from 'vitest';
+import { getRecipe } from '../../data/recipes';
+import { emptyState, migrateV1 } from '../../store/persistence';
+import { addDays, weekDays } from '../dates';
+import { logFromMeal, plannedMealMacros } from '../nutrition';
+import { suggestWeek } from '../planner';
+import { activeWorkouts, planSlotId, resolveWorkouts, scheduleForWeek } from '../training';
+import type { AppState, PlannedMeal, Workout } from '../types';
+import { applyWeekChange, type CascadeResult } from './cascade';
+import { dayShift, dayTargetFor, TRAINING_DAY_KCAL } from './dayTargets';
+import { pantryEstimate, purchaseAmount } from './pantry';
+import { buildWeekPlan, weekShopping } from './weekPlan';
+import { getFood } from '../../data/foods';
+
+// Week of Monday 2026-09-21. Training Monday + Thursday → slot #1 is Thursday.
+const MON = '2026-09-21';
+const THU = '2026-09-24';
+const FRI = '2026-09-25';
+const NOW = new Date(2026, 8, 21, 8, 0); // Monday 08:00 local
+const THU_SLOT = planSlotId(MON, 1);
+
+let seq = 0;
+const meal = (date: string, slot: PlannedMeal['slot'], recipeId = 'chicken-rice-bowl', patch: Partial<PlannedMeal> = {}): PlannedMeal => ({
+  id: `m${++seq}`,
+  date,
+  slot,
+  recipeId,
+  servings: 1,
+  status: 'planned',
+  source: 'suggest',
+  ...patch,
+});
+
+function state(patch: Partial<AppState> = {}): AppState {
+  return {
+    ...emptyState(),
+    profile: { name: 'T', sex: 'male', age: 30, heightCm: 180, activity: 'moderate', experience: 'beginner', createdAt: '2026-09-01T08:00:00Z' },
+    goal: { type: 'muscle_gain', startWeightKg: 80, startedAt: '2026-09-01' },
+    nutritionProfile: { diet: 'omnivore', excluded: [], slots: ['lunch', 'dinner'] },
+    targets: [{ id: 't', validFrom: '2026-09-01', method: 'formula', kcal: 2500, protein: 160, carbs: 300, fat: 75 }],
+    training: { programId: 'full-body', weekdays: [0, 3] },
+    weights: [{ id: 'w', date: '2026-09-01', kg: 80 }],
+    ...patch,
+  };
+}
+
+function ok(result: CascadeResult) {
+  if (!result.ok) throw new Error(result.reason);
+  return result;
+}
+
+const logAt = (m: PlannedMeal, iso: string) => logFromMeal({ ...m, status: 'eaten' }, iso);
+
+// ---------- Workout overrides ----------
+
+describe('workout overrides', () => {
+  it('without overrides the concrete week equals the rotation', () => {
+    const s = state();
+    const resolved = resolveWorkouts(s.training, {}, [], MON);
+    const base = scheduleForWeek(s.training, MON);
+    expect(resolved.map((w) => [w.date, w.template.id, w.status])).toEqual(base.map((b) => [b.date, b.template.id, 'scheduled']));
+  });
+
+  it('moves a session: Thursday is no training day any more, Friday is – the original day stays known', () => {
+    const s = ok(applyWeekChange(state(), { type: 'moveWorkout', slotId: THU_SLOT, toDate: FRI }, NOW)).state;
+    const plan = buildWeekPlan(s, MON, '2026-09-21');
+    expect(plan.days.find((d) => d.date === THU)!.isTrainingDay).toBe(false);
+    expect(plan.days.find((d) => d.date === FRI)!.isTrainingDay).toBe(true);
+    const moved = plan.workouts.find((w) => w.id === THU_SLOT)!;
+    expect(moved).toMatchObject({ status: 'moved', originalDate: THU, date: FRI });
+  });
+
+  it('skipping keeps the rotation (calendar based) and the session visible as skipped', () => {
+    const before = resolveWorkouts(state().training, {}, [], MON);
+    const s = ok(applyWeekChange(state(), { type: 'skipWorkout', slotId: THU_SLOT }, NOW)).state;
+    const after = resolveWorkouts(s.training, s.workoutOverrides, s.workouts, MON);
+    expect(after.find((w) => w.id === THU_SLOT)!.status).toBe('skipped');
+    expect(activeWorkouts(s.training, s.workoutOverrides, s.workouts, MON)).toHaveLength(1);
+    // Next week's rotation is untouched.
+    const nextWeek = addDays(MON, 7);
+    expect(resolveWorkouts(s.training, s.workoutOverrides, [], nextWeek).map((w) => w.template.id)).toEqual(
+      scheduleForWeek(s.training, nextWeek).map((w) => w.template.id),
+    );
+    expect(before.map((w) => w.template.id)).toEqual(after.map((w) => w.template.id));
+  });
+
+  it('moving back to the original day removes the override', () => {
+    const moved = ok(applyWeekChange(state(), { type: 'moveWorkout', slotId: THU_SLOT, toDate: FRI }, NOW)).state;
+    const back = ok(applyWeekChange(moved, { type: 'moveWorkout', slotId: THU_SLOT, toDate: THU }, NOW)).state;
+    expect(back.workoutOverrides).toEqual({});
+  });
+
+  it('rejects invalid moves', () => {
+    expect(applyWeekChange(state(), { type: 'moveWorkout', slotId: THU_SLOT, toDate: MON }, NOW).ok).toBe(false); // Monday has training
+    expect(applyWeekChange(state(), { type: 'moveWorkout', slotId: THU_SLOT, toDate: addDays(MON, 8) }, NOW).ok).toBe(false); // other week
+    expect(applyWeekChange(state(), { type: 'moveWorkout', slotId: THU_SLOT, toDate: FRI }, new Date(2026, 8, 26)).ok).toBe(false); // past
+    expect(applyWeekChange(state(), { type: 'skipWorkout', slotId: 'nope#9' }, NOW).ok).toBe(false);
+  });
+
+  it('a workout with plannedId completes its session on the new day; old workouts match by date', () => {
+    const s = ok(applyWeekChange(state(), { type: 'moveWorkout', slotId: THU_SLOT, toDate: FRI }, NOW)).state;
+    const done = (id: string, date: string, plannedId?: string): Workout => ({
+      id, date, templateId: 'fb-b', name: 'B', startedAt: `${date}T18:00:00Z`, status: 'completed', exercises: [], plannedId,
+    });
+    const linked = resolveWorkouts(s.training, s.workoutOverrides, [done('w1', FRI, THU_SLOT)], MON);
+    expect(linked.find((w) => w.id === THU_SLOT)!.completedWorkoutId).toBe('w1');
+    const legacy = resolveWorkouts(s.training, {}, [done('w2', MON)], MON);
+    expect(legacy.find((w) => w.date === MON)!.completedWorkoutId).toBe('w2');
+  });
+});
+
+// ---------- Day targets ----------
+
+describe('day targets', () => {
+  it('training days get +150 kcal, rest days less – the weekly sum stays the same', () => {
+    const s = state();
+    const days = weekDays(MON).map((d) => dayTargetFor(s, d)!.kcal);
+    expect(dayTargetFor(s, MON)!.kcal).toBe(2500 + TRAINING_DAY_KCAL);
+    expect(dayTargetFor(s, '2026-09-22')!.kcal).toBe(2500 + dayShift(false, 2));
+    expect(Math.abs(days.reduce((a, b) => a + b, 0) - 2500 * 7)).toBeLessThanOrEqual(5);
+    expect(dayTargetFor(s, MON)!.protein).toBe(160);
+  });
+
+  it('rest days never drop below the calorie floor', () => {
+    const low = state({ targets: [{ id: 't', validFrom: '2026-09-01', method: 'manual', kcal: 1960, protein: 150, carbs: 180, fat: 60 }], training: { programId: 'full-body', weekdays: [0, 1, 2, 3, 4, 5] } });
+    // Floor for this profile ≈ 1958 kcal (BMR × 1.1).
+    expect(dayTargetFor(low, '2026-09-27')!.kcal).toBeGreaterThanOrEqual(1958);
+  });
+
+  it('the planner uses day targets', () => {
+    const s = state();
+    const plan = suggestWeek({
+      dates: [MON, '2026-09-22'],
+      slots: ['lunch', 'dinner'],
+      target: s.targets[0]!,
+      targetFor: (d) => dayTargetFor(s, d),
+      profile: s.nutritionProfile,
+      existing: [],
+      random: () => 0.3,
+    });
+    const kcal = (d: string) => plan.filter((m) => m.date === d).reduce((sum, m) => sum + plannedMealMacros(m).kcal, 0);
+    expect(kcal(MON)).toBeGreaterThan(kcal('2026-09-22'));
+  });
+});
+
+// ---------- Pantry ----------
+
+describe('pantry', () => {
+  const lunch = meal(MON, 'lunch', 'chicken-rice-bowl');
+
+  it('buying credits whole packages', () => {
+    const s = ok(applyWeekChange(state({ plannedMeals: [lunch] }), { type: 'purchase', week: MON, foodId: 'chicken' }, NOW)).state;
+    // The bowl needs 180 g chicken, sold in 400 g packs.
+    expect(pantryEstimate(s).chicken).toBe(400);
+    expect(s.shopping[MON]!.purchased.chicken).toBe(400);
+    expect(purchaseAmount(getFood('egg')!, 180)).toBe(600); // a pack of eggs, not 3 single eggs
+  });
+
+  it('ticking off piece goods marks them as bought even if the need is slightly above whole pieces', () => {
+    // 370 g banana = "3 Stück" on the list; buying 3 pieces (360 g) must close the item.
+    const bananaGrams = getRecipe('pb-porridge')!.ingredients.find((i) => i.foodId === 'banana')!.grams;
+    const s0 = state({ plannedMeals: [meal(FRI, 'lunch', 'pb-porridge', { servings: 370 / bananaGrams })] });
+    const s = ok(applyWeekChange(s0, { type: 'purchase', week: MON, foodId: 'banana' }, NOW)).state;
+    expect(pantryEstimate(s).banana).toBe(360);
+    expect(weekShopping(s, MON, MON).find((i) => i.foodId === 'banana')!.state).toBe('checked');
+  });
+
+  it('eating reduces the pantry, undoing it restores it', () => {
+    const bought = ok(applyWeekChange(state({ plannedMeals: [lunch] }), { type: 'purchase', week: MON, foodId: 'chicken' }, NOW)).state;
+    const eaten = { ...bought, logEntries: [logAt(lunch, '2026-09-21T12:00:00Z')] };
+    expect(pantryEstimate(eaten).chicken).toBe(400 - 180);
+    expect(pantryEstimate({ ...eaten, logEntries: [] }).chicken).toBe(400);
+  });
+
+  it('a correction sets a new amount; "leer" removes it', () => {
+    let s = ok(applyWeekChange(state(), { type: 'setPantry', foodId: 'quark', quantityG: 250 }, NOW)).state;
+    expect(pantryEstimate(s).quark).toBe(250);
+    s = ok(applyWeekChange(s, { type: 'setPantry', foodId: 'quark', quantityG: null }, NOW)).state;
+    expect(pantryEstimate(s).quark).toBeUndefined();
+  });
+
+  it('enough pantry → nothing to buy; the rest stays for next week', () => {
+    // 500 g quark bought last week, 300 g eaten → 200 g left.
+    const last = meal('2026-09-15', 'lunch', 'quark-berries');
+    const quarkPerServing = getRecipe('quark-berries')!.ingredients.find((i) => i.foodId === 'quark')!.grams;
+    const s = state({
+      pantry: { quark: { foodId: 'quark', quantityG: 500, updatedAt: '2026-09-14T10:00:00Z' } },
+      logEntries: [logAt({ ...last, servings: 300 / quarkPerServing }, '2026-09-15T12:00:00Z')],
+      plannedMeals: [meal(MON, 'lunch', 'quark-berries', { servings: 200 / quarkPerServing })],
+    });
+    expect(pantryEstimate(s).quark).toBe(200);
+    const item = weekShopping(s, MON, MON).find((i) => i.foodId === 'quark')!;
+    expect(item.state).toBe('have');
+    expect(item.remainingG).toBe(0);
+  });
+});
+
+// ---------- Cascade ----------
+
+describe('cascade', () => {
+  const week = () => [
+    meal(THU, 'lunch'),
+    meal(THU, 'dinner', 'bolognese'),
+    meal(FRI, 'lunch'),
+    meal(FRI, 'dinner', 'bolognese'),
+  ];
+
+  it('moving a workout updates day targets and servings of both days', () => {
+    const before = state({ plannedMeals: week() });
+    const r = ok(applyWeekChange(before, { type: 'moveWorkout', slotId: THU_SLOT, toDate: FRI }, NOW));
+    const thu = r.summary.targetChanges.find((t) => t.date === THU)!;
+    const fri = r.summary.targetChanges.find((t) => t.date === FRI)!;
+    expect(thu.toKcal).toBeLessThan(thu.fromKcal);
+    expect(fri.toKcal).toBeGreaterThan(fri.fromKcal);
+
+    const kcal = (s: AppState, d: string) => s.plannedMeals.filter((m) => m.date === d).reduce((sum, m) => sum + plannedMealMacros(m).kcal, 0);
+    expect(kcal(r.state, THU)).toBeLessThan(kcal(before, THU));
+    expect(kcal(r.state, FRI)).toBeGreaterThan(kcal(before, FRI));
+    expect(r.summary.title).toBe('Ganzkörper B auf Freitag verschoben');
+    expect(r.summary.details.join(' ')).toMatch(/Portionen angepasst/);
+  });
+
+  it('never touches locked, eaten or past meals', () => {
+    const locked = meal(THU, 'lunch', 'chicken-rice-bowl', { servingsLocked: true });
+    const eaten = meal(THU, 'dinner', 'bolognese', { status: 'eaten' });
+    const r = ok(applyWeekChange(state({ plannedMeals: [locked, eaten] }), { type: 'moveWorkout', slotId: THU_SLOT, toDate: FRI }, NOW));
+    expect(r.state.plannedMeals.map((m) => m.servings)).toEqual([1, 1]);
+    expect(r.summary.rebalanced).toHaveLength(0);
+  });
+
+  it('skipping a workout keeps the weekly sum of day targets', () => {
+    const r = ok(applyWeekChange(state(), { type: 'skipWorkout', slotId: THU_SLOT }, NOW));
+    const sum = weekDays(MON).reduce((s, d) => s + dayTargetFor(r.state, d)!.kcal, 0);
+    expect(Math.abs(sum - 2500 * 7)).toBeLessThanOrEqual(5);
+  });
+
+  it('changing a meal updates the shopping list', () => {
+    const lunch = meal(FRI, 'lunch', 'chicken-rice-bowl');
+    const r = ok(applyWeekChange(state({ plannedMeals: [lunch] }), { type: 'replaceMeal', mealId: lunch.id, recipeId: 'lentil-dal' }, NOW));
+    expect(r.summary.shopping.removed).toContain('Hähnchenbrust');
+    expect(r.summary.shopping.added).toContain('Rote Linsen');
+    expect(weekShopping(r.state, MON, MON).some((i) => i.foodId === 'chicken')).toBe(false);
+  });
+
+  it('changing the pantry updates the shopping list', () => {
+    const r = ok(applyWeekChange(state({ plannedMeals: [meal(FRI, 'lunch')] }), { type: 'setPantry', foodId: 'rice', quantityG: 1000 }, NOW));
+    expect(r.summary.shopping.removed).toContain('Basmatireis');
+    expect(weekShopping(r.state, MON, MON).find((i) => i.foodId === 'rice')!.state).toBe('have');
+  });
+
+  it('buying and then planning more reopens the item with the extra amount only', () => {
+    let s = state({ plannedMeals: [meal(THU, 'lunch'), meal(FRI, 'lunch')] });
+    s = ok(applyWeekChange(s, { type: 'purchase', week: MON, foodId: 'chicken', grams: 360 }, NOW)).state;
+    expect(weekShopping(s, MON, MON).find((i) => i.foodId === 'chicken')!.state).toBe('checked');
+
+    s = ok(applyWeekChange(s, { type: 'addMeal', date: FRI, slot: 'dinner', recipeId: 'chicken-rice-bowl', servings: 1 }, NOW)).state;
+    const item = weekShopping(s, MON, MON).find((i) => i.foodId === 'chicken')!;
+    expect(item.state).toBe('open');
+    expect(item.remainingG).toBe(180);
+  });
+
+  it('undoing a purchase takes it out of the pantry again', () => {
+    let s = state({ plannedMeals: [meal(FRI, 'lunch')] });
+    s = ok(applyWeekChange(s, { type: 'purchase', week: MON, foodId: 'chicken' }, NOW)).state;
+    s = ok(applyWeekChange(s, { type: 'undoPurchase', week: MON, foodId: 'chicken' }, NOW)).state;
+    expect(pantryEstimate(s).chicken).toBeUndefined();
+    expect(weekShopping(s, MON, MON).find((i) => i.foodId === 'chicken')!.state).toBe('open');
+  });
+
+  it('is pure: the previous state stays untouched, so undo = restoring it', () => {
+    const before = state({ plannedMeals: week() });
+    const copy = structuredClone(before);
+    ok(applyWeekChange(before, { type: 'moveWorkout', slotId: THU_SLOT, toDate: FRI }, NOW));
+    expect(before).toEqual(copy);
+  });
+
+  it('stores only non-default day contexts', () => {
+    let s = ok(applyWeekChange(state(), { type: 'setDayContext', date: THU, context: { timeBudget: 'low' } }, NOW)).state;
+    expect(s.dayContexts[THU]).toEqual({ timeBudget: 'low', mode: 'normal' });
+    s = ok(applyWeekChange(s, { type: 'setDayContext', date: THU, context: { timeBudget: 'normal' } }, NOW)).state;
+    expect(s.dayContexts).toEqual({});
+  });
+});
+
+// ---------- Migration ----------
+
+describe('migration v1 → v2', () => {
+  it('turns "gekauft" / "hab ich schon" into pantry amounts and keeps everything else', () => {
+    const lunch = meal(FRI, 'lunch');
+    const v1 = {
+      ...state({ plannedMeals: [lunch] }),
+      schemaVersion: 1,
+      shopping: {
+        [MON]: { status: { chicken: 'checked', rice: 'have' }, manual: [{ id: 'x', name: 'Kaffee', checked: false }] },
+        '2026-09-14': { status: { oats: 'checked' }, manual: [] },
+      },
+    } as unknown as Record<string, unknown>;
+    delete v1.pantry;
+    delete v1.dayContexts;
+    delete v1.workoutOverrides;
+
+    const s = migrateV1(v1, NOW);
+    expect(s.schemaVersion).toBe(2);
+    expect(s.plannedMeals).toEqual([lunch]);
+    expect(s.shopping[MON]!.manual).toHaveLength(1);
+    expect(s.shopping[MON]!.purchased).toEqual({ chicken: 180 });
+    expect(s.shopping['2026-09-14']!.purchased).toEqual({}); // past week: no pantry invented
+    const list = weekShopping(s, MON, MON);
+    expect(list.find((i) => i.foodId === 'chicken')!.state).toBe('checked');
+    expect(list.find((i) => i.foodId === 'rice')!.state).toBe('have');
+    expect(list.find((i) => i.foodId === 'broccoli')?.state).toBe('open');
+  });
+});

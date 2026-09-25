@@ -1,0 +1,170 @@
+.muted {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.summaryText {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.summaryText strong {
+  font-size: 17px;
+}
+
+.summaryText span {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.addForm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 4px 16px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--text-3);
+}
+
+.addForm input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.row:first-child {
+  border-top: 0;
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 0 13px 16px;
+  text-align: left;
+}
+
+.box,
+.boxDone {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 1.8px solid var(--text-3);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.boxDone {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.nameBlock {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.name {
+  font-size: 16px;
+  font-weight: 550;
+}
+
+.qty {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.hint {
+  color: var(--text-3);
+}
+
+.rowDone .name {
+  text-decoration: line-through;
+  color: var(--text-3);
+}
+
+.sourceBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.doneToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+
+.detailCaption {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+
+.sourceList {
+  list-style: none;
+  margin: 8px 0 16px;
+  padding: 0;
+}
+
+.sourceList a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sourceList a > span:first-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.detailActions {
+  display: flex;
+  gap: 10px;
+}

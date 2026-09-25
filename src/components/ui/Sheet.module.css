@@ -1,0 +1,95 @@
+.dialog {
+  padding: 0;
+  border: 0;
+  margin: auto auto 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: none;
+  background: transparent;
+  color: inherit;
+  overflow: visible;
+}
+
+.dialog::backdrop {
+  background: rgb(10 12 11 / 45%);
+  animation: fade 0.2s ease;
+}
+
+.panel {
+  background: var(--surface);
+  border-radius: 24px 24px 0 0;
+  box-shadow: var(--shadow-lg);
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  padding-bottom: var(--safe-bottom);
+}
+
+.grabber {
+  width: 36px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--border);
+  margin: 8px auto 0;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px 8px 20px;
+}
+
+.titles {
+  flex: 1;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.subtitle {
+  color: var(--text-2);
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.body {
+  padding: 8px 20px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.footer {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+}
+
+@media (min-width: 600px) {
+  .dialog {
+    margin: auto;
+  }
+  .panel {
+    border-radius: 24px;
+    padding-bottom: 0;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}

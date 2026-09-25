@@ -1,0 +1,132 @@
+.muted {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.name {
+  font-size: 19px;
+}
+
+.row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  text-align: left;
+  border-top: 1px solid var(--border);
+}
+
+.row:first-child {
+  border-top: 0;
+}
+
+.rowIcon,
+.rowIconDanger {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.rowIconDanger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rowText strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.rowText span {
+  font-size: 13px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.danger {
+  color: var(--danger);
+}
+
+.chevron {
+  color: var(--text-3);
+}
+
+.note {
+  font-size: 13px;
+  color: var(--text-2);
+  padding: 4px;
+}
+
+.version {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 12px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-2);
+  margin-top: 6px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stepRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}

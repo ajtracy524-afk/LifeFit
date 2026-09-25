@@ -1,0 +1,88 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    transform 0.12s ease,
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+  user-select: none;
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.md {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 15px;
+}
+.sm {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+.lg {
+  height: 54px;
+  padding: 0 24px;
+  font-size: 16px;
+}
+
+.iconOnly {
+  padding: 0;
+  aspect-ratio: 1;
+}
+
+.block {
+  width: 100%;
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.secondary {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.ghost {
+  color: var(--accent);
+  padding-inline: 10px;
+}
+
+.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.iconButton {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-2);
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.iconButton:hover {
+  background: var(--surface-2);
+}
+
+.iconAccent {
+  background: var(--accent-soft);
+  color: var(--accent);
+}

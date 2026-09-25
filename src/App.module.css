@@ -1,0 +1,5 @@
+.banner {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: calc(var(--safe-top) + 12px) var(--space) 0;
+}

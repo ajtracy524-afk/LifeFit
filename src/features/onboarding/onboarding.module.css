@@ -1,0 +1,260 @@
+.shell {
+  min-height: 100dvh;
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(var(--safe-top) + 10px) 16px 10px 6px;
+  background: var(--bg);
+}
+
+.stepCount {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.content {
+  flex: 1;
+  padding: 12px var(--space) 24px;
+}
+
+.footer {
+  position: sticky;
+  bottom: 0;
+  padding: 12px var(--space) calc(16px + var(--safe-bottom));
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+
+.stepTitle {
+  margin: 8px 0 22px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 750;
+}
+
+.text {
+  color: var(--text-2);
+  margin-top: 8px;
+  font-size: 16px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-2);
+  margin-top: 10px;
+  margin-bottom: 6px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.privacy {
+  font-size: 13px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+/* Welcome */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  padding-top: calc(var(--safe-top) + 8vh);
+}
+
+.logo {
+  margin-bottom: 28px;
+}
+
+.hero {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.pillars {
+  list-style: none;
+  margin: 36px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pillars li {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.pillars li > span {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.pillars p {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+/* Program preview */
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 6px 16px;
+}
+
+.previewItem {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.previewItem:last-child {
+  border-bottom: 0;
+}
+
+.previewItem span {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* Result */
+.result {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.resultKcal strong {
+  display: block;
+  font-size: 52px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.resultKcal span {
+  color: var(--text-2);
+  font-weight: 550;
+}
+
+.resultMacros {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.resultMacros div {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 4px;
+  background: var(--surface-2);
+  border-radius: 14px;
+}
+
+.resultMacros strong {
+  font-size: 18px;
+}
+
+.resultMacros span {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.explain {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-top: 14px;
+  text-align: center;
+}
+
+.adjust {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.adjustRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* Creating */
+.creating {
+  min-height: 70dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+}
+
+.spinner {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 5px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -1,0 +1,179 @@
+.muted {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.eyebrow {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.goalRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.goalNumber {
+  font-size: 32px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.goalText {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 14px;
+}
+
+.axis {
+  font-size: 10px;
+  fill: var(--text-3);
+}
+
+.axisAccent {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--accent);
+}
+
+.chartEmpty {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 6px;
+}
+
+.legendDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--text-3);
+  opacity: 0.6;
+}
+
+.legendLine {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  margin-left: 8px;
+}
+
+.weightList {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.weightList li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  font-size: 15px;
+}
+
+.weightList li span {
+  flex: 1;
+  color: var(--text-2);
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stat {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.statLabel {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.statValue {
+  font-size: 22px;
+  font-weight: 750;
+}
+
+.statSub {
+  font-size: 13px;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.compare {
+  font-size: 13px;
+  color: var(--text-2);
+  padding: 0 4px;
+}
+
+.recordRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.recordRow:first-child {
+  border-top: 0;
+}
+
+.recordText {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

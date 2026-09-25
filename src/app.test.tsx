@@ -1,0 +1,236 @@
+// @vitest-environment jsdom
+import { StrictMode } from 'react';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AppState } from './domain/types';
+
+/**
+ * App-level tests: first start, onboarding, persisted state and reset.
+ * The store reads localStorage when its module is loaded, so every test
+ * prepares storage first and then imports a fresh module graph.
+ */
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const KEY = 'lifefit:v1';
+const BACKUP_KEY = 'lifefit:corrupt-backup';
+const WELCOME = 'Plane deine Woche.';
+
+let container: HTMLDivElement;
+let root: Root | undefined;
+
+beforeEach(() => {
+  localStorage.clear();
+  window.history.replaceState(null, '', '/');
+  // Current Chrome returns a Promise from scrollTo() – the original cause of the blank screen.
+  window.scrollTo = vi.fn(() => Promise.resolve()) as unknown as typeof window.scrollTo;
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  container = document.createElement('div');
+  document.body.append(container);
+});
+
+afterEach(async () => {
+  await act(async () => root?.unmount());
+  root = undefined;
+  container.remove();
+  vi.restoreAllMocks();
+});
+
+/** Renders the app like main.tsx does (StrictMode double-invokes effects). */
+async function startApp() {
+  vi.resetModules();
+  const { App } = await import('./App');
+  const store = await import('./store/store');
+  root = createRoot(container);
+  await act(async () => root!.render(<StrictMode><App /></StrictMode>));
+  return store;
+}
+
+const text = () => container.textContent ?? '';
+
+function button(label: string): HTMLButtonElement {
+  const found = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes(label));
+  if (!found) throw new Error(`Button "${label}" not found. Screen: ${text().slice(0, 200)}`);
+  return found;
+}
+
+async function click(label: string) {
+  await act(async () => button(label).click());
+}
+
+/** Sets a controlled React input the way a user would. */
+async function type(label: string, value: string) {
+  const lbl = [...container.querySelectorAll('label')].find((l) => l.textContent === label);
+  const input = lbl && document.getElementById(lbl.htmlFor);
+  if (!(input instanceof HTMLInputElement)) throw new Error(`Field "${label}" not found`);
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  await act(async () => {
+    setValue.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+async function completeOnboardingFlow() {
+  await click('Los geht');
+  await click('Weiter'); // goal
+  await type('Alter', '30');
+  await type('Größe', '180');
+  await type('Gewicht', '80');
+  await click('Weiter'); // body
+  await click('Weiter'); // training
+  await click('Weiter'); // nutrition
+  await click('übernehmen'); // program
+  await click('Meine Woche erstellen');
+  // The "creating" step saves after a short animation (1.4 s).
+  await act(() => new Promise((r) => setTimeout(r, 1600)));
+}
+
+function storedState(): AppState | null {
+  const raw = localStorage.getItem(KEY);
+  return raw ? (JSON.parse(raw) as AppState) : null;
+}
+
+/**
+ * A complete state as written by onboarding – deliberately in the OLD v1
+ * format, so these tests also cover loading + migrating existing user data.
+ */
+function completeState() {
+  return {
+    schemaVersion: 1,
+    profile: { name: 'Alex', sex: 'male', age: 30, heightCm: 180, activity: 'moderate', experience: 'beginner', createdAt: '2026-09-01T08:00:00' },
+    goal: { type: 'muscle_gain', startWeightKg: 80, startedAt: '2026-09-01' },
+    nutritionProfile: { diet: 'omnivore', excluded: [], slots: ['breakfast', 'lunch', 'dinner'] },
+    targets: [{ id: 't1', validFrom: '2026-09-01', method: 'formula', kcal: 2700, protein: 160, carbs: 330, fat: 75 }],
+    training: { programId: 'full-body', weekdays: [0, 2, 4] },
+    plannedMeals: [],
+    logEntries: [],
+    workouts: [],
+    weights: [],
+    shopping: {},
+    coach: { dismissed: {} },
+  };
+}
+
+describe('first start', () => {
+  it('shows the welcome screen when storage is empty', async () => {
+    await startApp();
+    expect(text()).toContain(WELCOME);
+    expect(button('Los geht')).toBeTruthy();
+  });
+
+  it('does not crash when scrollTo() returns a Promise', async () => {
+    await startApp();
+    await click('Los geht');
+    expect(container.innerHTML).not.toBe('');
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining('must not return anything besides a function'), expect.anything(), expect.anything());
+  });
+
+  it('"Los geht’s" leads to the next onboarding step', async () => {
+    await startApp();
+    await click('Los geht');
+    expect(text()).toContain('Was ist dein Ziel?');
+    expect(text()).not.toContain(WELCOME);
+  });
+
+  it('stores nothing before onboarding is completed', async () => {
+    await startApp();
+    await click('Los geht');
+    await click('Weiter');
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it('completing onboarding starts the regular app and persists the setup', async () => {
+    await startApp();
+    await completeOnboardingFlow();
+
+    expect(container.querySelector('nav[aria-label="Hauptnavigation"]')).not.toBeNull();
+    expect(text()).not.toContain(WELCOME);
+    const saved = storedState();
+    expect(saved?.profile?.age).toBe(30);
+    expect(saved?.training).not.toBeNull();
+    expect(saved?.targets.length).toBe(1);
+  }, 10_000);
+});
+
+describe('saved state', () => {
+  it('a complete saved state opens the app without the welcome screen', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    await startApp();
+    expect(text()).not.toContain(WELCOME);
+    expect(container.querySelector('nav[aria-label="Hauptnavigation"]')).not.toBeNull();
+  });
+
+  it('an incomplete saved state leads to onboarding without deleting data', async () => {
+    const partial = { ...completeState(), training: null, targets: [] };
+    localStorage.setItem(KEY, JSON.stringify(partial));
+    await startApp();
+    expect(text()).toContain(WELCOME);
+    // Nothing was overwritten just by opening the app.
+    expect(storedState()).toEqual(partial);
+  });
+
+  it('keeps existing data when an incomplete setup is completed again', async () => {
+    const partial = { ...completeState(), training: null, weights: [{ id: 'old', date: '2026-08-01', kg: 82 }] };
+    localStorage.setItem(KEY, JSON.stringify(partial));
+    await startApp();
+    await completeOnboardingFlow();
+    expect(storedState()?.weights.some((w) => w.id === 'old')).toBe(true);
+  }, 10_000);
+});
+
+describe('resetAll', () => {
+  it('removes all LifeFit data and shows the welcome screen again', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    localStorage.setItem(BACKUP_KEY, '{"broken":');
+    localStorage.setItem('other-app', 'keep');
+    const store = await startApp();
+    expect(text()).not.toContain(WELCOME);
+
+    await act(async () => store.resetAll());
+
+    expect(text()).toContain(WELCOME);
+    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(localStorage.getItem(BACKUP_KEY)).toBeNull();
+    expect(localStorage.getItem('other-app')).toBe('keep');
+  });
+});
+
+describe('week cascade', () => {
+  it('shows the change summary and "Rückgängig" restores the previous plan', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    const store = await startApp();
+    const { applyWithUndo } = await import('./lib/undo');
+    const { today, weekStart } = await import('./domain/dates');
+    const slotId = `${weekStart(today())}#0`;
+    const before = store.getState();
+
+    await act(async () => {
+      applyWithUndo({ type: 'skipWorkout', slotId });
+    });
+    expect(store.getState().workoutOverrides[slotId]?.status).toBe('skipped');
+    expect(text()).toContain('fällt diese Woche aus');
+
+    await click('Rückgängig');
+    expect(store.getState()).toBe(before);
+    expect(storedState()?.workoutOverrides).toEqual({});
+  });
+});
+
+describe('error boundary', () => {
+  it('shows a fallback with "Neu laden" instead of a blank page', async () => {
+    vi.doMock('./features/onboarding/Onboarding', () => ({
+      Onboarding: () => {
+        throw new Error('boom');
+      },
+    }));
+    try {
+      await startApp();
+      expect(text()).toContain('Hier ist etwas schiefgelaufen');
+      expect(button('Neu laden')).toBeTruthy();
+      expect(text()).not.toContain('Zur Startseite');
+    } finally {
+      vi.doUnmock('./features/onboarding/Onboarding');
+    }
+  });
+});

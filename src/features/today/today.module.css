@@ -1,0 +1,336 @@
+.muted {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.flex {
+  flex: 1;
+  min-width: 0;
+}
+
+.eyebrow {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.link {
+  color: var(--accent);
+  font-weight: 650;
+  font-size: 14px;
+}
+
+.chevron {
+  color: var(--text-3);
+}
+
+/* ---------- Week strip ---------- */
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.day,
+.dayActive {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0 7px;
+  border-radius: 14px;
+  transition: background-color 0.15s ease;
+}
+
+.day:hover {
+  background: var(--surface-2);
+}
+
+.dayActive {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.dayName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.dayNum {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.dayActive .dayName {
+  color: var(--accent);
+}
+
+.dayMarks {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 8px;
+}
+
+.mealDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.none {
+  background: transparent;
+}
+
+.open {
+  border: 1.5px solid var(--text-3);
+}
+
+.half {
+  background: linear-gradient(90deg, var(--accent) 50%, var(--surface-2) 50%);
+  border: 1px solid var(--accent);
+}
+
+.full {
+  background: var(--accent);
+}
+
+.trainPlanned,
+.trainDone {
+  width: 10px;
+  height: 4px;
+  border-radius: 2px;
+  border: 1.5px solid var(--text-3);
+}
+
+.trainDone {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------- Cards ---------- */
+.inlineCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.target {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.ringValue {
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.ringLabel {
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 550;
+}
+
+.targetSide {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.targetKcal {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.targetKcal strong {
+  font-size: 18px;
+  color: var(--text);
+}
+
+.macroToggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+
+.moreMacros {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.mealsCard {
+  padding-bottom: 6px;
+}
+
+.cardPad {
+  padding: 18px 18px 0;
+}
+
+.mealsCard > div:not(.cardPad) {
+  margin: 0 6px;
+}
+
+.emptyLine {
+  padding: 4px 18px 8px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.nextActions {
+  display: flex;
+  gap: 8px;
+  padding: 2px 12px 10px 68px;
+}
+
+.mealsFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 4px 12px;
+}
+
+.mealsFooter > :last-child {
+  margin-left: auto;
+}
+
+.trainingRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.trainingTitle {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.doneBadge,
+.restBadge {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.doneBadge {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.restBadge {
+  background: var(--surface-2);
+  font-size: 20px;
+}
+
+.goal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.goalText {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.goalPct {
+  font-size: 20px;
+  font-weight: 750;
+  color: var(--accent);
+}
+
+.weighReminder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--text-2);
+}
+
+/* ---------- FAB & quick actions ---------- */
+.fab {
+  position: fixed;
+  right: max(16px, calc(50% - 280px + 16px));
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 16px);
+  z-index: 30;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: var(--accent);
+  color: var(--on-accent);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 40%, transparent);
+  transition: transform 0.12s ease;
+}
+
+.fab:active {
+  transform: scale(0.94);
+}
+
+.quickGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding-bottom: 8px;
+}
+
+.quickAction {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.quickIcon {
+  width: 60px;
+  height: 60px;
+  border-radius: 20px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+}

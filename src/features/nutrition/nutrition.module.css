@@ -1,0 +1,518 @@
+.muted {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.flex {
+  flex: 1;
+}
+
+/* ---------- Meal row ---------- */
+.mealRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 8px;
+  border-radius: var(--radius);
+  transition: background-color 0.15s ease;
+}
+
+.mealRowHighlight {
+  background: var(--accent-soft);
+}
+
+.mealRowDone .mealTitle {
+  color: var(--text-2);
+}
+
+.mealMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.mealEmoji {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.mealText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mealLabel {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mealTitle {
+  font-weight: 600;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mealMeta {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.check,
+.checkDone {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  display: grid;
+  place-items: center;
+  color: transparent;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.check:hover {
+  color: var(--text-3);
+  border-color: var(--text-3);
+}
+
+.checkDone {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  animation: pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes pop {
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+/* ---------- Recipe detail ---------- */
+.recipe {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.recipeHero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.recipeEmoji {
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  font-size: 36px;
+  flex-shrink: 0;
+}
+
+.recipeTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.macroGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.macroCell,
+.macroCellStrong {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 4px;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.macroCellStrong {
+  background: var(--accent-soft);
+}
+
+.macroCell strong,
+.macroCellStrong strong {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.macroCell span,
+.macroCellStrong span {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.servingsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.subheading {
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.ingredients {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ingredients li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px;
+}
+
+.ingredientAmount {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 15px;
+}
+
+.steps li::marker {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.sheetLinks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.dangerLink {
+  color: var(--danger);
+}
+
+/* ---------- Option lists (picker, swap, search) ---------- */
+.optionList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.optionRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.optionList li:last-child .optionRow {
+  border-bottom: 0;
+}
+
+.delta,
+.deltaUp {
+  font-size: 13px;
+  font-weight: 650;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.deltaUp {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 0 12px;
+  color: var(--text-3);
+}
+
+.search input {
+  flex: 1;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.searchHint {
+  color: var(--text-3);
+  font-size: 14px;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.listCaption {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin-top: 14px;
+}
+
+.logHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.amountBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 0 20px;
+}
+
+.quickForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* ---------- Day view ---------- */
+.dateSwitch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dateLabel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.25;
+}
+
+.dateLabel strong {
+  font-size: 17px;
+}
+
+.dateLabel span {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.dayTotals {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.bigNumber {
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.remaining {
+  font-weight: 650;
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.macroStack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.slotCard {
+  padding: 6px 6px 4px;
+}
+
+.slotHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 12px 4px;
+}
+
+.slotHeader h2 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.slotHeader span {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.slotActions {
+  display: flex;
+  gap: 4px;
+  padding: 2px 4px 6px;
+}
+
+.logRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+}
+
+.logText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Week view ---------- */
+.suggestCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.suggestCard p {
+  margin-top: 4px;
+}
+
+.dayCard {
+  padding: 4px 6px 6px;
+}
+
+.dayCardPast {
+  opacity: 0.72;
+}
+
+.dayHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 4px;
+}
+
+.dayName {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.dayName strong {
+  font-size: 16px;
+}
+
+.dayName span {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.trainingTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--surface-2);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.fitOk,
+.fitOff {
+  font-size: 13px;
+  font-weight: 650;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.fitOk {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.fitOff {
+  background: var(--warning-soft);
+  color: var(--text);
+}
+
+.emptySlot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 8px);
+  margin: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1.5px dashed var(--border);
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.emptySlot:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
