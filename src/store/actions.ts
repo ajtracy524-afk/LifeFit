@@ -7,7 +7,7 @@ import { findTemplate } from '../data/exercises';
 import { addDays, today, weekStart } from '../domain/dates';
 import { calculateTargets, foodMacros, logFromMeal, roundMacros } from '../domain/nutrition';
 import { activeWorkouts, createWorkout, detectRecords, workoutVolume } from '../domain/training';
-import { applyWeekChange, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
+import { applyWeekChange, closeCompletedDays, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
 import { currentWeight } from '../domain/progress';
 import { newId } from '../lib/id';
 import type {
@@ -359,6 +359,18 @@ export function removeFuturePlannedMeals(from: ISODate = today()): void {
   update((s) => {
     s.plannedMeals = s.plannedMeals.filter((m) => m.date < from || m.status !== 'planned');
   });
+}
+
+// ---------- Day close ----------
+
+/**
+ * Freezes the targets of completed days. Called from an effect (app start,
+ * returning to the app, midnight) – never while rendering. Idempotent.
+ */
+export function closeDays(): void {
+  const s = getState();
+  const next = closeCompletedDays(s, today());
+  if (next !== s) commit(next);
 }
 
 // ---------- Week plan (cascade) ----------

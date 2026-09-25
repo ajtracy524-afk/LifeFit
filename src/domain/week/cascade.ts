@@ -8,7 +8,7 @@ import { effectivePrepMin, SLOT_ORDER, slotShare } from '../planner';
 import { DAY_MODE_LABEL, effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
 import { activeWorkouts, estimateMinutes, resolveWorkouts, trainingWeekdays } from '../training';
 import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, ShoppingWeekState } from '../types';
-import { dayTargetFor } from './dayTargets';
+import { closeCompletedDays, dayTargetFor } from './dayTargets';
 import { addToPantry, purchaseAmount, setPantryQuantity } from './pantry';
 import { planMeals, weekMeals } from './planning';
 import { DEFAULT_DAY_CONTEXT, dayContextFor, weekShopping } from './weekPlan';
@@ -76,6 +76,8 @@ const PAST_DAY = 'Vergangene Tage lassen sich nicht mehr umplanen.';
 
 export function applyWeekChange(state: AppState, change: WeekChange, now: Date = new Date()): CascadeResult {
   const today = toISODate(now);
+  // Completed days are frozen BEFORE anything changes – no change can rewrite them.
+  state = closeCompletedDays(state, today);
   const week = weekOf(state, change, today);
   const next = structuredClone(state);
 

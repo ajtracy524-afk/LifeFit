@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { today, weekStart } from './domain/dates';
 import { openShoppingCount } from './domain/week';
 import { useRoute, type Tab } from './lib/router';
+import { closeDays } from './store/actions';
 import { isSetupComplete } from './store/persistence';
 import { useAppState, useStorageStatus } from './store/store';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -24,6 +25,7 @@ export function App() {
   const storage = useStorageStatus();
 
   const shoppingBadge = useShoppingBadge();
+  useDayClose();
 
   // Incomplete saved data also leads here – nothing is deleted, onboarding fills the gaps.
   if (!isSetupComplete(state)) {
@@ -58,6 +60,24 @@ export function App() {
       <ToastHost />
     </>
   );
+}
+
+/**
+ * Completed days get their target frozen – on start, when the app comes back
+ * to the foreground and when the date changes while it is open. Runs in an
+ * effect (never during render) and is idempotent.
+ */
+function useDayClose() {
+  useEffect(() => {
+    closeDays();
+    const onVisible = () => document.visibilityState === 'visible' && closeDays();
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = window.setInterval(closeDays, 60_000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(timer);
+    };
+  }, []);
 }
 
 /** Open items of this week's list – shown as a badge on the Einkauf tab. */

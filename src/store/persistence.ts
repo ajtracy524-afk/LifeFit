@@ -22,6 +22,7 @@ export function emptyState(): AppState {
     dayContexts: {},
     workoutOverrides: {},
     pantry: {},
+    closedDayTargets: {},
   };
 }
 

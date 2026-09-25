@@ -281,4 +281,10 @@ export interface AppState {
   workoutOverrides: Record<PlanSlotId, WorkoutOverride>;
   /** Across weeks, keyed by foodId. */
   pantry: Record<string, PantryItem>;
+  /**
+   * Calorie target of each completed (past) day, frozen when the day closed.
+   * Only kcal: protein and fat come from the versioned targets and never change
+   * for past days, carbs follow from kcal. The lived week is never rewritten.
+   */
+  closedDayTargets: Record<ISODate, number>;
 }
