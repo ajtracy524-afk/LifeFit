@@ -217,6 +217,104 @@ describe('week cascade', () => {
   });
 });
 
+describe('move / skip a workout (end to end)', () => {
+  // Monday 21.09.2026, full body on Mon/Wed/Fri → slots #0 Mon, #1 Wed, #2 Fri.
+  const MON = '2026-09-21';
+  const WED = '2026-09-23';
+  const THU = '2026-09-24';
+  const FRI = '2026-09-25';
+  const dayMeals = (date: string) => [
+    { id: `${date}-l`, date, slot: 'lunch', recipeId: 'chicken-rice-bowl', servings: 1, status: 'planned', source: 'suggest' },
+    { id: `${date}-d`, date, slot: 'dinner', recipeId: 'bolognese', servings: 1, status: 'planned', source: 'suggest' },
+  ];
+  const withMeals = () => ({ ...completeState(), plannedMeals: [...dayMeals(WED), ...dayMeals(THU), ...dayMeals(FRI)] });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 10, 0));
+    // jsdom has no <dialog> modal support – the Sheet only needs open/close.
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const servings = (s: AppState, date: string) => s.plannedMeals.filter((m) => m.date === date).map((m) => m.servings);
+  const weekRows = () => [...container.querySelectorAll('ul li')].filter((li) => li.querySelector('button[aria-label$="ausfallen lassen"], a'));
+  const planButton = (index: number) => container.querySelectorAll<HTMLButtonElement>('button[aria-label$="verschieben oder ausfallen lassen"]')[index]!;
+
+  async function openTraining() {
+    localStorage.setItem(KEY, JSON.stringify(withMeals()));
+    window.history.replaceState(null, '', '/#/training');
+    return startApp();
+  }
+
+  it('Training: Mittwoch → Donnerstag moves targets, servings and shows undo', async () => {
+    const store = await openTraining();
+    const before = store.getState();
+    await act(async () => planButton(1).click()); // Wednesday session
+    await click('Do 24.');
+
+    const after = store.getState();
+    expect(after.workoutOverrides[`${MON}#1`]).toEqual({ slotId: `${MON}#1`, status: 'moved', date: THU });
+    // Wednesday is a rest day now → smaller portions; Thursday is the training day → larger.
+    expect(servings(after, WED).every((s) => s < 1)).toBe(true);
+    expect(servings(after, THU).every((s) => s > 1)).toBe(true);
+    expect(text()).toMatch(/auf Donnerstag verschoben/);
+    expect(text()).toMatch(/Tagesziele: Mi −\d+ kcal, Do \+\d+ kcal/);
+    expect(text()).toMatch(/Portionen angepasst/);
+    expect(weekRows().some((li) => li.textContent?.includes('verschoben von Mi'))).toBe(true);
+
+    await click('Rückgängig');
+    expect(store.getState()).toBe(before);
+    expect(servings(store.getState(), WED)).toEqual([1, 1]);
+  });
+
+  it('Training: skipping Friday affects only this week and updates shopping', async () => {
+    const store = await openTraining();
+    const { weekShopping } = await import('./domain/week');
+    const { resolveWorkouts, scheduleForWeek } = await import('./domain/training');
+    const chicken = (s: AppState) => weekShopping(s, MON, MON).find((i) => i.foodId === 'chicken')!.remainingG;
+    const before = store.getState();
+
+    await act(async () => planButton(2).click()); // Friday session
+    await click('Diese Woche ausfallen lassen');
+
+    const after = store.getState();
+    expect(after.workoutOverrides[`${MON}#2`]?.status).toBe('skipped');
+    expect(text()).toContain('Fällt aus');
+    expect(text()).toMatch(/fällt diese Woche aus/);
+    // Friday lost its training bonus → smaller portions → less chicken to buy.
+    expect(servings(after, FRI).every((s) => s < 1)).toBe(true);
+    expect(chicken(after)).toBeLessThan(chicken(before));
+    // Calendar rotation: next week is exactly the plain rotation.
+    const next = '2026-09-28';
+    expect(resolveWorkouts(after.training, after.workoutOverrides, [], next).map((w) => [w.date, w.template.id])).toEqual(
+      scheduleForWeek(after.training, next).map((w) => [w.date, w.template.id]),
+    );
+
+    await click('Rückgängig');
+    expect(store.getState().workoutOverrides).toEqual({});
+  });
+
+  it('Heute: "Heute nicht?" moves today’s session and the day becomes a rest day', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withMeals()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    expect(text()).toContain('Heutiges Training');
+
+    await click('Heute nicht?');
+    await click('Di 22.');
+
+    expect(store.getState().workoutOverrides[`${MON}#0`]).toMatchObject({ status: 'moved', date: '2026-09-22' });
+    expect(text()).toContain('Ruhetag');
+    expect(text()).toMatch(/auf Dienstag verschoben/);
+  });
+});
+
 describe('error boundary', () => {
   it('shows a fallback with "Neu laden" instead of a blank page', async () => {
     vi.doMock('./features/onboarding/Onboarding', () => ({

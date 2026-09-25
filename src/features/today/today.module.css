@@ -334,3 +334,16 @@
   display: grid;
   place-items: center;
 }
+
+.planLink {
+  margin-top: 10px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}

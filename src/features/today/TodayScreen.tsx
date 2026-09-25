@@ -3,7 +3,7 @@ import { addDays, daysBetween, today, weekDays, weekStart, weekdayIndex } from '
 import { dayTotals } from '../../domain/nutrition';
 import { SLOT_ORDER } from '../../domain/planner';
 import { goalProgress, latestWeight } from '../../domain/progress';
-import { activeWorkouts, isCompletedOn, nextScheduled } from '../../domain/training';
+import { isCompletedOn, nextScheduled, resolveWorkouts } from '../../domain/training';
 import { dayTargetFor, weekShopping } from '../../domain/week';
 import type { MealSlot } from '../../domain/types';
 import { fmt, formatDateLong, formatDuration, greeting, relativeDay, weekdayShort } from '../../lib/format';
@@ -24,6 +24,7 @@ import { MealRow } from '../nutrition/MealRow';
 import { MealSheet } from '../nutrition/MealSheet';
 import { WeightSheet } from '../progress/WeightSheet';
 import { estimateMinutes } from '../training/trainingUtils';
+import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
 import { CoachCard } from './CoachCard';
 import styles from './today.module.css';
 
@@ -46,7 +47,9 @@ export function TodayScreen() {
   const extrasKcal = state.logEntries.filter((e) => e.date === t && !e.plannedMealId).reduce((s, e) => s + e.macros.kcal, 0);
   const weekHasMeals = state.plannedMeals.some((m) => m.date >= t && m.date <= addDays(start, 6));
 
-  const schedule = useMemo(() => activeWorkouts(state.training, state.workoutOverrides, state.workouts, start), [state.training, state.workoutOverrides, state.workouts, start]);
+  const week = useMemo(() => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start), [state.training, state.workoutOverrides, state.workouts, start]);
+  const schedule = week.filter((s) => s.status !== 'skipped');
+  const [planOpen, setPlanOpen] = useState(false);
   const todaysSession = schedule.find((s) => s.date === t);
   const doneToday = isCompletedOn(state.workouts, t);
   const running = state.workouts.find((w) => w.status === 'in_progress');
@@ -251,6 +254,11 @@ export function TodayScreen() {
                   </Button>
                 )}
               </div>
+              {!running && (
+                <button type="button" className={styles.planLink} onClick={() => setPlanOpen(true)}>
+                  Heute nicht? Verschieben oder ausfallen lassen
+                </button>
+              )}
             </>
           ) : (
             <div className={styles.trainingRow}>
@@ -344,6 +352,7 @@ export function TodayScreen() {
         </div>
       </Sheet>
 
+      <WorkoutPlanSheet session={planOpen ? (todaysSession ?? null) : null} week={week} today={t} onClose={() => setPlanOpen(false)} />
       <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} onLogInstead={(m) => setLogTarget({ date: m.date, slot: m.slot })} />
       <LogFoodSheet target={logTarget} onClose={() => setLogTarget(null)} />
       <WeightSheet open={weightOpen} onClose={() => setWeightOpen(false)} />

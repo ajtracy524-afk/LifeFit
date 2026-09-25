@@ -460,3 +460,51 @@
 .summaryList li:last-child {
   border-bottom: 0;
 }
+
+/* ---------- Move / skip a session ---------- */
+/* Row + "…" button: the divider moves from the link to the whole item. */
+.weekItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.weekList li:first-child .weekItem {
+  border-top: 0;
+}
+
+.weekItem .weekRow {
+  flex: 1;
+  min-width: 0;
+  border-top: 0;
+}
+
+.rowSkipped {
+  opacity: 0.55;
+}
+
+.planSheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.planLabel {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+
+.planDays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.planActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}

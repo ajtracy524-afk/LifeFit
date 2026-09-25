@@ -1,21 +1,22 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { getExercise, getProgram } from '../../data/exercises';
-import { today, weekStart } from '../../domain/dates';
+import { today, weekStart, weekdayIndex } from '../../domain/dates';
 import { appStartDate } from '../../domain/progress';
-import { activeWorkouts, isCompletedOn, nextScheduled } from '../../domain/training';
+import { nextScheduled, resolveWorkouts, type PlannedWorkout } from '../../domain/training';
 import type { WorkoutTemplate } from '../../domain/types';
-import { fmt, formatDuration, relativeDay } from '../../lib/format';
+import { fmt, formatDuration, relativeDay, weekdayShort } from '../../lib/format';
 import { href, navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
 import { startWorkout } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen, Section } from '../../components/Screen';
-import { Button } from '../../components/ui/Button';
+import { Button, IconButton } from '../../components/ui/Button';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { ProgressBar } from '../../components/ui/Progress';
 import { estimateMinutes } from './trainingUtils';
+import { WorkoutPlanSheet } from './WorkoutPlanSheet';
 import styles from './training.module.css';
 
 export function TrainingScreen() {
@@ -25,10 +26,14 @@ export function TrainingScreen() {
   const program = state.training ? getProgram(state.training.programId) : undefined;
   const startDate = appStartDate(state);
   // Training days before the user started are simply not shown.
-  const schedule = useMemo(
-    () => activeWorkouts(state.training, state.workoutOverrides, state.workouts, start).filter((s) => s.date >= startDate),
+  // Incl. skipped sessions – the week shows what was planned and what changed.
+  const week = useMemo(
+    () => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start).filter((s) => s.originalDate >= startDate || s.date >= startDate),
     [state.training, state.workoutOverrides, state.workouts, start, startDate],
   );
+  const schedule = week.filter((s) => s.status !== 'skipped');
+  const [planning, setPlanning] = useState<string | null>(null);
+  const planningSession = week.find((s) => s.id === planning) ?? null;
   const next = nextScheduled(state.training, state.workouts, t, start, state.workoutOverrides);
   const running = state.workouts.find((w) => w.status === 'in_progress');
   const doneThisWeek = state.workouts.filter((w) => w.status === 'completed' && w.date >= start).length;
@@ -74,19 +79,27 @@ export function TrainingScreen() {
         <CardHeader title="Diese Woche" meta={`${doneThisWeek} / ${schedule.length} Einheiten`} />
         <ProgressBar value={doneThisWeek} max={schedule.length} label="Trainings diese Woche" />
         <ul className={styles.weekList}>
-          {schedule.map((s) => {
-            const done = isCompletedOn(state.workouts, s.date);
-            const missed = !done && s.date < t;
+          {week.map((s) => {
+            const done = s.completedWorkoutId ? state.workouts.find((w) => w.id === s.completedWorkoutId) : undefined;
+            const skipped = s.status === 'skipped';
+            const missed = !done && !skipped && s.date < t;
             return (
-              <li key={s.date}>
-                <a href={done ? href('workout', { id: done.id }) : undefined} className={styles.weekRow} aria-disabled={!done}>
-                  <span className={done ? styles.dotDone : s.date === t ? styles.dotToday : styles.dot}>{done && <Icon name="check" size={14} strokeWidth={2.6} />}</span>
-                  <span className={styles.weekText}>
-                    <strong>{s.template.name}</strong>
-                    <span>{relativeDay(s.date)}</span>
-                  </span>
-                  <span className={styles.weekStatus}>{done ? `${fmt.int(done.volumeKg ?? 0)} kg` : missed ? 'Ausgelassen' : s.date === t ? 'Heute' : ''}</span>
-                </a>
+              <li key={s.id}>
+                <div className={[styles.weekItem, skipped && styles.rowSkipped].filter(Boolean).join(' ')}>
+                  <a href={done ? href('workout', { id: done.id }) : undefined} className={styles.weekRow} aria-disabled={!done}>
+                    <span className={done ? styles.dotDone : s.date === t && !skipped ? styles.dotToday : styles.dot}>{done && <Icon name="check" size={14} strokeWidth={2.6} />}</span>
+                    <span className={styles.weekText}>
+                      <strong>{s.template.name}</strong>
+                      <span>{dayLabel(s)}</span>
+                    </span>
+                    <span className={styles.weekStatus}>
+                      {done ? `${fmt.int(done.volumeKg ?? 0)} kg` : skipped ? 'Fällt aus' : missed ? 'Ausgelassen' : s.date === t ? 'Heute' : ''}
+                    </span>
+                  </a>
+                  {!done && (skipped ? s.originalDate >= t : true) && (
+                    <IconButton icon="more" label={`${s.template.name} verschieben oder ausfallen lassen`} onClick={() => setPlanning(s.id)} />
+                  )}
+                </div>
               </li>
             );
           })}
@@ -115,6 +128,8 @@ export function TrainingScreen() {
           </Button>
         </Card>
       )}
+
+      <WorkoutPlanSheet session={planningSession} week={week} today={t} onClose={() => setPlanning(null)} />
 
       <Section title="Andere Einheit starten">
         <Card padded={false}>
@@ -159,4 +174,10 @@ export function TrainingScreen() {
       </Section>
     </Screen>
   );
+}
+
+/** "Freitag · verschoben von Do" – the original plan stays visible. */
+function dayLabel(s: PlannedWorkout): string {
+  const day = relativeDay(s.status === 'skipped' ? s.originalDate : s.date);
+  return s.status === 'moved' ? `${day} · verschoben von ${weekdayShort(weekdayIndex(s.originalDate))}` : day;
 }

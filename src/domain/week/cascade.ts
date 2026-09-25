@@ -307,4 +307,5 @@ function syncLog(s: AppState, meal: PlannedMeal) {
   if (entry) Object.assign(entry, logFromMeal(meal, entry.loggedAt), { id: entry.id });
 }
 
-const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+/** Typographic minus, like the rest of the UI ("−150"). */
+const signed = (n: number) => (n > 0 ? `+${n}` : `−${Math.abs(n)}`);
