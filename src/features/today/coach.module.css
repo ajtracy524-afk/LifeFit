@@ -9,12 +9,6 @@
   font-size: 14px;
 }
 
-.time {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .list {
   list-style: none;
   margin: 0;

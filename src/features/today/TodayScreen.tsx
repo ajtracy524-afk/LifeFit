@@ -5,12 +5,12 @@ import { SLOT_ORDER } from '../../domain/planner';
 import { goalProgress, latestWeight } from '../../domain/progress';
 import { isCompletedOn, nextScheduled, resolveWorkouts } from '../../domain/training';
 import { dayTargetFor, weekShopping } from '../../domain/week';
-import type { MealSlot } from '../../domain/types';
+import type { MealSlot, WorkoutTemplate } from '../../domain/types';
 import { fmt, formatDateLong, formatDuration, greeting, relativeDay, weekdayShort } from '../../lib/format';
 import { href, navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
 import { withUndo } from '../../lib/undo';
-import { markEaten, startWorkout, suggestMealsForWeek } from '../../store/actions';
+import { markEaten, startWorkoutFrom, suggestMealsForWeek } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen } from '../../components/Screen';
 import { Button } from '../../components/ui/Button';
@@ -26,6 +26,7 @@ import { WeightSheet } from '../progress/WeightSheet';
 import { estimateMinutes } from '../training/trainingUtils';
 import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
 import { CoachCard } from './CoachCard';
+import { TimeBudgetControl } from './TimeBudgetControl';
 import styles from './today.module.css';
 
 export function TodayScreen() {
@@ -47,13 +48,13 @@ export function TodayScreen() {
   const extrasKcal = state.logEntries.filter((e) => e.date === t && !e.plannedMealId).reduce((s, e) => s + e.macros.kcal, 0);
   const weekHasMeals = state.plannedMeals.some((m) => m.date >= t && m.date <= addDays(start, 6));
 
-  const week = useMemo(() => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start), [state.training, state.workoutOverrides, state.workouts, start]);
+  const week = useMemo(() => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, start]);
   const schedule = week.filter((s) => s.status !== 'skipped');
   const [planOpen, setPlanOpen] = useState(false);
   const todaysSession = schedule.find((s) => s.date === t);
   const doneToday = isCompletedOn(state.workouts, t);
   const running = state.workouts.find((w) => w.status === 'in_progress');
-  const upcoming = nextScheduled(state.training, state.workouts, addDays(t, 1), start, state.workoutOverrides);
+  const upcoming = nextScheduled(state.training, state.workouts, addDays(t, 1), start, state.workoutOverrides, state.dayContexts);
 
   const shopping = useMemo(() => weekShopping(state, start, t), [state, start, t]);
   const shopState = state.shopping[start];
@@ -76,8 +77,9 @@ export function TodayScreen() {
     return slots.includes(preferred) ? preferred : (slots[slots.length - 1] ?? 'dinner');
   };
 
-  const begin = (templateId: string) => {
-    if (startWorkout(templateId)) navigate('session');
+  // Starts today's planned version – shortened on a "wenig Zeit" day.
+  const begin = (template: WorkoutTemplate) => {
+    if (startWorkoutFrom(template)) navigate('session');
     else showToast('Training konnte nicht gestartet werden.', { tone: 'error' });
   };
 
@@ -111,6 +113,10 @@ export function TodayScreen() {
           );
         })}
       </nav>
+
+      <Card>
+        <TimeBudgetControl date={t} />
+      </Card>
 
       {running && (
         <Card tone="accent" className={styles.inlineCard}>
@@ -249,7 +255,7 @@ export function TodayScreen() {
                   </p>
                 </div>
                 {!running && (
-                  <Button icon="play" onClick={() => begin(todaysSession.template.id)}>
+                  <Button icon="play" onClick={() => begin(todaysSession.template)}>
                     Starten
                   </Button>
                 )}

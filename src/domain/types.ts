@@ -258,8 +258,6 @@ export interface PantryItem {
 /** Adaptive-engine settings. Recommendation ids contain the date, so dismissals expire naturally. */
 export interface CoachState {
   dismissed: Record<string, ISODate>;
-  /** Training time the user has on a given day. */
-  availableTime?: { date: ISODate; minutes: number };
 }
 
 export interface AppState {

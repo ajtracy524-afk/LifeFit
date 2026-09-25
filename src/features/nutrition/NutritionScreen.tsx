@@ -3,7 +3,8 @@ import { addDays, isoWeekNumber, today, weekDays, weekStart, weekdayIndex } from
 import { dayTotals, plannedMealMacros, sumMacros } from '../../domain/nutrition';
 import { SLOT_ORDER } from '../../domain/planner';
 import { activeWorkouts } from '../../domain/training';
-import { dayTargetFor, weekShopping } from '../../domain/week';
+import { TIME_BUDGETS } from '../../domain/timeBudget';
+import { dayContextFor, dayTargetFor, weekShopping } from '../../domain/week';
 import type { ISODate, LogEntry, MealSlot, PlannedMeal } from '../../domain/types';
 import { fmt, formatDateLong, relativeDay, SLOT_LABEL, weekdayShort } from '../../lib/format';
 import { href, navigate, useRoute } from '../../lib/router';
@@ -22,6 +23,7 @@ import { LogFoodSheet, type LogTarget } from './LogFoodSheet';
 import { MealRow } from './MealRow';
 import { MealSheet } from './MealSheet';
 import { RecipePicker, type PickerTarget } from './RecipePicker';
+import { TimeBudgetControl } from '../today/TimeBudgetControl';
 import styles from './nutrition.module.css';
 
 type View = 'day' | 'week';
@@ -98,6 +100,12 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
         </div>
         <IconButton icon="chevronRight" label="Nächster Tag" onClick={() => go(addDays(date, 1))} />
       </div>
+
+      {date >= today() && (
+        <Card>
+          <TimeBudgetControl date={date} />
+        </Card>
+      )}
 
       {target && (
         <Card>
@@ -185,7 +193,7 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
   const days = weekDays(start);
   const end = days[6]!;
   const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
-  const training = useMemo(() => activeWorkouts(state.training, state.workoutOverrides, state.workouts, start), [state.training, state.workoutOverrides, state.workouts, start]);
+  const training = useMemo(() => activeWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, start]);
   const shoppingCount = useMemo(() => weekShopping(state, start, t).filter((i) => i.state === 'open').length, [state, start, t]);
 
   const openSlots = days.filter((d) => d >= t).reduce((n, d) => n + slots.filter((s) => !state.plannedMeals.some((m) => m.date === d && m.slot === s)).length, 0);
@@ -245,6 +253,11 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
               {session && (
                 <span className={styles.trainingTag}>
                   <Icon name="dumbbell" size={14} /> {session.template.name}
+                </span>
+              )}
+              {dayContextFor(state, d).timeBudget !== 'normal' && (
+                <span className={styles.trainingTag}>
+                  <Icon name="clock" size={14} /> {TIME_BUDGETS[dayContextFor(state, d).timeBudget].label}
                 </span>
               )}
               <span className={styles.flex} />

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { getRecipe } from '../data/recipes';
 import { weekDays } from './dates';
 import { plannedMealMacros, recipeAllowed, recipeMacros, sumMacros } from './nutrition';
-import { scoreWeek, seededRandom, suggestWeek, type PlannerWeights, type PlanningDay } from './planner';
-import type { NutritionProfile, PlannedMeal } from './types';
+import { effectivePrepMin, scoreWeek, seededRandom, suggestWeek, type PlannerWeights, type PlanningDay } from './planner';
+import type { NutritionProfile, PlannedMeal, TimeBudget } from './types';
 
 /**
  * F3 – ingredient overlap. The planner weighs the shopping a week causes
@@ -44,6 +44,7 @@ const day = (date: string, picks: string[]): PlanningDay => {
     remainingKcal: recipes.reduce((s, r) => s + recipeMacros(r).kcal, 0),
     slots: picks.map(() => 'lunch' as const),
     picks: recipes,
+    timeBudget: 'normal',
   };
 };
 
@@ -136,5 +137,84 @@ describe('F3 · ingredient overlap', () => {
     const shape = (meals: PlannedMeal[]) => meals.map((m) => [m.date, m.slot, m.recipeId, m.servings]);
     expect(shape(plan('2026-09-21'))).toEqual(shape(plan('2026-09-21')));
     expect(shape(plan('2026-09-21'))).not.toEqual(shape(plan('2026-09-28')));
+  });
+});
+
+// ---------- F5 · time budget ----------
+
+describe('F5 · time budget in the planner', () => {
+  const THU = dates[3]!;
+  const withBudget = (seed: string, budgetFor: (d: string) => TimeBudget, extra: { weights?: Partial<PlannerWeights>; profile?: NutritionProfile } = {}) => {
+    const profile = extra.profile ?? omni;
+    return suggestWeek({ dates, slots: profile.slots, target, profile, existing: [], random: seededRandom(seed), timeBudgetFor: budgetFor, weights: extra.weights });
+  };
+  const effective = (meals: PlannedMeal[]) => {
+    const cooked = new Map<string, string[]>();
+    meals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
+    return (m: PlannedMeal) => effectivePrepMin(getRecipe(m.recipeId)!, m.date, cooked);
+  };
+  const lowThursday = (d: string): TimeBudget => (d === THU ? 'low' : 'normal');
+
+  it('"normal" plans exactly as before F5', () => {
+    const shape = (meals: PlannedMeal[]) => meals.map((m) => [m.date, m.slot, m.recipeId, m.servings]);
+    for (const seed of SEEDS) expect(shape(withBudget(seed, () => 'normal'))).toEqual(shape(plan(seed)));
+  });
+
+  it('a low-time day gets quick meals (≤ 15 min) whenever alternatives exist', () => {
+    for (const seed of SEEDS) {
+      const meals = withBudget(seed, lowThursday);
+      const prep = effective(meals);
+      const thursday = meals.filter((m) => m.date === THU);
+      // Trade-off, not a hard rule: if the quick dinners are already used twice this
+      // week, one dish may exceed the budget slightly instead of a third repeat.
+      expect(thursday.filter((m) => prep(m) > 15).length).toBeLessThanOrEqual(1);
+      expect(thursday.every((m) => prep(m) <= 20)).toBe(true);
+      expect(thursday.every((m) => getRecipe(m.recipeId)!.prepMin <= 30 || prep(m) <= 15)).toBe(true);
+    }
+  });
+
+  it('low prefers shorter preparation than normal; high may use long recipes', () => {
+    const avgPrep = (budget: TimeBudget) => {
+      const all = SEEDS.flatMap((s) => {
+        const meals = withBudget(s, () => budget);
+        const prep = effective(meals);
+        return meals.map(prep);
+      });
+      return all.reduce((a, b) => a + b, 0) / all.length;
+    };
+    expect(avgPrep('low')).toBeLessThan(avgPrep('normal') - 3);
+    const longOnHigh = SEEDS.flatMap((s) => withBudget(s, () => 'high')).filter((m) => getRecipe(m.recipeId)!.prepMin > 30);
+    const longOnLow = SEEDS.flatMap((s) => withBudget(s, () => 'low')).filter((m) => getRecipe(m.recipeId)!.prepMin > 30);
+    expect(longOnHigh.length).toBeGreaterThan(0);
+    expect(longOnLow).toHaveLength(0);
+  });
+
+  it('meal-prep leftovers count as quick', () => {
+    const chili = getRecipe('chili')!;
+    const cooked = new Map([['chili', [dates[0]!]]]);
+    expect(effectivePrepMin(chili, dates[1]!, cooked)).toBe(5); // cooked yesterday
+    expect(effectivePrepMin(chili, dates[4]!, cooked)).toBe(chili.prepMin); // too old
+    expect(effectivePrepMin(getRecipe('oven-salmon')!, dates[1]!, new Map([['oven-salmon', [dates[0]!]]]))).toBe(35); // no meal-prep dish
+  });
+
+  it('keeps calories and protein on low days', () => {
+    for (const seed of SEEDS) {
+      const meals = withBudget(seed, () => 'low');
+      for (const d of dates) {
+        expect(Math.abs(dayTotals(meals, d).kcal - target.kcal) / target.kcal).toBeLessThan(0.1);
+        expect(dayTotals(meals, d).protein / target.protein).toBeGreaterThan(0.9);
+      }
+    }
+  });
+
+  it('ingredient overlap stays active with a time budget', () => {
+    const on = SEEDS.reduce((s, seed) => s + foodsOf(withBudget(seed, lowThursday)).size, 0);
+    const off = SEEDS.reduce((s, seed) => s + foodsOf(withBudget(seed, lowThursday, { weights: OVERLAP_OFF })).size, 0);
+    expect(on).toBeLessThan(off * 0.85);
+  });
+
+  it('diet and allergens stay hard filters on low days', () => {
+    const vegan: NutritionProfile = { ...omni, diet: 'vegan', excluded: ['gluten'] };
+    for (const seed of SEEDS) for (const m of withBudget(seed, () => 'low', { profile: vegan })) expect(recipeAllowed(getRecipe(m.recipeId)!, vegan)).toBe(true);
   });
 });

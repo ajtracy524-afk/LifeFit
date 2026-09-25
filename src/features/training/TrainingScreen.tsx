@@ -7,7 +7,7 @@ import type { WorkoutTemplate } from '../../domain/types';
 import { fmt, formatDuration, relativeDay, weekdayShort } from '../../lib/format';
 import { href, navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
-import { startWorkout } from '../../store/actions';
+import { startWorkoutFrom } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen, Section } from '../../components/Screen';
 import { Button, IconButton } from '../../components/ui/Button';
@@ -28,13 +28,13 @@ export function TrainingScreen() {
   // Training days before the user started are simply not shown.
   // Incl. skipped sessions – the week shows what was planned and what changed.
   const week = useMemo(
-    () => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start).filter((s) => s.originalDate >= startDate || s.date >= startDate),
+    () => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts).filter((s) => s.originalDate >= startDate || s.date >= startDate),
     [state.training, state.workoutOverrides, state.workouts, start, startDate],
   );
   const schedule = week.filter((s) => s.status !== 'skipped');
   const [planning, setPlanning] = useState<string | null>(null);
   const planningSession = week.find((s) => s.id === planning) ?? null;
-  const next = nextScheduled(state.training, state.workouts, t, start, state.workoutOverrides);
+  const next = nextScheduled(state.training, state.workouts, t, start, state.workoutOverrides, state.dayContexts);
   const running = state.workouts.find((w) => w.status === 'in_progress');
   const doneThisWeek = state.workouts.filter((w) => w.status === 'completed' && w.date >= start).length;
   const history = state.workouts
@@ -43,7 +43,7 @@ export function TrainingScreen() {
     .slice(0, 6);
 
   const begin = (template: WorkoutTemplate) => {
-    const id = startWorkout(template.id);
+    const id = startWorkoutFrom(template);
     if (id) navigate('session');
     else showToast('Training konnte nicht gestartet werden.', { tone: 'error' });
   };

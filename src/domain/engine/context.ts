@@ -3,7 +3,8 @@ import { ZERO_MACROS, dayTotals, plannedMealMacros, sumMacros } from '../nutriti
 import { SLOT_ORDER } from '../planner';
 import { currentWeight, weeklyRate } from '../progress';
 import { activeWorkouts, isCompletedOn, type PlannedWorkout } from '../training';
-import { dayTargetFor, pantryEstimate } from '../week';
+import { TIME_BUDGETS } from '../timeBudget';
+import { dayContextFor, dayTargetFor, pantryEstimate } from '../week';
 import type { AppState, ISODate, Macros, MealSlot, NutritionTarget, PlannedMeal } from '../types';
 import { computeSafety } from './guardrails';
 import type { EngineOptions, SafetyStatus } from './types';
@@ -64,11 +65,11 @@ export function buildContext(state: AppState, options: EngineOptions): EngineCon
   const weightKg = currentWeight(weights) ?? state.goal?.startWeightKg;
   const weeklyRateKg = weeklyRate(weights);
 
-  const session = activeWorkouts(state.training, state.workoutOverrides, state.workouts, ws).find((s) => s.date === date && !s.completedWorkoutId);
+  const session = activeWorkouts(state.training, state.workoutOverrides, state.workouts, ws, state.dayContexts).find((s) => s.date === date && !s.completedWorkoutId);
   const trainedToday = !!isCompletedOn(state.workouts, date);
 
-  const stored = state.coach?.availableTime;
-  const availableMinutes = options.availableMinutes ?? (stored?.date === date ? stored.minutes : undefined);
+  // Time for training comes from the day's time budget (F5) – one time model for the whole app.
+  const availableMinutes = options.availableMinutes ?? TIME_BUDGETS[dayContextFor(state, date).timeBudget].trainingMin;
 
   const recentDays = Array.from({ length: 7 }, (_, i) => addDays(date, -(i + 1)));
   const recentTotals = recentDays.map((d) => dayTotals(state.logEntries, d)).filter((m) => m.kcal > 0);

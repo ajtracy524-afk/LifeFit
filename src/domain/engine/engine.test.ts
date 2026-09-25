@@ -7,7 +7,7 @@ import { recipeAllowed } from '../nutrition';
 import { estimateSeconds } from '../training';
 import type { AppState, LogEntry, PlannedMeal, Workout } from '../types';
 import { applyGuardrails, computeSafety, validateCoachText } from './guardrails';
-import { fitTemplateToTime } from './trainingRules';
+import { fitTemplateToTime } from '../training';
 import { runEngine, type Recommendation } from './index';
 
 const MONDAY = '2026-09-21';

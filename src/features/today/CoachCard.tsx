@@ -1,19 +1,15 @@
 import { useMemo, useState } from 'react';
 import { DISCLAIMER, runEngine, type EngineAction, type Recommendation } from '../../domain/engine';
-import { activeWorkouts, estimateMinutes, isCompletedOn } from '../../domain/training';
-import { today, weekStart } from '../../domain/dates';
+import { today } from '../../domain/dates';
 import { navigate } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
-import { applyEngineAction, dismissRecommendation, setAvailableMinutes } from '../../store/actions';
+import { applyEngineAction, dismissRecommendation } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Button, IconButton } from '../../components/ui/Button';
 import { Card, CardHeader } from '../../components/ui/Card';
-import { Segmented } from '../../components/ui/Controls';
 import styles from './coach.module.css';
 
 const VISIBLE = 3;
-const TIME_OPTIONS = ['full', '30', '45', '60'] as const;
-type TimeOption = (typeof TIME_OPTIONS)[number];
 
 /** Recommendations of the Adaptive Fitness Engine on the "Heute" screen. */
 export function CoachCard() {
@@ -24,44 +20,19 @@ export function CoachCard() {
 
   const recs = useMemo(() => runEngine(state, { date: t, hour, limit: 6 }), [state, t, hour]);
 
-  const session = activeWorkouts(state.training, state.workoutOverrides, state.workouts, weekStart(t)).find((s) => s.date === t);
-  const showTime = !!session && !isCompletedOn(state.workouts, t);
-  const stored = state.coach.availableTime?.date === t ? state.coach.availableTime.minutes : undefined;
-  const timeValue: TimeOption = stored ? (String(stored) as TimeOption) : 'full';
-
-  if (recs.length === 0 && !showTime) return null;
+  // Available time is set per day on "Heute" (time budget) – no second time control here.
+  if (recs.length === 0) return null;
   const visible = expanded ? recs : recs.slice(0, VISIBLE);
 
   return (
     <Card className={styles.card}>
       <CardHeader title="Für dich heute" meta={recs.length > 0 ? `${recs.length}` : undefined} />
 
-      {showTime && (
-        <div className={styles.time}>
-          <span className={styles.muted}>Zeit fürs Training</span>
-          <Segmented<TimeOption>
-            label="Verfügbare Trainingszeit"
-            value={TIME_OPTIONS.includes(timeValue) ? timeValue : 'full'}
-            onChange={(v) => setAvailableMinutes(v === 'full' ? null : Number(v))}
-            options={[
-              { value: 'full', label: `~${estimateMinutes(session!.template)}` },
-              { value: '30', label: '30' },
-              { value: '45', label: '45' },
-              { value: '60', label: '60' },
-            ]}
-          />
-        </div>
-      )}
-
-      {recs.length === 0 ? (
-        <p className={styles.muted}>Alles im Plan – heute gibt es nichts anzupassen.</p>
-      ) : (
-        <ul className={styles.list}>
-          {visible.map((r) => (
-            <RecommendationItem key={r.id} rec={r} />
-          ))}
-        </ul>
-      )}
+      <ul className={styles.list}>
+        {visible.map((r) => (
+          <RecommendationItem key={r.id} rec={r} />
+        ))}
+      </ul>
 
       {recs.length > VISIBLE && (
         <button type="button" className={styles.more} onClick={() => setExpanded(!expanded)}>

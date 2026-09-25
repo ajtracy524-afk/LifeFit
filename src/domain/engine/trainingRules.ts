@@ -2,8 +2,8 @@ import { getExercise, getProgram, PROGRAMS } from '../../data/exercises';
 import { fmt, weekdayLong } from '../../lib/format';
 import { addDays, weekdayIndex } from '../dates';
 import { appStartDate } from '../progress';
-import { activeWorkouts, estimateMinutes, estimateSeconds, estimateOneRepMax, scheduleForWeek } from '../training';
-import type { Experience, ISODate, TemplateExercise, Workout, WorkoutTemplate } from '../types';
+import { activeWorkouts, estimateMinutes, estimateOneRepMax, fitTemplateToTime, scheduleForWeek } from '../training';
+import type { Experience, ISODate, Workout, WorkoutTemplate } from '../types';
 import type { EngineContext } from './context';
 import type { EngineAction, Recommendation } from './types';
 
@@ -124,46 +124,6 @@ export function weeklyCap(region: Region, experience: Experience): number {
 
 // ---------- Session length ----------
 
-/**
- * Shortens a template to fit the available minutes. Order of cuts:
- * 1. rest of accessories (from the 3rd exercise) to max 75 s
- * 2. accessory sets down to 2, starting at the end
- * 3. drop accessories from the end
- * 4. compound sets down to 2
- * The first two (compound) exercises are always kept.
- */
-export function fitTemplateToTime(template: WorkoutTemplate, minutes: number): WorkoutTemplate {
-  const budget = minutes * 60;
-  let ex: TemplateExercise[] = template.exercises.map((e) => ({ ...e }));
-  const fits = () => estimateSeconds({ exercises: ex }) <= budget;
-
-  if (!fits()) ex = ex.map((e, i) => (i >= 2 ? { ...e, restSec: Math.min(e.restSec, 75) } : e));
-
-  while (!fits()) {
-    const accessory = findLastIndex(ex, (e, i) => i >= 2 && e.sets > 2);
-    if (accessory >= 0) {
-      ex[accessory]!.sets -= 1;
-      continue;
-    }
-    if (ex.length > 2) {
-      ex.pop();
-      continue;
-    }
-    const compound = findLastIndex(ex, (e) => e.sets > 2);
-    if (compound >= 0) {
-      ex[compound]!.sets -= 1;
-      continue;
-    }
-    break;
-  }
-  return { ...template, name: `${template.name} (kurz)`, exercises: ex };
-}
-
-function findLastIndex<T>(list: T[], pred: (item: T, index: number) => boolean): number {
-  for (let i = list.length - 1; i >= 0; i--) if (pred(list[i]!, i)) return i;
-  return -1;
-}
-
 /** Removes exercises dominated by `region`, keeping the first (main lift) of them. */
 export function reduceRegion(template: WorkoutTemplate, region: Region): WorkoutTemplate {
   let keptMain = false;
@@ -207,7 +167,7 @@ function start(template: WorkoutTemplate, label?: string): EngineAction {
 
 /** This week's sessions after overrides (moved on their new day, skipped removed). */
 function weekSessions(ctx: EngineContext) {
-  return activeWorkouts(ctx.state.training, ctx.state.workoutOverrides, ctx.state.workouts, ctx.weekStart);
+  return activeWorkouts(ctx.state.training, ctx.state.workoutOverrides, ctx.state.workouts, ctx.weekStart, ctx.state.dayContexts);
 }
 
 // ---------- Rules ----------
@@ -443,7 +403,7 @@ export function programRule(ctx: EngineContext): Recommendation[] {
   for (let k = 1; k <= 3; k++) {
     const ws = addDays(ctx.weekStart, -7 * k);
     // Skipped sessions were a decision, not a miss – they don't count.
-    const s = activeWorkouts(setup, ctx.state.workoutOverrides, ctx.state.workouts, ws).filter((x) => x.date >= startDate);
+    const s = activeWorkouts(setup, ctx.state.workoutOverrides, ctx.state.workouts, ws, ctx.state.dayContexts).filter((x) => x.date >= startDate);
     scheduled += s.length;
     done += ctx.state.workouts.filter((w) => w.status === 'completed' && w.date >= ws && w.date <= addDays(ws, 6)).length;
   }

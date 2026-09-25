@@ -1,7 +1,8 @@
 import { getExercise, getProgram } from '../data/exercises';
 import { newId } from '../lib/id';
 import { addDays, daysBetween, weekDays } from './dates';
-import type { ISODate, PersonalRecord, PlanSlotId, TrainingSetup, Workout, WorkoutOverride, WorkoutSet, WorkoutTemplate } from './types';
+import { TIME_BUDGETS } from './timeBudget';
+import type { DayContext, ISODate, PersonalRecord, PlanSlotId, TemplateExercise, TrainingSetup, Workout, WorkoutOverride, WorkoutSet, WorkoutTemplate } from './types';
 
 export interface ScheduledWorkout {
   date: ISODate;
@@ -37,6 +38,48 @@ export function estimateMinutes(template: Pick<WorkoutTemplate, 'exercises'>): n
   return Math.max(15, Math.round(estimateSeconds(template) / 60 / 5) * 5);
 }
 
+// ---------- Session length ----------
+
+/**
+ * Shortens a template to fit the available minutes. Order of cuts:
+ * 1. rest of accessories (from the 3rd exercise) to max 75 s
+ * 2. accessory sets down to 2, starting at the end
+ * 3. drop accessories from the end
+ * 4. compound sets down to 2
+ * The first two (compound) exercises are always kept.
+ */
+export function fitTemplateToTime(template: WorkoutTemplate, minutes: number): WorkoutTemplate {
+  const budget = minutes * 60;
+  let ex: TemplateExercise[] = template.exercises.map((e) => ({ ...e }));
+  const fits = () => estimateSeconds({ exercises: ex }) <= budget;
+
+  if (!fits()) ex = ex.map((e, i) => (i >= 2 ? { ...e, restSec: Math.min(e.restSec, 75) } : e));
+
+  while (!fits()) {
+    const accessory = findLastIndex(ex, (e, i) => i >= 2 && e.sets > 2);
+    if (accessory >= 0) {
+      ex[accessory]!.sets -= 1;
+      continue;
+    }
+    if (ex.length > 2) {
+      ex.pop();
+      continue;
+    }
+    const compound = findLastIndex(ex, (e) => e.sets > 2);
+    if (compound >= 0) {
+      ex[compound]!.sets -= 1;
+      continue;
+    }
+    break;
+  }
+  return { ...template, name: `${template.name} (kurz)`, exercises: ex };
+}
+
+function findLastIndex<T>(list: T[], pred: (item: T, index: number) => boolean): number {
+  for (let i = list.length - 1; i >= 0; i--) if (pred(list[i]!, i)) return i;
+  return -1;
+}
+
 export function isCompletedOn(workouts: Workout[], date: ISODate): Workout | undefined {
   return workouts.find((w) => w.status === 'completed' && w.date === date);
 }
@@ -70,16 +113,19 @@ export function resolveWorkouts(
   overrides: Record<PlanSlotId, WorkoutOverride>,
   workouts: Workout[],
   weekStartDate: ISODate,
+  dayContexts: Record<ISODate, DayContext> = {},
 ): PlannedWorkout[] {
   const planned: PlannedWorkout[] = scheduleForWeek(setup, weekStartDate).map((s, k) => {
     const id = planSlotId(weekStartDate, k);
     const o = overrides[id];
     const moved = o?.status === 'moved' && o.date;
+    const date = moved ? o.date! : s.date;
     return {
       ...s,
       id,
       originalDate: s.date,
-      date: moved ? o.date! : s.date,
+      date,
+      template: templateForDay(s.template, dayContexts[date]),
       status: o?.status === 'skipped' ? 'skipped' : moved ? 'moved' : 'scheduled',
     };
   });
@@ -104,14 +150,24 @@ export function resolveWorkouts(
   return planned.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+/**
+ * F5: on a "wenig Zeit" day the session is shortened to the day's training
+ * time (main lifts stay). Date and rotation do not change.
+ */
+export function templateForDay(template: WorkoutTemplate, context: DayContext | undefined): WorkoutTemplate {
+  const minutes = context ? TIME_BUDGETS[context.timeBudget].trainingMin : undefined;
+  return minutes && estimateMinutes(template) > minutes ? fitTemplateToTime(template, minutes) : template;
+}
+
 /** Sessions that take place (not skipped) – what the screens show. */
 export function activeWorkouts(
   setup: TrainingSetup | null,
   overrides: Record<PlanSlotId, WorkoutOverride>,
   workouts: Workout[],
   weekStartDate: ISODate,
+  dayContexts: Record<ISODate, DayContext> = {},
 ): PlannedWorkout[] {
-  return resolveWorkouts(setup, overrides, workouts, weekStartDate).filter((p) => p.status !== 'skipped');
+  return resolveWorkouts(setup, overrides, workouts, weekStartDate, dayContexts).filter((p) => p.status !== 'skipped');
 }
 
 /** Next open session from `fromDate` on (today first if still open). */
@@ -121,10 +177,11 @@ export function nextScheduled(
   fromDate: ISODate,
   weekStartDate: ISODate,
   overrides: Record<PlanSlotId, WorkoutOverride> = {},
+  dayContexts: Record<ISODate, DayContext> = {},
 ): PlannedWorkout | undefined {
   const upcoming = [
-    ...activeWorkouts(setup, overrides, workouts, weekStartDate),
-    ...activeWorkouts(setup, overrides, workouts, addDays(weekStartDate, 7)),
+    ...activeWorkouts(setup, overrides, workouts, weekStartDate, dayContexts),
+    ...activeWorkouts(setup, overrides, workouts, addDays(weekStartDate, 7), dayContexts),
   ];
   return upcoming.find((s) => s.date >= fromDate && !s.completedWorkoutId);
 }

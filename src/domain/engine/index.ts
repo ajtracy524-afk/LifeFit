@@ -9,7 +9,8 @@ import type { EngineOptions, Priority, Recommendation } from './types';
 export * from './types';
 export { buildContext, type EngineContext } from './context';
 export { DISCLAIMER, validateCoachText } from './guardrails';
-export { fitTemplateToTime, regionLoad, REGION_LABEL } from './trainingRules';
+export { regionLoad, REGION_LABEL } from './trainingRules';
+export { fitTemplateToTime } from '../training';
 export { suggestMealsForGap } from './nutritionRules';
 
 type Rule = (ctx: EngineContext) => Recommendation[];

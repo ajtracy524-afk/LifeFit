@@ -1,8 +1,10 @@
 import { getFood } from '../data/foods';
 import { RECIPES, getRecipe } from '../data/recipes';
 import { newId } from '../lib/id';
+import { daysBetween } from './dates';
+import { LEFTOVER_DAYS, LEFTOVER_PREP_MIN, MEAL_PREP_TAG, TIME_BUDGETS } from './timeBudget';
 import { recipeAllowed, recipeMacros, roundServings, plannedMealMacros, sumMacros } from './nutrition';
-import type { ISODate, Macros, MealSlot, NutritionProfile, PlannedMeal, Recipe } from './types';
+import type { ISODate, Macros, MealSlot, NutritionProfile, PlannedMeal, Recipe, TimeBudget } from './types';
 
 export const SLOT_ORDER: MealSlot[] = ['breakfast', 'snack', 'lunch', 'dinner'];
 
@@ -48,6 +50,8 @@ export const PLANNER_WEIGHTS = {
   newFood: 0.04,
   /** Per opened perishable package left unused (as a fraction of the package). */
   packageWaste: 0.12,
+  /** F5: per 10 min of preparation beyond the day's time budget. */
+  timeOver: 0.4,
 };
 
 export type PlannerWeights = typeof PLANNER_WEIGHTS;
@@ -65,6 +69,8 @@ interface SuggestInput {
   existing: PlannedMeal[];
   /** Pantry estimate in grams per food – available ingredients are "free". */
   pantry?: Record<string, number>;
+  /** F5: time budget per day (default "normal"). */
+  timeBudgetFor?: (date: ISODate) => TimeBudget;
   random?: () => number;
   weights?: Partial<PlannerWeights>;
 }
@@ -79,6 +85,7 @@ export interface PlanningDay {
   remainingKcal: number;
   slots: MealSlot[];
   picks: Recipe[];
+  timeBudget: TimeBudget;
 }
 
 export interface WeekScore {
@@ -87,6 +94,8 @@ export interface WeekScore {
   variety: number;
   newFoods: number;
   packageWaste: number;
+  /** Preparation time beyond the days' budgets (F5). */
+  time: number;
   /** Foods that have to be bought for the week. */
   foodsToBuy: string[];
 }
@@ -101,16 +110,52 @@ function baseMacros(r: Recipe): Macros {
   return m;
 }
 
+/** Recipes and the days they are cooked on – to recognise meal-prep leftovers. */
+type Cooked = Map<string, ISODate[]>;
+
+function markCooked(cooked: Cooked, recipeId: string, date: ISODate) {
+  const list = cooked.get(recipeId);
+  if (list) list.push(date);
+  else cooked.set(recipeId, [date]);
+}
+
+/**
+ * Preparation a meal really costs on `date`: a meal-prep dish cooked on one of
+ * the previous LEFTOVER_DAYS days only needs reheating.
+ */
+export function effectivePrepMin(recipe: Recipe, date: ISODate, cooked: Cooked): number {
+  if (recipe.tags.includes(MEAL_PREP_TAG)) {
+    const leftover = (cooked.get(recipe.id) ?? []).some((d) => {
+      const age = daysBetween(d, date);
+      return age >= 1 && age <= LEFTOVER_DAYS;
+    });
+    if (leftover) return Math.min(recipe.prepMin, LEFTOVER_PREP_MIN);
+  }
+  return recipe.prepMin;
+}
+
+/** Cost of preparation beyond the day's budget (0 if it fits). */
+function timeCost(prepMin: number, budget: TimeBudget, W: PlannerWeights): number {
+  return (W.timeOver * Math.max(0, prepMin - TIME_BUDGETS[budget].maxPrepMin)) / 10;
+}
+
 function dayFactor(day: PlanningDay): number {
   const kcal = day.picks.reduce((s, r) => s + baseMacros(r).kcal, 0);
   return day.remainingKcal / (kcal || 1);
 }
 
 /**
- * Scores a whole week – nutrition per day, variety across the week and the
- * shopping it causes (distinct foods to buy, opened perishable packages).
+ * Scores a whole week – nutrition per day, variety across the week, the
+ * shopping it causes (distinct foods to buy, opened perishable packages) and
+ * cooking time beyond each day's time budget. `context` are fixed meals of the
+ * same week outside the planned days (they count for variety, foods, leftovers).
  */
-export function scoreWeek(days: PlanningDay[], pantry: Record<string, number> = {}, weights: Partial<PlannerWeights> = {}): WeekScore {
+export function scoreWeek(
+  days: PlanningDay[],
+  pantry: Record<string, number> = {},
+  weights: Partial<PlannerWeights> = {},
+  context: PlannedMeal[] = [],
+): WeekScore {
   const W = { ...PLANNER_WEIGHTS, ...weights };
   let nutrition = 0;
   const uses = new Map<string, number>();
@@ -119,8 +164,22 @@ export function scoreWeek(days: PlanningDay[], pantry: Record<string, number> = 
     for (const i of r.ingredients) need.set(i.foodId, (need.get(i.foodId) ?? 0) + i.grams * servings);
   };
 
+  const cooked: Cooked = new Map();
+  for (const m of context) {
+    uses.set(m.recipeId, (uses.get(m.recipeId) ?? 0) + 1);
+    markCooked(cooked, m.recipeId, m.date);
+    const r = getRecipe(m.recipeId);
+    if (r && m.status === 'planned') addNeed(r, m.servings);
+  }
+  for (const day of days) {
+    for (const m of day.fixed) markCooked(cooked, m.recipeId, day.date);
+    for (const r of day.picks) markCooked(cooked, r.id, day.date);
+  }
+
+  let time = 0;
   for (const day of days) {
     const factor = dayFactor(day);
+    for (const r of day.picks) time += timeCost(effectivePrepMin(r, day.date, cooked), day.timeBudget, W);
     const fixedProtein = day.fixed.reduce((s, m) => s + plannedMealMacros(m).protein, 0);
     const protein = fixedProtein + day.picks.reduce((s, r) => s + baseMacros(r).protein, 0) * factor;
     nutrition += W.proteinGap * (Math.max(0, day.target.protein - protein) / day.target.protein);
@@ -163,7 +222,7 @@ export function scoreWeek(days: PlanningDay[], pantry: Record<string, number> = 
   const newFoods = W.newFood * foodsToBuy.length;
   const packageWaste = W.packageWaste * waste;
 
-  return { total: nutrition + variety + newFoods + packageWaste, nutrition, variety, newFoods, packageWaste, foodsToBuy };
+  return { total: nutrition + variety + newFoods + packageWaste + time, nutrition, variety, newFoods, packageWaste, time, foodsToBuy };
 }
 
 /**
@@ -174,6 +233,9 @@ export function scoreWeek(days: PlanningDay[], pantry: Record<string, number> = 
  *     does not need yet.
  *  2. Whole week: every suggested meal is tried against every allowed recipe
  *     of its slot; a swap is kept only if the WEEK score improves.
+ * Time budget (F5): preparation beyond a day's budget costs score; meal-prep
+ * leftovers from the previous days count as quick. Meals in `existing` outside
+ * `dates` are context: they stay fixed but count for foods, variety, leftovers.
  * With a seeded `random` the result is fully reproducible.
  */
 export function suggestWeek({
@@ -184,6 +246,7 @@ export function suggestWeek({
   profile,
   existing,
   pantry = {},
+  timeBudgetFor = () => 'normal',
   random = Math.random,
   weights = {},
 }: SuggestInput): PlannedMeal[] {
@@ -194,14 +257,18 @@ export function suggestWeek({
   // Foods the week already needs or has at home – reusing them is free.
   const weekFoods = new Set<string>(Object.keys(pantry).filter((id) => pantry[id]! > 0));
   for (const m of existing) {
-    if (m.status === 'planned' && dates.includes(m.date)) getRecipe(m.recipeId)?.ingredients.forEach((i) => weekFoods.add(i.foodId));
+    if (m.status === 'planned') getRecipe(m.recipeId)?.ingredients.forEach((i) => weekFoods.add(i.foodId));
   }
+  const context = existing.filter((m) => !dates.includes(m.date) && m.status !== 'skipped');
+  const cooked: Cooked = new Map();
+  for (const m of existing) if (m.status !== 'skipped') markCooked(cooked, m.recipeId, m.date);
 
   const days: PlanningDay[] = [];
 
   // ---- Phase 1: day by day ----
   for (const date of dates) {
     const target = targetFor?.(date) ?? baseTarget;
+    const timeBudget = timeBudgetFor(date);
     const fixed = existing.filter((m) => m.date === date && m.status !== 'skipped');
     // Slots without any matching recipe (strict diet combinations) stay empty
     // instead of blocking the whole day.
@@ -209,7 +276,10 @@ export function suggestWeek({
     if (emptySlots.length === 0) continue;
 
     const fixedMacros = sumMacros(fixed.map(plannedMealMacros));
-    const remainingKcal = Math.max(target.kcal - fixedMacros.kcal, target.kcal * 0.2);
+    // Safety floor if fixed meals already exceed the target – proportional to the
+    // free slots, so re-planning a single meal cannot inflate it (20 % for an empty day).
+    const minShare = (0.2 * emptySlots.length) / (emptySlots.length + fixed.length);
+    const remainingKcal = Math.max(target.kcal - fixedMacros.kcal, target.kcal * minShare);
 
     let best: { picks: Recipe[]; score: number } | null = null;
 
@@ -240,7 +310,8 @@ export function suggestWeek({
       const repeatPenalty = picks.reduce((s, r) => s + (usage.get(r.id) ?? 0), 0) * W.recipeRepeat;
       const extremeServing = Math.abs(Math.log(factor)) * W.extremeServing;
       const unseen = new Set(picks.flatMap((r) => r.ingredients.map((i) => i.foodId)).filter((f) => !weekFoods.has(f)));
-      const score = proteinGap + repeatPenalty + extremeServing + unseen.size * W.newFood;
+      const time = picks.reduce((sum, r) => sum + timeCost(effectivePrepMin(r, date, cooked), timeBudget, W), 0);
+      const score = proteinGap + repeatPenalty + extremeServing + unseen.size * W.newFood + time;
 
       if (!best || score < best.score) best = { picks, score };
     }
@@ -249,12 +320,13 @@ export function suggestWeek({
     for (const r of best.picks) {
       usage.set(r.id, (usage.get(r.id) ?? 0) + 1);
       r.ingredients.forEach((i) => weekFoods.add(i.foodId));
+      markCooked(cooked, r.id, date);
     }
-    days.push({ date, target, fixed, remainingKcal, slots: emptySlots, picks: best.picks });
+    days.push({ date, target, fixed, remainingKcal, slots: emptySlots, picks: best.picks, timeBudget });
   }
 
   // ---- Phase 2: improve the week as a whole ----
-  let current = scoreWeek(days, pantry, weights).total;
+  let current = scoreWeek(days, pantry, weights, context).total;
   for (let pass = 0; pass < 3; pass++) {
     let improved = false;
     for (const day of days) {
@@ -265,7 +337,7 @@ export function suggestWeek({
         for (const alt of recipesForSlot(slot, profile)) {
           if (alt.id === original.id || taken.has(alt.id)) continue;
           day.picks[i] = alt;
-          const score = scoreWeek(days, pantry, weights).total;
+          const score = scoreWeek(days, pantry, weights, context).total;
           if (score < current - 1e-9) {
             current = score;
             bestRecipe = alt;

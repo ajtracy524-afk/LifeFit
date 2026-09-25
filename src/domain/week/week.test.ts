@@ -3,8 +3,8 @@ import { getRecipe } from '../../data/recipes';
 import { emptyState, migrateV1 } from '../../store/persistence';
 import { addDays, weekDays } from '../dates';
 import { logFromMeal, plannedMealMacros } from '../nutrition';
-import { suggestWeek } from '../planner';
-import { activeWorkouts, planSlotId, resolveWorkouts, scheduleForWeek } from '../training';
+import { effectivePrepMin, suggestWeek } from '../planner';
+import { activeWorkouts, estimateMinutes, planSlotId, resolveWorkouts, scheduleForWeek, templateForDay } from '../training';
 import type { AppState, PlannedMeal, Workout } from '../types';
 import { applyWeekChange, type CascadeResult } from './cascade';
 import { dayShift, dayTargetFor, MAX_BONUS_DAYS, TRAINING_DAY_KCAL } from './dayTargets';
@@ -355,5 +355,105 @@ describe('day targets for 3–6 training days', () => {
     const r = ok(applyWeekChange(s, { type: 'moveWorkout', slotId: sat, toDate: '2026-09-27' }, NOW));
     for (const t of r.summary.targetChanges) expect(Math.abs(t.toKcal - t.fromKcal)).toBeLessThanOrEqual(525);
     for (const d of week) expect(Math.abs(dayTargetFor(r.state, d)!.kcal - 2500)).toBeLessThanOrEqual(375);
+  });
+});
+
+// ---------- F5 · time budget: training and cascade ----------
+
+describe('F5 · time budget – training', () => {
+  const s = state();
+  const thuSession = (ctx: AppState['dayContexts']) => resolveWorkouts(s.training, {}, [], MON, ctx).find((w) => w.date === THU)!;
+
+  it('a low day shortens the session with fitTemplateToTime; normal/high keep it', () => {
+    const full = thuSession({});
+    const low = thuSession({ [THU]: { timeBudget: 'low', mode: 'normal' } });
+    expect(estimateMinutes(low.template)).toBeLessThanOrEqual(30);
+    expect(estimateMinutes(full.template)).toBeGreaterThan(30);
+    expect(low.template.exercises.slice(0, 2)).toEqual(full.template.exercises.slice(0, 2).map((e) => expect.objectContaining({ exerciseId: e.exerciseId })));
+    expect(low.template.name).toMatch(/\(kurz\)$/);
+    expect(thuSession({ [THU]: { timeBudget: 'high', mode: 'normal' } }).template).toBe(full.template);
+    expect(templateForDay(full.template, { timeBudget: 'normal', mode: 'normal' })).toBe(full.template);
+  });
+
+  it('dates and rotation stay the same – only the length changes', () => {
+    const plain = resolveWorkouts(s.training, {}, [], MON);
+    const low = resolveWorkouts(s.training, {}, [], MON, { [THU]: { timeBudget: 'low', mode: 'normal' } });
+    expect(low.map((w) => [w.id, w.date, w.template.id])).toEqual(plain.map((w) => [w.id, w.date, w.template.id]));
+    expect(low.find((w) => w.date === MON)!.template).toBe(plain.find((w) => w.date === MON)!.template);
+  });
+});
+
+describe('F5 · time budget – cascade', () => {
+  const thuMeals = () => [
+    meal(THU, 'lunch', 'chili', { source: 'suggest' }), // 35 min
+    meal(THU, 'dinner', 'oven-salmon', { source: 'suggest' }), // 35 min
+  ];
+  const kcal = (st: AppState, d: string) => st.plannedMeals.filter((m) => m.date === d).reduce((sum, m) => sum + plannedMealMacros(m).kcal, 0);
+  const prepOn = (st: AppState, d: string) => st.plannedMeals.filter((m) => m.date === d).map((m) => getRecipe(m.recipeId)!.prepMin);
+
+  it('"Wenig Zeit" exchanges slow meals, shortens training and updates shopping', () => {
+    const before = state({ plannedMeals: [...thuMeals(), meal(FRI, 'lunch')] });
+    const copy = structuredClone(before);
+    const r = ok(applyWeekChange(before, { type: 'setDayContext', date: THU, context: { timeBudget: 'low' } }, NOW));
+
+    expect(r.state.dayContexts[THU]).toEqual({ timeBudget: 'low', mode: 'normal' });
+    expect(prepOn(r.state, THU).every((p) => p <= 20)).toBe(true);
+    expect(r.summary.title).toBe('Donnerstag: Wenig Zeit');
+    expect(r.summary.replaced.map((x) => x.from).sort()).toEqual(['Chili con Carne mit Reis', 'Ofenlachs mit Kartoffeln & Brokkoli'].sort());
+    // Calories of the day are kept (servings scaled to the same space).
+    expect(Math.abs(kcal(r.state, THU) - kcal(before, THU)) / kcal(before, THU)).toBeLessThan(0.1);
+    // Training on Thursday is the short version now.
+    expect(r.summary.details.some((d) => /^Training: .*\(kurz\) ~\d+ min$/.test(d))).toBe(true);
+    // Shopping follows the new meals.
+    expect(r.summary.shopping.added.length + r.summary.shopping.removed.length).toBeGreaterThan(0);
+    expect(weekShopping(r.state, MON, MON).some((i) => i.foodId === 'salmon')).toBe(false);
+    // Undo = the untouched previous state.
+    expect(before).toEqual(copy);
+  });
+
+  it('keeps meals the user picked or sized', () => {
+    const own = meal(THU, 'lunch', 'bolognese', { source: 'user' });
+    const sized = meal(THU, 'dinner', 'oven-salmon', { source: 'suggest', servingsLocked: true });
+    const r = ok(applyWeekChange(state({ plannedMeals: [own, sized] }), { type: 'setDayContext', date: THU, context: { timeBudget: 'low' } }, NOW));
+    expect(r.state.plannedMeals.map((m) => m.recipeId)).toEqual(['bolognese', 'oven-salmon']);
+    expect(r.summary.replaced).toHaveLength(0);
+  });
+
+  it('back to "Normal": no meals exchanged, training full again', () => {
+    const low = ok(applyWeekChange(state({ plannedMeals: thuMeals() }), { type: 'setDayContext', date: THU, context: { timeBudget: 'low' } }, NOW)).state;
+    const r = ok(applyWeekChange(low, { type: 'setDayContext', date: THU, context: { timeBudget: 'normal' } }, NOW));
+    expect(r.state.plannedMeals.map((m) => m.recipeId)).toEqual(low.plannedMeals.map((m) => m.recipeId));
+    expect(r.state.dayContexts).toEqual({});
+    expect(r.summary.details.some((d) => d.startsWith('Training: ') && !d.includes('(kurz)'))).toBe(true);
+  });
+
+  it('uses meal-prep leftovers on a low day', () => {
+    // Chili cooked on Wednesday → Thursday lunch can be the leftover (5 min).
+    const wed = meal('2026-09-23', 'dinner', 'chili', { source: 'user' });
+    const r = ok(applyWeekChange(state({ plannedMeals: [wed, ...thuMeals().slice(1)] }), { type: 'setDayContext', date: THU, context: { timeBudget: 'low' } }, NOW));
+    const cooked = new Map<string, string[]>();
+    r.state.plannedMeals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
+    for (const m of r.state.plannedMeals.filter((x) => x.date === THU)) expect(effectivePrepMin(getRecipe(m.recipeId)!, THU, cooked)).toBeLessThanOrEqual(15);
+  });
+
+  it('past days only store the context', () => {
+    const past = meal('2026-09-20', 'lunch', 'chili', { source: 'suggest' });
+    const r = ok(applyWeekChange(state({ plannedMeals: [past] }), { type: 'setDayContext', date: '2026-09-20', context: { timeBudget: 'low' } }, new Date(2026, 8, 22)));
+    expect(r.state.plannedMeals).toEqual([past]);
+  });
+});
+
+describe('F5 · replacing a single meal', () => {
+  it('keeps the day total when only breakfast is too slow', () => {
+    const day = [
+      meal(THU, 'breakfast', 'protein-pancakes', { source: 'suggest' }), // 20 min
+      meal(THU, 'lunch', 'couscous-salad', { source: 'suggest' }),
+      meal(THU, 'dinner', 'veggie-omelette', { source: 'suggest' }),
+    ];
+    const before = state({ plannedMeals: day });
+    const r = ok(applyWeekChange(before, { type: 'setDayContext', date: THU, context: { timeBudget: 'low' } }, NOW));
+    expect(r.summary.replaced.map((x) => x.from)).toEqual([getRecipe('protein-pancakes')!.title]);
+    const kcal = (s: AppState) => s.plannedMeals.reduce((sum, m) => sum + plannedMealMacros(m).kcal, 0);
+    expect(Math.abs(kcal(r.state) - kcal(before)) / kcal(before)).toBeLessThan(0.1);
   });
 });

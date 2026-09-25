@@ -3,11 +3,13 @@ import { getRecipe } from '../../data/recipes';
 import { newId } from '../../lib/id';
 import { weekdayLong, weekdayShort } from '../../lib/format';
 import { addDays, toISODate, weekDays, weekStart, weekdayIndex } from '../dates';
-import { logFromMeal, plannedMealMacros, recipeMacros, roundServings } from '../nutrition';
-import { resolveWorkouts } from '../training';
+import { logFromMeal, plannedMealMacros, recipeMacros, roundServings, sumMacros } from '../nutrition';
+import { effectivePrepMin, seededRandom, SLOT_ORDER, suggestWeek } from '../planner';
+import { TIME_BUDGETS } from '../timeBudget';
+import { estimateMinutes, resolveWorkouts } from '../training';
 import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, ShoppingWeekState } from '../types';
 import { dayTargetFor } from './dayTargets';
-import { addToPantry, purchaseAmount, setPantryQuantity } from './pantry';
+import { addToPantry, pantryEstimate, purchaseAmount, setPantryQuantity } from './pantry';
 import { DEFAULT_DAY_CONTEXT, dayContextFor, weekShopping } from './weekPlan';
 
 /**
@@ -43,11 +45,14 @@ export interface ChangeSummary {
   targetChanges: { date: ISODate; fromKcal: number; toKcal: number }[];
   rebalanced: { mealId: string; date: ISODate; from: number; to: number }[];
   shopping: { added: string[]; removed: string[]; changed: string[] };
+  /** Meals exchanged because they did not fit the day (F5). */
+  replaced: Replacement[];
 }
 
 export type CascadeResult = { ok: true; state: AppState; summary: ChangeSummary } | { ok: false; reason: string };
 
-type Mutation = { ok: true; title: string; trainingChanged?: boolean } | { ok: false; reason: string };
+type Replacement = { from: string; to: string };
+type Mutation = { ok: true; title: string; trainingChanged?: boolean; replaced?: Replacement[] } | { ok: false; reason: string };
 
 const fail = (reason: string): Mutation => ({ ok: false, reason });
 
@@ -61,8 +66,14 @@ export function applyWeekChange(state: AppState, change: WeekChange, now: Date =
 
   const { targetChanges, rebalanced } = result.trainingChanged ? rebalanceWeek(state, next, week, today) : { targetChanges: [], rebalanced: [] };
   const shopping = diffShopping(state, next, week, today);
+  const training = diffTraining(state, next, week);
 
   const details: string[] = [];
+  if (result.replaced?.length) {
+    const r = result.replaced;
+    details.push(`${r.length} ${r.length === 1 ? 'Mahlzeit' : 'Mahlzeiten'} ersetzt: ${r.map((x) => `${x.from} → ${x.to}`).join(', ')}`);
+  }
+  details.push(...training);
   if (targetChanges.length) {
     details.push(`Tagesziele: ${targetChanges.map((t) => `${weekdayShort(weekdayIndex(t.date))} ${signed(t.toKcal - t.fromKcal)} kcal`).join(', ')}`);
   }
@@ -74,7 +85,7 @@ export function applyWeekChange(state: AppState, change: WeekChange, now: Date =
   ].filter(Boolean);
   if (shopParts.length) details.push(`Einkauf: ${shopParts.join(', ')}`);
 
-  return { ok: true, state: next, summary: { title: result.title, details, week, targetChanges, rebalanced, shopping } };
+  return { ok: true, state: next, summary: { title: result.title, details, week, targetChanges, rebalanced, shopping, replaced: result.replaced ?? [] } };
 }
 
 // ---------- Mutations of the sources of truth ----------
@@ -114,10 +125,13 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
     }
 
     case 'setDayContext': {
-      const merged = { ...dayContextFor(s, change.date), ...change.context };
+      const before = dayContextFor(s, change.date);
+      const merged = { ...before, ...change.context };
       if (merged.timeBudget === DEFAULT_DAY_CONTEXT.timeBudget && merged.mode === DEFAULT_DAY_CONTEXT.mode) delete s.dayContexts[change.date];
       else s.dayContexts[change.date] = merged;
-      return { ok: true, title: 'Tag angepasst' };
+      // Training follows automatically (resolveWorkouts reads the context); meals are re-planned here.
+      const replaced = merged.timeBudget !== before.timeBudget ? replanForTimeBudget(s, change.date, today) : [];
+      return { ok: true, title: `${weekdayLong(weekdayIndex(change.date))}: ${TIME_BUDGETS[merged.timeBudget].label}`, replaced };
     }
 
     case 'addMeal': {
@@ -213,6 +227,64 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
 // ---------- Recalculation ----------
 
 /**
+ * F5: meals of `date` that no longer fit the day's time budget are re-planned
+ * through the week planner (same scoring: nutrition, variety, ingredient
+ * overlap, pantry, time). Only planner suggestions are exchanged – meals the
+ * user picked, sized or already ate stay. Calories of the day stay the same
+ * because the new picks fill exactly the space of the old ones.
+ */
+function replanForTimeBudget(s: AppState, date: ISODate, today: ISODate): Replacement[] {
+  const target = dayTargetFor(s, date);
+  if (date < today || !target || !s.nutritionProfile) return [];
+  const budget = dayContextFor(s, date).timeBudget;
+  const ws = weekStart(date);
+  const weekMeals = s.plannedMeals.filter((m) => m.date >= ws && m.date <= addDays(ws, 6) && m.status !== 'skipped');
+  const cooked = new Map<string, ISODate[]>();
+  for (const m of weekMeals) cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]);
+
+  const tooLong = weekMeals.filter((m) => {
+    if (m.date !== date || m.status !== 'planned' || m.source !== 'suggest' || m.servingsLocked) return false;
+    const recipe = getRecipe(m.recipeId);
+    return !!recipe && effectivePrepMin(recipe, date, cooked) > TIME_BUDGETS[budget].maxPrepMin;
+  });
+  if (tooLong.length === 0) return [];
+
+  const ids = new Set(tooLong.map((m) => m.id));
+  // The new picks take exactly the calorie space of the replaced meals – the
+  // day total does not change, only what is cooked.
+  const others = weekMeals.filter((m) => m.date === date && !ids.has(m.id));
+  const space = sumMacros(tooLong.map(plannedMealMacros)).kcal;
+  const picks = suggestWeek({
+    dates: [date],
+    slots: SLOT_ORDER.filter((slot) => tooLong.some((m) => m.slot === slot)),
+    target: { ...target, kcal: sumMacros(others.map(plannedMealMacros)).kcal + space },
+    profile: s.nutritionProfile,
+    existing: weekMeals.filter((m) => !ids.has(m.id)),
+    pantry: pantryEstimate(s),
+    timeBudgetFor: (d) => dayContextFor(s, d).timeBudget,
+    random: seededRandom(`${date}:${budget}`),
+  });
+
+  s.plannedMeals = [...s.plannedMeals.filter((m) => !ids.has(m.id)), ...picks];
+  return tooLong
+    .map((old) => ({ from: getRecipe(old.recipeId)!.title, to: getRecipe(picks.find((p) => p.slot === old.slot)?.recipeId ?? '')?.title ?? '' }))
+    .filter((r) => r.to && r.to !== r.from);
+}
+
+/** "Training: Push (kurz) ~30 min" when a session's length changed. */
+function diffTraining(before: AppState, after: AppState, week: ISODate): string[] {
+  const resolve = (s: AppState) => resolveWorkouts(s.training, s.workoutOverrides, s.workouts, week, s.dayContexts);
+  const old = new Map(resolve(before).map((w) => [w.id, w]));
+  return resolve(after)
+    .filter((w) => w.status !== 'skipped' && !w.completedWorkoutId)
+    .filter((w) => {
+      const prev = old.get(w.id);
+      return prev && prev.status !== 'skipped' && estimateMinutes(prev.template) !== estimateMinutes(w.template);
+    })
+    .map((w) => `Training: ${w.template.name} ~${estimateMinutes(w.template)} min`);
+}
+
+/**
  * Applies changed day targets to the plan: only days from today on, only
  * still planned meals the user did not size manually. The day's delta is
  * spread proportionally, so the existing fit of the plan is preserved.
@@ -266,7 +338,7 @@ function weekOfSlot(slotId: PlanSlotId): ISODate {
 }
 
 function findSession(s: AppState, slotId: PlanSlotId) {
-  const plan = resolveWorkouts(s.training, s.workoutOverrides, s.workouts, weekOfSlot(slotId));
+  const plan = resolveWorkouts(s.training, s.workoutOverrides, s.workouts, weekOfSlot(slotId), s.dayContexts);
   return { plan, session: plan.find((p) => p.id === slotId) };
 }
 

@@ -91,7 +91,7 @@ export function weekStats(state: AppState, weekStartDate: ISODate): WeekStats {
 
   const weekWorkouts = state.workouts.filter((w) => w.status === 'completed' && w.date >= weekStartDate && w.date <= end);
   const startDate = appStartDate(state);
-  const schedule = activeWorkouts(state.training, state.workoutOverrides, state.workouts, weekStartDate).filter((s) => s.date >= startDate);
+  const schedule = activeWorkouts(state.training, state.workoutOverrides, state.workouts, weekStartDate, state.dayContexts).filter((s) => s.date >= startDate);
 
   return {
     loggedDays: totals.length,

@@ -8,7 +8,7 @@ import { addDays, today, weekDays, weekStart } from '../domain/dates';
 import { calculateTargets, foodMacros, logFromMeal, roundMacros } from '../domain/nutrition';
 import { seededRandom, suggestWeek } from '../domain/planner';
 import { activeWorkouts, createWorkout, detectRecords, workoutVolume } from '../domain/training';
-import { applyWeekChange, dayTargetFor, pantryEstimate, type CascadeResult, type WeekChange } from '../domain/week';
+import { applyWeekChange, dayContextFor, dayTargetFor, pantryEstimate, type CascadeResult, type WeekChange } from '../domain/week';
 import { currentWeight } from '../domain/progress';
 import { newId } from '../lib/id';
 import type {
@@ -58,6 +58,7 @@ export function completeOnboarding(input: OnboardingResult): void {
         profile: input.nutritionProfile,
         existing: s.plannedMeals.filter((m) => dates.includes(m.date)),
         pantry: pantryEstimate(s),
+        timeBudgetFor: (d) => dayContextFor(s, d).timeBudget,
         random: seededRandom(dates[0] ?? t),
       }),
     );
@@ -83,9 +84,11 @@ export function suggestMealsForWeek(start: ISODate): number {
     target,
     targetFor: (d) => dayTargetFor(s, d),
     profile: s.nutritionProfile,
-    existing: s.plannedMeals.filter((m) => dates.includes(m.date)),
+    // The whole week counts: earlier days are context for foods, variety and leftovers.
+    existing: s.plannedMeals.filter((m) => m.date >= start && m.date <= addDays(start, 6)),
     // Ingredients at home are reused; same week + same plan → same suggestion.
     pantry: pantryEstimate(s),
+    timeBudgetFor: (d) => dayContextFor(s, d).timeBudget,
     random: seededRandom(start),
   });
   update((d) => {
@@ -210,7 +213,7 @@ export function startWorkoutFrom(template: WorkoutTemplate, date: ISODate = toda
  * session of the same template this week (catching up).
  */
 function plannedSessionFor(s: AppState, templateId: string, date: ISODate): string | undefined {
-  const open = activeWorkouts(s.training, s.workoutOverrides, s.workouts, weekStart(date)).filter((p) => !p.completedWorkoutId);
+  const open = activeWorkouts(s.training, s.workoutOverrides, s.workouts, weekStart(date), s.dayContexts).filter((p) => !p.completedWorkoutId);
   return (open.find((p) => p.date === date) ?? open.find((p) => p.date < date && p.template.id === templateId))?.id;
 }
 
@@ -440,12 +443,6 @@ export function dismissRecommendation(id: string): void {
     const keepFrom = addDays(t, -14);
     s.coach.dismissed = Object.fromEntries(Object.entries(s.coach.dismissed).filter(([, d]) => d >= keepFrom));
     s.coach.dismissed[id] = t;
-  });
-}
-
-export function setAvailableMinutes(minutes: number | null): void {
-  update((s) => {
-    s.coach.availableTime = minutes ? { date: today(), minutes } : undefined;
   });
 }
 

@@ -313,6 +313,33 @@ describe('move / skip a workout (end to end)', () => {
     expect(text()).toContain('Ruhetag');
     expect(text()).toMatch(/auf Dienstag verschoben/);
   });
+  it('Heute: "Wenig Zeit" exchanges slow meals, shortens training, undo restores', async () => {
+    const slow = [
+      { id: 'mon-l', date: MON, slot: 'lunch', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' },
+      { id: 'mon-d', date: MON, slot: 'dinner', recipeId: 'oven-salmon', servings: 1, status: 'planned', source: 'suggest' },
+    ];
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: slow }));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const before = store.getState();
+    const minutes = () => Number(text().match(/Übungen · ~(\d+) min/)?.[1]);
+    const full = minutes();
+
+    await click('Wenig Zeit');
+
+    const after = store.getState();
+    expect(after.dayContexts[MON]?.timeBudget).toBe('low');
+    expect(after.plannedMeals.filter((m) => m.date === MON).map((m) => m.recipeId)).not.toContain('oven-salmon');
+    expect(minutes()).toBeLessThanOrEqual(30);
+    expect(minutes()).toBeLessThan(full);
+    expect(text()).toMatch(/Montag: Wenig Zeit/);
+    expect(text()).toMatch(/ersetzt/);
+    expect(text()).toMatch(/Training: .*\(kurz\)/);
+
+    await click('Rückgängig');
+    expect(store.getState()).toBe(before);
+    expect(minutes()).toBe(full);
+  });
 });
 
 describe('error boundary', () => {

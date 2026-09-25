@@ -347,3 +347,17 @@
   text-underline-offset: 3px;
   cursor: pointer;
 }
+
+/* ---------- Time budget (F5) ---------- */
+.timeBudget {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.timeHint {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: center;
+}

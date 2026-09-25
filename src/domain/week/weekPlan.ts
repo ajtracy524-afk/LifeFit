@@ -64,7 +64,7 @@ export function openShoppingCount(state: AppState, week: ISODate, today: ISODate
 }
 
 export function buildWeekPlan(state: AppState, weekStartDate: ISODate, today: ISODate): WeekPlan {
-  const workouts = resolveWorkouts(state.training, state.workoutOverrides, state.workouts, weekStartDate);
+  const workouts = resolveWorkouts(state.training, state.workoutOverrides, state.workouts, weekStartDate, state.dayContexts);
   const estimate = pantryEstimate(state);
 
   const days = weekDays(weekStartDate).map((date): PlanDay => {
