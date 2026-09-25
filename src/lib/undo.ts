@@ -1,13 +1,29 @@
 import type { WeekChange } from '../domain/week';
 import { applyChange } from '../store/actions';
+import type { AppState } from '../domain/types';
 import { restore, snapshot } from '../store/store';
 import { showToast } from './toast';
+
+/**
+ * Undo restores the snapshot taken before the action – but only while the state
+ * is still exactly the one the action produced. Anything done in between would
+ * otherwise be lost silently, so undo is refused with a short explanation.
+ */
+export function undoTo(before: AppState, after: AppState): boolean {
+  if (snapshot() !== after) {
+    showToast('Rückgängig ist nicht mehr möglich – inzwischen gab es weitere Änderungen.', { tone: 'error' });
+    return false;
+  }
+  restore(before);
+  return true;
+}
 
 /** Runs an action and offers "Rückgängig" in a toast – instead of confirmation dialogs. */
 export function withUndo(message: string, action: () => void): void {
   const before = snapshot();
   action();
-  showToast(message, { action: { label: 'Rückgängig', onClick: () => restore(before) } });
+  const after = snapshot();
+  showToast(message, { action: { label: 'Rückgängig', onClick: () => undoTo(before, after) } });
 }
 
 /**
@@ -22,7 +38,8 @@ export function applyWithUndo(change: WeekChange): boolean {
     showToast(result.reason, { tone: 'error' });
     return false;
   }
+  const after = snapshot();
   const message = [result.summary.title, ...result.summary.details].join(' · ');
-  showToast(message, { action: { label: 'Rückgängig', onClick: () => restore(before) }, duration: 7000 });
+  showToast(message, { action: { label: 'Rückgängig', onClick: () => undoTo(before, after) }, duration: 7000 });
   return true;
 }

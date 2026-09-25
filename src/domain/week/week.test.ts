@@ -436,10 +436,10 @@ describe('F5 · time budget – cascade', () => {
     for (const m of r.state.plannedMeals.filter((x) => x.date === THU)) expect(effectivePrepMin(getRecipe(m.recipeId)!, THU, cooked)).toBeLessThanOrEqual(15);
   });
 
-  it('past days only store the context', () => {
+  it('past days are closed: the context of a lived day cannot be changed', () => {
     const past = meal('2026-09-20', 'lunch', 'chili', { source: 'suggest' });
-    const r = ok(applyWeekChange(state({ plannedMeals: [past] }), { type: 'setDayContext', date: '2026-09-20', context: { timeBudget: 'low' } }, new Date(2026, 8, 22)));
-    expect(r.state.plannedMeals).toEqual([past]);
+    const r = applyWeekChange(state({ plannedMeals: [past] }), { type: 'setDayContext', date: '2026-09-20', context: { timeBudget: 'low' } }, new Date(2026, 8, 22));
+    expect(r.ok).toBe(false);
   });
 });
 

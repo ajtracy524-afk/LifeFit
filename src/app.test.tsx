@@ -444,6 +444,29 @@ describe('weekly autopilot (F1)', () => {
   });
 });
 
+describe('undo safety', () => {
+  it('an outdated "Rückgängig" does not drop later changes', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const { applyWithUndo } = await import('./lib/undo');
+    const actions = await import('./store/actions');
+    const { today, weekStart } = await import('./domain/dates');
+
+    await act(async () => {
+      applyWithUndo({ type: 'skipWorkout', slotId: `${weekStart(today())}#0` });
+    });
+    const undoButton = button('Rückgängig');
+    // Something else changes before the user taps "Rückgängig".
+    await act(async () => actions.addWeight(today(), 81.2));
+    const afterWeight = store.getState();
+
+    await act(async () => undoButton.click());
+    expect(store.getState()).toBe(afterWeight);
+    expect(text()).toMatch(/Rückgängig ist nicht mehr möglich/);
+  });
+});
+
 describe('error boundary', () => {
   it('shows a fallback with "Neu laden" instead of a blank page', async () => {
     vi.doMock('./features/onboarding/Onboarding', () => ({

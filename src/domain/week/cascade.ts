@@ -64,6 +64,16 @@ type Mutation =
 
 const fail = (reason: string): Mutation => ({ ok: false, reason });
 
+/**
+ * The lived week is never rewritten: days before today are closed for planning
+ * changes (contexts, re-planning). Today and the future may change. Completed
+ * workouts are never touched, whatever the day.
+ */
+export function isClosedDay(date: ISODate, today: ISODate): boolean {
+  return date < today;
+}
+const PAST_DAY = 'Vergangene Tage lassen sich nicht mehr umplanen.';
+
 export function applyWeekChange(state: AppState, change: WeekChange, now: Date = new Date()): CascadeResult {
   const today = toISODate(now);
   const week = weekOf(state, change, today);
@@ -133,6 +143,7 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
     }
 
     case 'setDayContext': {
+      if (isClosedDay(change.date, today)) return fail(PAST_DAY);
       const before = dayContextFor(s, change.date);
       const merged = { ...before, ...change.context };
       storeDayContext(s, change.date, merged);
@@ -277,13 +288,16 @@ function planWeek(s: AppState, change: Extract<WeekChange, { type: 'planWeek' }>
   const { week } = change;
   if (!s.training || !s.nutritionProfile || !dayTargetFor(s, week)) return fail('Bitte zuerst Ziel und Profil einrichten.');
   const dates = weekDays(week);
-  const open = dates.filter((d) => d >= today);
+  const open = dates.filter((d) => !isClosedDay(d, today));
   if (open.length === 0) return fail('Diese Woche ist schon vorbei.');
-  const isOpen = (weekday: number) => dates[weekday]! >= today;
 
-  // 1. Training days of this week – past days stay as they were (rotation is calendar-based).
+  // 1. Training days of this week. Past days and days with a completed session
+  //    stay as they were; only open days follow the check-in.
+  const sessions = resolveWorkouts(s.training, s.workoutOverrides, s.workouts, week, s.dayContexts);
+  const doneDays = new Set(sessions.filter((w) => w.completedWorkoutId).map((w) => weekdayIndex(w.originalDate)));
+  const locked = (weekday: number) => isClosedDay(dates[weekday]!, today) || doneDays.has(weekday);
   const current = trainingWeekdays(s.training, week);
-  const days = [...new Set([...current.filter((d) => !isOpen(d)), ...change.trainingDays.filter(isOpen)])].sort((a, b) => a - b);
+  const days = [...new Set([...current.filter(locked), ...change.trainingDays.filter((d) => !locked(d))])].sort((a, b) => a - b);
   s.training.weekOverrides = { ...(s.training.weekOverrides ?? {}) };
   if (days.join() === [...s.training.weekdays].sort((a, b) => a - b).join()) delete s.training.weekOverrides[week];
   else s.training.weekOverrides[week] = days;
@@ -311,9 +325,9 @@ function planWeek(s: AppState, change: Extract<WeekChange, { type: 'planWeek' }>
   if (added.length === 0 && freeSlots) return fail('Für diese Vorgaben gibt es keine passenden Rezepte. Deine bisherige Woche bleibt unverändert.');
   s.plannedMeals.push(...added);
 
-  const sessions = activeWorkouts(s.training, s.workoutOverrides, s.workouts, week, s.dayContexts).filter((w) => w.date >= today);
+  const planned = activeWorkouts(s.training, s.workoutOverrides, s.workouts, week, s.dayContexts).filter((w) => w.date >= today);
   const exceptions = open.filter((d) => dayContextFor(s, d).mode !== 'normal');
-  notes.push(`${sessions.length} ${sessions.length === 1 ? 'Training' : 'Trainings'} · ${added.length} Mahlzeiten geplant`);
+  notes.push(`${planned.length} ${planned.length === 1 ? 'Training' : 'Trainings'} · ${added.length} Mahlzeiten geplant`);
   if (exceptions.length) notes.push(exceptions.map((d) => `${weekdayShort(weekdayIndex(d))} ${DAY_MODE_LABEL[dayContextFor(s, d).mode]}`).join(', '));
   return { ok: true, title: 'Woche geplant', notes };
 }

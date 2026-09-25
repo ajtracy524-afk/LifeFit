@@ -27,9 +27,12 @@ export function scheduleForWeek(setup: TrainingSetup | null, weekStartDate: ISOD
   const days = [...trainingWeekdays(setup, weekStartDate)].sort((a, b) => a - b);
   const weekIndex = Math.floor(daysBetween(EPOCH_MONDAY, weekStartDate) / 7);
   const dates = weekDays(weekStartDate);
+  // Start position of the week from the DEFAULT day count: changing the days of a
+  // running week (check-in) keeps the templates of sessions that already happened.
+  const start = weekIndex * setup.weekdays.length;
   return days.map((weekday, k) => ({
     date: dates[weekday]!,
-    template: program.templates[(weekIndex * days.length + k) % program.templates.length]!,
+    template: program.templates[(start + k) % program.templates.length]!,
   }));
 }
 
