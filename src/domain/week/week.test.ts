@@ -7,7 +7,7 @@ import { suggestWeek } from '../planner';
 import { activeWorkouts, planSlotId, resolveWorkouts, scheduleForWeek } from '../training';
 import type { AppState, PlannedMeal, Workout } from '../types';
 import { applyWeekChange, type CascadeResult } from './cascade';
-import { dayShift, dayTargetFor, TRAINING_DAY_KCAL } from './dayTargets';
+import { dayShift, dayTargetFor, MAX_BONUS_DAYS, TRAINING_DAY_KCAL } from './dayTargets';
 import { pantryEstimate, purchaseAmount } from './pantry';
 import { buildWeekPlan, weekShopping } from './weekPlan';
 import { getFood } from '../../data/foods';
@@ -309,5 +309,51 @@ describe('migration v1 → v2', () => {
     expect(list.find((i) => i.foodId === 'chicken')!.state).toBe('checked');
     expect(list.find((i) => i.foodId === 'rice')!.state).toBe('have');
     expect(list.find((i) => i.foodId === 'broccoli')?.state).toBe('open');
+  });
+});
+
+// ---------- Training-day bonus: 3–6 training days ----------
+
+describe('day targets for 3–6 training days', () => {
+  const DAYS: Record<number, number[]> = { 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 3, 4], 6: [0, 1, 2, 3, 4, 5] };
+  const week = weekDays(MON);
+  const targetsFor = (n: number) => {
+    const s = state({ training: { programId: 'push-pull-legs', weekdays: DAYS[n]! } });
+    return { s, targets: week.map((d) => dayTargetFor(s, d)!) };
+  };
+
+  it.each([3, 4, 5])('%i training days: unchanged rule (+150 on every training day)', (n) => {
+    const { targets } = targetsFor(n);
+    const training = DAYS[n]!.map((i) => targets[i]!.kcal);
+    const rest = week.map((_, i) => i).filter((i) => !DAYS[n]!.includes(i)).map((i) => targets[i]!.kcal);
+    expect(training.every((k) => k === 2500 + TRAINING_DAY_KCAL)).toBe(true);
+    expect(rest.every((k) => k === 2500 + dayShift(false, n))).toBe(true);
+  });
+
+  it('6 training days: only 5 days get the bonus, no extreme rest day', () => {
+    const { s, targets } = targetsFor(6);
+    const kcal = targets.map((t) => t.kcal);
+    expect(kcal.filter((k) => k === 2650)).toHaveLength(MAX_BONUS_DAYS);
+    // Same extremes as a 5-day week (−375), not −900 on the single rest day.
+    expect(Math.min(...kcal)).toBe(2500 + dayShift(false, 5));
+    expect(Math.min(...kcal)).toBeGreaterThan(2500 - 400);
+    // The sessions themselves are untouched: still 6 per week, same rotation.
+    expect(activeWorkouts(s.training, {}, [], MON).map((w) => w.template.id)).toEqual(scheduleForWeek(s.training, MON).map((w) => w.template.id));
+    expect(activeWorkouts(s.training, {}, [], MON)).toHaveLength(6);
+  });
+
+  it.each([3, 4, 5, 6])('%i training days: weekly sum stays, protein constant, no day beyond ±375 kcal', (n) => {
+    const { targets } = targetsFor(n);
+    expect(Math.abs(targets.reduce((sum, t) => sum + t.kcal, 0) - 2500 * 7)).toBeLessThanOrEqual(5);
+    expect(targets.every((t) => t.protein === 160)).toBe(true);
+    expect(targets.every((t) => Math.abs(t.kcal - 2500) <= 375)).toBe(true);
+  });
+
+  it('moving a session in a 6-day week does not create extreme swings', () => {
+    const s = state({ training: { programId: 'push-pull-legs', weekdays: DAYS[6]! } });
+    const sat = planSlotId(MON, 5);
+    const r = ok(applyWeekChange(s, { type: 'moveWorkout', slotId: sat, toDate: '2026-09-27' }, NOW));
+    for (const t of r.summary.targetChanges) expect(Math.abs(t.toKcal - t.fromKcal)).toBeLessThanOrEqual(525);
+    for (const d of week) expect(Math.abs(dayTargetFor(r.state, d)!.kcal - 2500)).toBeLessThanOrEqual(375);
   });
 });

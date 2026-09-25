@@ -5,16 +5,29 @@ import { activeWorkouts } from '../training';
 import type { AppState, ISODate, Macros, NutritionTarget } from '../types';
 
 /**
- * Training days get more energy, rest days correspondingly less – the WEEKLY
- * sum stays exactly the stored target × 7. Protein and fat stay constant,
- * the difference is carried by carbohydrates.
+ * Training days get more energy, the other days correspondingly less – the
+ * WEEKLY sum stays exactly the stored target × 7. Protein and fat stay
+ * constant, the difference is carried by carbohydrates.
  */
 export const TRAINING_DAY_KCAL = 150;
 
-/** kcal shift of one day. 0 if the week has no or only training days. */
-export function dayShift(isTrainingDay: boolean, trainingDays: number): number {
-  if (trainingDays <= 0 || trainingDays >= 7) return 0;
-  return isTrainingDay ? TRAINING_DAY_KCAL : -Math.round((TRAINING_DAY_KCAL * trainingDays) / (7 - trainingDays));
+/**
+ * At most this many days per week get the training bonus. With 6 training
+ * days a single rest day would otherwise have to absorb −900 kcal; capped,
+ * the two non-bonus days take −375 each – exactly like a 5-day week.
+ * Only the calorie bonus is capped – sessions and rotation are unaffected.
+ */
+export const MAX_BONUS_DAYS = 5;
+
+/** kcal shift of one day. 0 if no day gets a bonus. */
+export function dayShift(isBonusDay: boolean, bonusDays: number): number {
+  if (bonusDays <= 0 || bonusDays >= 7) return 0;
+  return isBonusDay ? TRAINING_DAY_KCAL : -Math.round((TRAINING_DAY_KCAL * bonusDays) / (7 - bonusDays));
+}
+
+/** Training days that get the bonus: the first MAX_BONUS_DAYS of the week (deterministic). */
+export function bonusDates(trainingDays: Set<ISODate>): Set<ISODate> {
+  return new Set([...trainingDays].sort().slice(0, MAX_BONUS_DAYS));
 }
 
 export function shiftTarget<T extends Macros>(base: T, deltaKcal: number): T {
@@ -34,8 +47,8 @@ export function trainingDates(state: Pick<AppState, 'training' | 'workoutOverrid
 export function dayTargetFor(state: AppState, date: ISODate): NutritionTarget | undefined {
   const base = targetForDate(state.targets, date);
   if (!base) return undefined;
-  const dates = trainingDates(state, weekStart(date));
-  let delta = dayShift(dates.has(date), dates.size);
+  const bonus = bonusDates(trainingDates(state, weekStart(date)));
+  let delta = dayShift(bonus.has(date), bonus.size);
 
   // Rest days never drop below the safety floor.
   if (delta < 0 && state.profile) {
