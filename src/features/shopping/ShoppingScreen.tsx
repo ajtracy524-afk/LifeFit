@@ -112,7 +112,7 @@ export function ShoppingScreen() {
             emoji="🛒"
             title="Deine Liste ist leer"
             text="Plane deine Mahlzeiten – alle Zutaten landen dann automatisch hier, zusammengefasst und nach Supermarkt sortiert."
-            action={<Button onClick={() => navigate('nutrition', { view: 'week', date: week === thisWeek ? undefined : week })}>Zum Wochenplan</Button>}
+            action={<Button onClick={() => navigate('nutrition', { view: 'week', date: week === thisWeek ? undefined : week })}>Woche planen</Button>}
           />
         </Card>
       ) : remaining === 0 ? (

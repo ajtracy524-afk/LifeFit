@@ -377,3 +377,32 @@
   font-size: 14px;
   cursor: pointer;
 }
+
+/* ---------- Next action (one clear step for today) ---------- */
+.nextAction {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nextAction .eyebrow {
+  margin-bottom: 0;
+}
+
+.nextTitle {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.nextButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.statusBudget {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}

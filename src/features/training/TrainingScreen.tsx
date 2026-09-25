@@ -17,6 +17,7 @@ import { Icon } from '../../components/ui/Icon';
 import { ProgressBar } from '../../components/ui/Progress';
 import { estimateMinutes } from './trainingUtils';
 import { WorkoutPlanSheet } from './WorkoutPlanSheet';
+import { CoachCard } from '../today/CoachCard';
 import styles from './training.module.css';
 
 export function TrainingScreen() {
@@ -29,7 +30,7 @@ export function TrainingScreen() {
   // Incl. skipped sessions – the week shows what was planned and what changed.
   const week = useMemo(
     () => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts).filter((s) => s.originalDate >= startDate || s.date >= startDate),
-    [state.training, state.workoutOverrides, state.workouts, start, startDate],
+    [state.training, state.workoutOverrides, state.workouts, state.dayContexts, start, startDate],
   );
   const schedule = week.filter((s) => s.status !== 'skipped');
   const [planning, setPlanning] = useState<string | null>(null);
@@ -130,6 +131,9 @@ export function TrainingScreen() {
       )}
 
       <WorkoutPlanSheet session={planningSession} week={week} today={t} onClose={() => setPlanning(null)} />
+
+      {/* Training hints belong here, next to the plan they refer to. */}
+      <CoachCard domains={['training']} title="Hinweise zum Training" />
 
       <Section title="Andere Einheit starten">
         <Card padded={false}>

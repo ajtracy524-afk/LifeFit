@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { DISCLAIMER, runEngine, type EngineAction, type Recommendation } from '../../domain/engine';
+import { DISCLAIMER, runEngine, type EngineAction, type EngineDomain, type Recommendation } from '../../domain/engine';
 import { today } from '../../domain/dates';
 import { navigate } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
@@ -11,22 +11,28 @@ import styles from './coach.module.css';
 
 const VISIBLE = 3;
 
-/** Recommendations of the Adaptive Fitness Engine on the "Heute" screen. */
-export function CoachCard() {
+/**
+ * Recommendations of the adaptive engine for ONE area of the app. Each screen
+ * shows only what belongs to it; recommendations come with actions that run
+ * through the cascade where they change the plan.
+ */
+export function CoachCard({ domains, title = 'Für dich' }: { domains: EngineDomain[]; title?: string }) {
   const state = useAppState();
   const t = today();
   const hour = new Date().getHours();
   const [expanded, setExpanded] = useState(false);
+  const key = domains.join();
 
-  const recs = useMemo(() => runEngine(state, { date: t, hour, limit: 6 }), [state, t, hour]);
+  // `key` stands in for the `domains` array (a new array each render).
+  const recs = useMemo(() => runEngine(state, { date: t, hour, limit: 6, domains }), [state, t, hour, key]);
 
-  // Available time is set per day on "Heute" (time budget) – no second time control here.
+  // No data, no recommendation – the card simply does not appear.
   if (recs.length === 0) return null;
   const visible = expanded ? recs : recs.slice(0, VISIBLE);
 
   return (
     <Card className={styles.card}>
-      <CardHeader title="Für dich heute" meta={recs.length > 0 ? `${recs.length}` : undefined} />
+      <CardHeader title={title} meta={recs.length > 1 ? `${recs.length}` : undefined} />
 
       <ul className={styles.list}>
         {visible.map((r) => (
@@ -39,7 +45,7 @@ export function CoachCard() {
           {expanded ? 'Weniger anzeigen' : `${recs.length - VISIBLE} weitere`}
         </button>
       )}
-      <p className={styles.disclaimer}>{DISCLAIMER}</p>
+      {domains.some((d) => d !== 'training') && <p className={styles.disclaimer}>{DISCLAIMER}</p>}
     </Card>
   );
 }

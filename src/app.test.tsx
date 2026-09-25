@@ -444,6 +444,32 @@ describe('weekly autopilot (F1)', () => {
   });
 });
 
+describe('Heute is focused (next action)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 8, 0)); // Monday 08:00
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('shows one next action; "Gegessen" logs the due meal and the next action moves on', async () => {
+    const plan = ['breakfast', 'lunch', 'dinner'].map((slot, i) => ({
+      id: `m${i}`, date: '2026-09-21', slot, recipeId: ['overnight-oats', 'chicken-wraps', 'bolognese'][i], servings: 1, status: 'planned', source: 'suggest',
+    }));
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: plan }));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+
+    const card = () => container.querySelector('[aria-label="Nächste Aktion"]')?.textContent ?? '';
+    expect(card()).toMatch(/Frühstück: Protein Overnight Oats/);
+    expect(text()).not.toMatch(/Hinweise zum Training/);
+
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Nächste Aktion"] button')!.click());
+    expect(store.getState().plannedMeals.find((m) => m.id === 'm0')!.status).toBe('eaten');
+    // Monday is a training day → training is next.
+    expect(card()).toMatch(/Training starten/);
+  });
+});
+
 describe('undo safety', () => {
   it('an outdated "Rückgängig" does not drop later changes', async () => {
     localStorage.setItem(KEY, JSON.stringify(completeState()));

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { addDays, isoWeekNumber, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
 import { dayTotals, plannedMealMacros, sumMacros } from '../../domain/nutrition';
 import { SLOT_ORDER, slotShare } from '../../domain/planner';
-import { activeWorkouts } from '../../domain/training';
+import { activeWorkouts, estimateMinutes } from '../../domain/training';
 import { DAY_MODE_LABEL, excludedSlots, TIME_BUDGETS } from '../../domain/timeBudget';
 import { dayContextFor, dayTargetFor, weekShopping } from '../../domain/week';
 import type { ISODate, LogEntry, MealSlot, PlannedMeal } from '../../domain/types';
@@ -22,6 +22,7 @@ import { LogFoodSheet, type LogTarget } from './LogFoodSheet';
 import { MealRow } from './MealRow';
 import { MealSheet } from './MealSheet';
 import { RecipePicker, type PickerTarget } from './RecipePicker';
+import { CoachCard } from '../today/CoachCard';
 import { TimeBudgetControl } from '../today/TimeBudgetControl';
 import { WeekAutopilot } from '../plan/WeekAutopilot';
 import styles from './nutrition.module.css';
@@ -103,7 +104,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
 
       {date >= today() && (
         <Card>
-          <TimeBudgetControl date={date} />
+          <TimeBudgetControl date={date} withMode />
         </Card>
       )}
 
@@ -125,6 +126,9 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
           </div>
         </Card>
       )}
+
+      {/* Plan suggestions for today – each one is a plan change (cascade), no tips. */}
+      {date === today() && <CoachCard domains={['nutrition', 'shopping', 'body']} title="Vorschläge für deinen Plan" />}
 
       {slots.map((slot) => {
         const slotMeals = meals.filter((m) => m.slot === slot);
@@ -193,7 +197,7 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
   const days = weekDays(start);
   const end = days[6]!;
   const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
-  const training = useMemo(() => activeWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, start]);
+  const training = useMemo(() => activeWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, state.dayContexts, start]);
   const shoppingCount = useMemo(() => weekShopping(state, start, t).filter((i) => i.state === 'open').length, [state, start, t]);
 
   // Slots eaten out are free on purpose – not "open".
@@ -232,8 +236,8 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
       {!isPastWeek && openSlots > 0 && (
         <Card tone="accent" className={styles.suggestCard}>
           <div>
-            <strong>{openSlots === days.filter((d) => d >= t).length * slots.length ? 'Deine Woche ist noch leer' : `${openSlots} Mahlzeiten offen`}</strong>
-            <p className={styles.muted}>Trainingstage, Zeit und Ausnahmen angeben – Essen, Training und Einkauf passen dann zusammen.</p>
+            <strong>{openSlots === days.filter((d) => d >= t).length * slots.length ? 'Noch keine Woche geplant' : `${openSlots} ${openSlots === 1 ? 'Mahlzeit' : 'Mahlzeiten'} offen`}</strong>
+            <p className={styles.muted}>Plane deine Woche in etwa 1 Minute – Essen, Training und Einkauf passen dann zusammen.</p>
           </div>
           <Button icon="sparkle" onClick={() => setPlanning(true)}>
             Woche planen
@@ -260,7 +264,8 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
               </a>
               {session && (
                 <span className={styles.trainingTag}>
-                  <Icon name="dumbbell" size={14} /> {session.template.name}
+                  <Icon name="dumbbell" size={14} /> {session.template.name} · ~{estimateMinutes(session.template)} min
+                  {session.status === 'moved' ? ' · verschoben' : ''}
                 </span>
               )}
               {dayContextFor(state, d).timeBudget !== 'normal' && dayContextFor(state, d).mode === 'normal' && (

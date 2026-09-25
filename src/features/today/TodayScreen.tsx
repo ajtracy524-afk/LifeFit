@@ -4,18 +4,17 @@ import { dayTotals } from '../../domain/nutrition';
 import { SLOT_ORDER } from '../../domain/planner';
 import { goalProgress, latestWeight } from '../../domain/progress';
 import { isCompletedOn, nextScheduled, resolveWorkouts } from '../../domain/training';
+import { nextAction } from '../../domain/today';
 import { dayTargetFor, weekShopping } from '../../domain/week';
 import type { MealSlot, WorkoutTemplate } from '../../domain/types';
-import { fmt, formatDateLong, formatDuration, greeting, relativeDay, weekdayShort } from '../../lib/format';
+import { fmt, formatDateLong, greeting, relativeDay, weekdayShort } from '../../lib/format';
 import { href, navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
-import { withUndo } from '../../lib/undo';
-import { markEaten, startWorkoutFrom } from '../../store/actions';
+import { startWorkoutFrom } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen } from '../../components/Screen';
 import { Button } from '../../components/ui/Button';
 import { Card, CardHeader, LinkCard } from '../../components/ui/Card';
-import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { MacroRow, ProgressBar, ProgressRing } from '../../components/ui/Progress';
 import { Sheet } from '../../components/ui/Sheet';
@@ -27,6 +26,7 @@ import { estimateMinutes } from '../training/trainingUtils';
 import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
 import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { CoachCard } from './CoachCard';
+import { NextActionCard } from './NextActionCard';
 import { TimeBudgetControl } from './TimeBudgetControl';
 import styles from './today.module.css';
 
@@ -49,7 +49,7 @@ export function TodayScreen() {
   const extrasKcal = state.logEntries.filter((e) => e.date === t && !e.plannedMealId).reduce((s, e) => s + e.macros.kcal, 0);
   const weekHasMeals = state.plannedMeals.some((m) => m.date >= t && m.date <= addDays(start, 6));
 
-  const week = useMemo(() => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, start]);
+  const week = useMemo(() => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, state.dayContexts, start]);
   const schedule = week.filter((s) => s.status !== 'skipped');
   const [planOpen, setPlanOpen] = useState(false);
   const [planningWeek, setPlanningWeek] = useState<string | null>(null);
@@ -72,6 +72,8 @@ export function TodayScreen() {
   const isSunday = weekdayIndex(t) === 6;
   const nextWeekStart = addDays(start, 7);
   const nextWeekPlanned = state.plannedMeals.some((m) => m.date >= nextWeekStart && m.date <= addDays(nextWeekStart, 6));
+
+  const action = nextAction(state, t, new Date().getHours());
 
   const logSlot = (): MealSlot => {
     const h = new Date().getHours();
@@ -120,22 +122,6 @@ export function TodayScreen() {
         <Icon name="calendar" size={16} /> Woche planen
       </button>
 
-      <Card>
-        <TimeBudgetControl date={t} />
-      </Card>
-
-      {running && (
-        <Card tone="accent" className={styles.inlineCard}>
-          <div>
-            <strong>{running.name} läuft</strong>
-            <p className={styles.muted}>Seit {formatDuration(Date.now() - new Date(running.startedAt).getTime())}</p>
-          </div>
-          <Button icon="play" onClick={() => navigate('session')}>
-            Fortsetzen
-          </Button>
-        </Card>
-      )}
-
       {isSunday && !nextWeekPlanned && (
         <Card tone="accent" className={styles.inlineCard}>
           <div>
@@ -170,27 +156,20 @@ export function TodayScreen() {
               <MacroRow label="Fett" value={totals.fat} target={target.fat} color="var(--fat)" />
             </div>
           )}
+          <div className={styles.statusBudget}>
+            <TimeBudgetControl date={t} />
+          </div>
         </Card>
       )}
 
-      {/* Adaptive engine */}
-      <CoachCard />
+      {/* The one next action of the day */}
+      <NextActionCard action={action} onPlanWeek={setPlanningWeek} onStart={begin} onOpenMeal={setOpenMeal} />
+
+      {/* Only safety notices belong on "Heute" – training hints live in Training, plan suggestions in Ernährung. */}
+      <CoachCard domains={['safety']} />
 
       {/* Meals */}
-      {!weekHasMeals ? (
-        <Card>
-          <EmptyState
-            emoji="🗓️"
-            title="Deine Woche ist noch leer"
-            text="Wir schlagen dir passende Mahlzeiten vor – die Einkaufsliste entsteht automatisch."
-            action={
-              <Button icon="sparkle" onClick={() => setPlanningWeek(start)}>
-                Woche planen
-              </Button>
-            }
-          />
-        </Card>
-      ) : (
+      {weekHasMeals && (
         <Card padded={false} className={styles.mealsCard}>
           <div className={styles.cardPad}>
             <CardHeader title="Mahlzeiten" meta={meals.length ? `${meals.filter((m) => m.status === 'eaten').length} / ${meals.length}` : undefined} />
@@ -201,16 +180,6 @@ export function TodayScreen() {
             meals.map((m) => (
               <div key={m.id}>
                 <MealRow meal={m} label={slotLabel(m.slot)} highlight={m.id === nextMeal?.id} onOpen={() => setOpenMeal(m.id)} />
-                {m.id === nextMeal?.id && (
-                  <div className={styles.nextActions}>
-                    <Button size="sm" icon="check" onClick={() => withUndo(`${slotLabel(m.slot)} erfasst`, () => markEaten(m.id))}>
-                      Gegessen
-                    </Button>
-                    <Button size="sm" variant="secondary" icon="swap" onClick={() => setOpenMeal(m.id)}>
-                      Details & Tauschen
-                    </Button>
-                  </div>
-                )}
               </div>
             ))
           )}
@@ -252,8 +221,9 @@ export function TodayScreen() {
                     {todaysSession.template.exercises.length} Übungen · ~{estimateMinutes(todaysSession.template)} min
                   </p>
                 </div>
-                {!running && (
-                  <Button icon="play" onClick={() => begin(todaysSession.template)}>
+                {/* The start button lives in the next-action card when training is next. */}
+                {!running && action.kind !== 'start_training' && (
+                  <Button variant="secondary" icon="play" onClick={() => begin(todaysSession.template)}>
                     Starten
                   </Button>
                 )}

@@ -60,6 +60,7 @@ export function runEngine(state: AppState, options: EngineOptions): Recommendati
   const dismissed = state.coach?.dismissed ?? {};
   return applyGuardrails(deduped, ctx.safety, ctx.date)
     .filter((r) => r.kind === 'safety' || !dismissed[r.id])
+    .filter((r) => !options.domains || options.domains.includes(r.domain))
     .map((r, i) => ({ r, i }))
     .sort((a, b) => PRIORITY_RANK[a.r.priority] - PRIORITY_RANK[b.r.priority] || a.i - b.i)
     .map(({ r }) => r)

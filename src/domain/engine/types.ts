@@ -67,6 +67,11 @@ export interface EngineOptions {
   pantry?: string[];
   /** Maximum number of recommendations. Default 5. */
   limit?: number;
+  /**
+   * Only recommendations of these domains – each screen shows what belongs to
+   * it (training hints in Training, plan changes in Ernährung, safety on Heute).
+   */
+  domains?: EngineDomain[];
 }
 
 export type SafetyFlag = 'minor' | 'underweight_deficit' | 'rapid_loss' | 'very_low_intake';
