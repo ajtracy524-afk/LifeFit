@@ -31,8 +31,9 @@ export function servingsForSlot(recipe: Recipe, slot: MealSlot, target: Macros, 
 
 /**
  * Weights of the week score (lower = better). All terms are trade-offs, none is
- * a hard rule: fewer ingredients only win where nutrition and variety allow it.
- * Calories always fit because each day's servings are scaled to the target.
+ * a hard rule. Rough priority (hard filters for diet/allergens come first and
+ * are never scored): calories (always hit via servings) → protein → time
+ * budget → variety → pantry use → ingredient overlap → package leftovers.
  */
 export const PLANNER_WEIGHTS = {
   /** Relative protein shortfall per day (0 … 1). */
@@ -52,6 +53,12 @@ export const PLANNER_WEIGHTS = {
   packageWaste: 0.12,
   /** F5: per 10 min of preparation beyond the day's time budget. */
   timeOver: 0.4,
+  /**
+   * F2: perishable pantry stock left unused by the week (per food, as a share
+   * of the stock). Makes the planner prefer plans that use what is at home –
+   * a preference, not an obligation.
+   */
+  pantryUnused: 0.12,
 };
 
 export type PlannerWeights = typeof PLANNER_WEIGHTS;
@@ -96,6 +103,8 @@ export interface WeekScore {
   packageWaste: number;
   /** Preparation time beyond the days' budgets (F5). */
   time: number;
+  /** Perishable pantry stock the week does not use (F2). */
+  pantryUnused: number;
   /** Foods that have to be bought for the week. */
   foodsToBuy: string[];
 }
@@ -222,7 +231,23 @@ export function scoreWeek(
   const newFoods = W.newFood * foodsToBuy.length;
   const packageWaste = W.packageWaste * waste;
 
-  return { total: nutrition + variety + newFoods + packageWaste + time, nutrition, variety, newFoods, packageWaste, time, foodsToBuy };
+  let unused = 0;
+  for (const [foodId, stock] of Object.entries(pantry)) {
+    if (stock <= 0 || !PERISHABLE.has(getFood(foodId)?.category ?? '')) continue;
+    unused += Math.max(0, stock - (need.get(foodId) ?? 0)) / stock;
+  }
+  const pantryUnused = W.pantryUnused * unused;
+
+  return {
+    total: nutrition + variety + newFoods + packageWaste + time + pantryUnused,
+    nutrition,
+    variety,
+    newFoods,
+    packageWaste,
+    time,
+    pantryUnused,
+    foodsToBuy,
+  };
 }
 
 /**

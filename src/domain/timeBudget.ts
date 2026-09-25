@@ -1,4 +1,4 @@
-import type { TimeBudget } from './types';
+import type { DayContext, TimeBudget } from './types';
 
 /**
  * F5 – time budget per day. One place defines what "wenig / normal / viel
@@ -26,3 +26,12 @@ export const TIME_BUDGET_ORDER: TimeBudget[] = ['low', 'normal', 'high'];
 export const LEFTOVER_PREP_MIN = 5;
 export const LEFTOVER_DAYS = 2;
 export const MEAL_PREP_TAG = 'Meal Prep';
+
+/**
+ * The budget that actually applies to a day: "Busy" and "Reise" mean little
+ * time, whatever budget was set – one time model, no second set of rules.
+ */
+export function effectiveTimeBudget(context: DayContext | undefined): TimeBudget {
+  if (!context) return 'normal';
+  return context.mode === 'busy' || context.mode === 'travel' ? 'low' : context.timeBudget;
+}

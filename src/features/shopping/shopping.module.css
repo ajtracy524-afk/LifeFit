@@ -168,3 +168,33 @@
   display: flex;
   gap: 10px;
 }
+
+/* ---------- Pantry correction (F2) ---------- */
+.pantry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.pantryRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.pantryRow > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.pantryEmpty {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-weight: 650;
+  font-size: 13px;
+  cursor: pointer;
+}

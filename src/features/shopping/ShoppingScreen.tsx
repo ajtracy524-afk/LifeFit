@@ -1,17 +1,17 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { addDays, isoWeekNumber, today, weekStart } from '../../domain/dates';
 import { groupByCategory, shoppingRange, type ShoppingListItem } from '../../domain/shopping';
-import { weekShopping } from '../../domain/week';
+import { pantryEstimate, weekShopping } from '../../domain/week';
 import { formatGrams, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { href, navigate, useRoute } from '../../lib/router';
 import { showToast } from '../../lib/toast';
-import { withUndo } from '../../lib/undo';
+import { applyWithUndo, withUndo } from '../../lib/undo';
 import { addManualItem, removeManualItem, setShoppingStatus, toggleManualItem } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen, Section } from '../../components/Screen';
 import { Button, IconButton } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { Segmented } from '../../components/ui/Controls';
+import { Field, Segmented, parseNumber } from '../../components/ui/Controls';
 import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { ProgressBar } from '../../components/ui/Progress';
@@ -195,6 +195,7 @@ export function ShoppingScreen() {
                 </li>
               ))}
             </ul>
+            <PantryEditor key={detail.foodId} foodId={detail.foodId} name={detail.name} onDone={() => setDetail(null)} />
             <div className={styles.detailActions}>
               {detail.state === 'have' ? (
                 <Button
@@ -224,6 +225,47 @@ export function ShoppingScreen() {
         )}
       </Sheet>
     </Screen>
+  );
+}
+
+/**
+ * F2: the pantry amount is an estimate – here the user corrects it. Goes
+ * through the cascade: shopping is recomputed, the plan stays, undo works.
+ */
+function PantryEditor({ foodId, name, onDone }: { foodId: string; name: string; onDone: () => void }) {
+  const state = useAppState();
+  const current = pantryEstimate(state)[foodId] ?? 0;
+  const [value, setValue] = useState(current ? String(current) : '');
+  const grams = parseNumber(value);
+  const valid = value.trim() === '' || (Number.isFinite(grams) && grams >= 0 && grams <= 20000);
+
+  const save = (quantityG: number | null) => {
+    if (applyWithUndo({ type: 'setPantry', foodId, quantityG })) onDone();
+  };
+
+  return (
+    <div className={styles.pantry}>
+      <p className={styles.detailCaption}>Vorrat{current ? ` · ca. ${formatGrams(current)} da` : ' · nichts erfasst'}</p>
+      <div className={styles.pantryRow}>
+        <Field
+          label={`${name} im Vorrat`}
+          inputMode="numeric"
+          suffix="g"
+          placeholder="0"
+          value={value}
+          error={valid ? undefined : 'Bitte eine Menge in Gramm angeben.'}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <Button variant="secondary" disabled={!valid} onClick={() => save(value.trim() === '' ? null : Math.round(grams))}>
+          Speichern
+        </Button>
+      </div>
+      {current > 0 && (
+        <button type="button" className={styles.pantryEmpty} onClick={() => save(null)}>
+          Ist aufgebraucht
+        </button>
+      )}
+    </div>
   );
 }
 

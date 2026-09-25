@@ -342,6 +342,47 @@ describe('move / skip a workout (end to end)', () => {
   });
 });
 
+describe('pantry in the shopping list (F2)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 10, 0));
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('ticking off fills the pantry, the detail sheet corrects it, undo restores', async () => {
+    const lunch = { id: 'l', date: '2026-09-23', slot: 'lunch', recipeId: 'chicken-rice-bowl', servings: 1, status: 'planned', source: 'suggest' };
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: [lunch] }));
+    window.history.replaceState(null, '', '/#/shopping');
+    const store = await startApp();
+    const { pantryEstimate } = await import('./domain/week');
+
+    // Tick off chicken (180 g needed) → one 400 g pack in the pantry.
+    await click('Hähnchenbrust');
+    expect(pantryEstimate(store.getState()).chicken).toBe(400);
+
+    // Correct the amount in the detail sheet (the bought item sits under "Erledigt").
+    await click('Erledigt');
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Wofür wird Hähnchenbrust gebraucht?"]')!.click());
+    expect(text()).toContain('ca. 400 g da');
+    const before = store.getState();
+    await type('Hähnchenbrust im Vorrat', '100');
+    await click('Speichern');
+    expect(pantryEstimate(store.getState()).chicken).toBe(100);
+    expect(text()).toMatch(/Vorrat: Hähnchenbrust aktualisiert/);
+    // 180 g needed, 100 g there → back on the list with the missing amount.
+    expect(text()).toMatch(/Hähnchenbrust\s*80 g/);
+
+    await click('Rückgängig');
+    expect(store.getState()).toBe(before);
+  });
+});
+
 describe('error boundary', () => {
   it('shows a fallback with "Neu laden" instead of a blank page', async () => {
     vi.doMock('./features/onboarding/Onboarding', () => ({

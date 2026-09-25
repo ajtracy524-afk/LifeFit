@@ -1,7 +1,7 @@
 import { getExercise, getProgram } from '../data/exercises';
 import { newId } from '../lib/id';
 import { addDays, daysBetween, weekDays } from './dates';
-import { TIME_BUDGETS } from './timeBudget';
+import { effectiveTimeBudget, TIME_BUDGETS } from './timeBudget';
 import type { DayContext, ISODate, PersonalRecord, PlanSlotId, TemplateExercise, TrainingSetup, Workout, WorkoutOverride, WorkoutSet, WorkoutTemplate } from './types';
 
 export interface ScheduledWorkout {
@@ -155,7 +155,7 @@ export function resolveWorkouts(
  * time (main lifts stay). Date and rotation do not change.
  */
 export function templateForDay(template: WorkoutTemplate, context: DayContext | undefined): WorkoutTemplate {
-  const minutes = context ? TIME_BUDGETS[context.timeBudget].trainingMin : undefined;
+  const minutes = context ? TIME_BUDGETS[effectiveTimeBudget(context)].trainingMin : undefined;
   return minutes && estimateMinutes(template) > minutes ? fitTemplateToTime(template, minutes) : template;
 }
 

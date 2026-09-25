@@ -4,11 +4,10 @@
  */
 import { getFood } from '../data/foods';
 import { findTemplate } from '../data/exercises';
-import { addDays, today, weekDays, weekStart } from '../domain/dates';
+import { addDays, today, weekStart } from '../domain/dates';
 import { calculateTargets, foodMacros, logFromMeal, roundMacros } from '../domain/nutrition';
-import { seededRandom, suggestWeek } from '../domain/planner';
 import { activeWorkouts, createWorkout, detectRecords, workoutVolume } from '../domain/training';
-import { applyWeekChange, dayContextFor, dayTargetFor, pantryEstimate, type CascadeResult, type WeekChange } from '../domain/week';
+import { applyWeekChange, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
 import { currentWeight } from '../domain/progress';
 import { newId } from '../lib/id';
 import type {
@@ -48,53 +47,20 @@ export function completeOnboarding(input: OnboardingResult): void {
     // Existing data (e.g. from an incomplete earlier setup) is kept; for a new user these lists are empty.
     s.targets = [...s.targets.filter((x) => x.validFrom !== t), { id: newId(), validFrom: t, method: 'formula', ...input.target }];
     s.weights = [...s.weights.filter((w) => w.date !== t), { id: newId(), date: t, kg: input.weightKg }];
-    const dates = remainingDays(weekStart(t));
-    s.plannedMeals.push(
-      ...suggestWeek({
-        dates,
-        slots: input.nutritionProfile.slots,
-        target: input.target,
-        targetFor: (d) => dayTargetFor(s, d),
-        profile: input.nutritionProfile,
-        existing: s.plannedMeals.filter((m) => dates.includes(m.date)),
-        pantry: pantryEstimate(s),
-        timeBudgetFor: (d) => dayContextFor(s, d).timeBudget,
-        random: seededRandom(dates[0] ?? t),
-      }),
-    );
+    // Same central planner as "Woche vorschlagen" and the weekly check-in.
+    fillWeek(s, weekStart(t), t);
   });
-}
-
-function remainingDays(start: ISODate): ISODate[] {
-  const t = today();
-  return weekDays(start).filter((d) => d >= t);
 }
 
 // ---------- Meal planning ----------
 
 /** Fills empty slots from today (or the week start, if later) to Sunday. Returns the number of meals added. */
 export function suggestMealsForWeek(start: ISODate): number {
-  const s = getState();
-  const dates = remainingDays(start);
-  const target = dayTargetFor(s, dates[0] ?? start);
-  if (!target || !s.nutritionProfile || dates.length === 0) return 0;
-  const added = suggestWeek({
-    dates,
-    slots: s.nutritionProfile.slots,
-    target,
-    targetFor: (d) => dayTargetFor(s, d),
-    profile: s.nutritionProfile,
-    // The whole week counts: earlier days are context for foods, variety and leftovers.
-    existing: s.plannedMeals.filter((m) => m.date >= start && m.date <= addDays(start, 6)),
-    // Ingredients at home are reused; same week + same plan → same suggestion.
-    pantry: pantryEstimate(s),
-    timeBudgetFor: (d) => dayContextFor(s, d).timeBudget,
-    random: seededRandom(start),
-  });
+  let added = 0;
   update((d) => {
-    d.plannedMeals.push(...added);
+    added = fillWeek(d, start, today()).length;
   });
-  return added.length;
+  return added;
 }
 
 export function addPlannedMeal(date: ISODate, slot: MealSlot, recipeId: string, servings: number): PlannedMeal {

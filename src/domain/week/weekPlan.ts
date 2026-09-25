@@ -42,18 +42,24 @@ export interface WeekPlan {
 }
 
 /**
- * Shopping list of a week: gross need from the plan minus pantry. Pantry that
- * earlier meals (today … day before the range) will use is reserved first.
+ * Pantry that is still free on `from`: the estimate minus what planned meals
+ * from today until the day before will use. Shopping and planner both use
+ * this, so a later week never counts stock the current week still needs.
  */
-export function weekShopping(state: AppState, week: ISODate, today: ISODate, estimate = pantryEstimate(state)): ShoppingListItem[] {
-  const { from, to } = shoppingRange(week, today);
+export function availablePantry(state: AppState, from: ISODate, today: ISODate, estimate = pantryEstimate(state)): Record<string, number> {
   const available = { ...estimate };
   if (from > today) {
     for (const earlier of buildShoppingList(state.plannedMeals, today, addDays(from, -1))) {
       if (available[earlier.foodId] !== undefined) available[earlier.foodId] = Math.max(0, available[earlier.foodId]! - earlier.grams);
     }
   }
-  return applyStock(buildShoppingList(state.plannedMeals, from, to), available, state.shopping[week]?.purchased ?? {});
+  return available;
+}
+
+/** Shopping list of a week: gross need from the plan minus free pantry and purchases. */
+export function weekShopping(state: AppState, week: ISODate, today: ISODate, estimate = pantryEstimate(state)): ShoppingListItem[] {
+  const { from, to } = shoppingRange(week, today);
+  return applyStock(buildShoppingList(state.plannedMeals, from, to), availablePantry(state, from, today, estimate), state.shopping[week]?.purchased ?? {});
 }
 
 /** Open generated + open manual items – the number on the Einkauf tab. */

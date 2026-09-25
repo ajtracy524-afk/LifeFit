@@ -4,12 +4,13 @@ import { newId } from '../../lib/id';
 import { weekdayLong, weekdayShort } from '../../lib/format';
 import { addDays, toISODate, weekDays, weekStart, weekdayIndex } from '../dates';
 import { logFromMeal, plannedMealMacros, recipeMacros, roundServings, sumMacros } from '../nutrition';
-import { effectivePrepMin, seededRandom, SLOT_ORDER, suggestWeek } from '../planner';
-import { TIME_BUDGETS } from '../timeBudget';
+import { effectivePrepMin, SLOT_ORDER } from '../planner';
+import { effectiveTimeBudget, TIME_BUDGETS } from '../timeBudget';
 import { estimateMinutes, resolveWorkouts } from '../training';
 import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, ShoppingWeekState } from '../types';
 import { dayTargetFor } from './dayTargets';
-import { addToPantry, pantryEstimate, purchaseAmount, setPantryQuantity } from './pantry';
+import { addToPantry, purchaseAmount, setPantryQuantity } from './pantry';
+import { planMeals, weekMeals } from './planning';
 import { DEFAULT_DAY_CONTEXT, dayContextFor, weekShopping } from './weekPlan';
 
 /**
@@ -130,7 +131,7 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
       if (merged.timeBudget === DEFAULT_DAY_CONTEXT.timeBudget && merged.mode === DEFAULT_DAY_CONTEXT.mode) delete s.dayContexts[change.date];
       else s.dayContexts[change.date] = merged;
       // Training follows automatically (resolveWorkouts reads the context); meals are re-planned here.
-      const replaced = merged.timeBudget !== before.timeBudget ? replanForTimeBudget(s, change.date, today) : [];
+      const replaced = effectiveTimeBudget(merged) !== effectiveTimeBudget(before) ? replanForTimeBudget(s, change.date, today) : [];
       return { ok: true, title: `${weekdayLong(weekdayIndex(change.date))}: ${TIME_BUDGETS[merged.timeBudget].label}`, replaced };
     }
 
@@ -234,15 +235,13 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
  * because the new picks fill exactly the space of the old ones.
  */
 function replanForTimeBudget(s: AppState, date: ISODate, today: ISODate): Replacement[] {
-  const target = dayTargetFor(s, date);
-  if (date < today || !target || !s.nutritionProfile) return [];
-  const budget = dayContextFor(s, date).timeBudget;
-  const ws = weekStart(date);
-  const weekMeals = s.plannedMeals.filter((m) => m.date >= ws && m.date <= addDays(ws, 6) && m.status !== 'skipped');
+  if (date < today || !dayTargetFor(s, date) || !s.nutritionProfile) return [];
+  const budget = effectiveTimeBudget(dayContextFor(s, date));
+  const week = weekMeals(s, date);
   const cooked = new Map<string, ISODate[]>();
-  for (const m of weekMeals) cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]);
+  for (const m of week) cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]);
 
-  const tooLong = weekMeals.filter((m) => {
+  const tooLong = week.filter((m) => {
     if (m.date !== date || m.status !== 'planned' || m.source !== 'suggest' || m.servingsLocked) return false;
     const recipe = getRecipe(m.recipeId);
     return !!recipe && effectivePrepMin(recipe, date, cooked) > TIME_BUDGETS[budget].maxPrepMin;
@@ -252,17 +251,15 @@ function replanForTimeBudget(s: AppState, date: ISODate, today: ISODate): Replac
   const ids = new Set(tooLong.map((m) => m.id));
   // The new picks take exactly the calorie space of the replaced meals – the
   // day total does not change, only what is cooked.
-  const others = weekMeals.filter((m) => m.date === date && !ids.has(m.id));
-  const space = sumMacros(tooLong.map(plannedMealMacros)).kcal;
-  const picks = suggestWeek({
+  const others = week.filter((m) => m.date === date && !ids.has(m.id));
+  const dayKcal = sumMacros([...others, ...tooLong].map(plannedMealMacros)).kcal;
+  const picks = planMeals(s, {
     dates: [date],
+    today,
+    seed: `${date}:${budget}`,
     slots: SLOT_ORDER.filter((slot) => tooLong.some((m) => m.slot === slot)),
-    target: { ...target, kcal: sumMacros(others.map(plannedMealMacros)).kcal + space },
-    profile: s.nutritionProfile,
-    existing: weekMeals.filter((m) => !ids.has(m.id)),
-    pantry: pantryEstimate(s),
-    timeBudgetFor: (d) => dayContextFor(s, d).timeBudget,
-    random: seededRandom(`${date}:${budget}`),
+    existing: week.filter((m) => !ids.has(m.id)),
+    targetKcalFor: () => dayKcal,
   });
 
   s.plannedMeals = [...s.plannedMeals.filter((m) => !ids.has(m.id)), ...picks];
