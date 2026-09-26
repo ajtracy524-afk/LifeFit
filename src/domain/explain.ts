@@ -7,7 +7,7 @@ import { effectivePrepMin } from './planner';
 import { postWorkoutSlot, preWorkoutSlot, sessionOn, trainingTimeFor } from './schedule';
 import { effectiveTimeBudget, LEFTOVER_PREP_MIN, TIME_BUDGETS } from './timeBudget';
 import { estimateMinutes } from './training';
-import type { AppState, ISODate, PlannedMeal } from './types';
+import type { AppState, ISODate, PlanPriority, PlannedMeal } from './types';
 import { availablePantry, dayContextFor, dayTargetFor, weekMeals, weekShopping } from './week';
 
 /**
@@ -92,6 +92,19 @@ export function explainDay(state: AppState, date: ISODate, today: ISODate): stri
 /** Small helper for the UI: "ca. 12,40 €". */
 export function formatEur(eur: number): string {
   return `ca. ${eur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+}
+
+/**
+ * Honest budget line for a planned week. The planner cannot go below what the
+ * recipes, the calorie/protein targets and variety allow – say so instead of
+ * pretending the budget was met.
+ */
+export function budgetNote(costEur: number, budgetEur: number | undefined, priority: PlanPriority): string | undefined {
+  if (budgetEur === undefined || costEur <= 0) return undefined;
+  if (costEur <= budgetEur) return `Passt in dein Budget von ${budgetEur} €.`;
+  return priority === 'save'
+    ? `Über deinem Budget von ${budgetEur} € – günstige Rezepte sind schon bevorzugt, Kalorien und Protein haben Vorrang.`
+    : `Über deinem Budget von ${budgetEur} € – mit dem Schwerpunkt „Sparen“ (Profil) wird die Woche günstiger.`;
 }
 
 /**

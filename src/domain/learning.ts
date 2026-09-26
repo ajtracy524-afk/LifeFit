@@ -127,17 +127,19 @@ export function preferenceOf(stat: PreferenceStat | undefined): Preference {
  * Context evidence (recipe@budget) is blended in by its own confidence.
  */
 export function affinityIndex(prefs: Preferences): (recipeId: string, budget: TimeBudget) => number {
-  const cache = new Map<string, number>();
+  // Called for every meal in every week score: one map per time budget, no
+  // key strings built per call (that alone was a fifth of the planner's time).
+  const cache: Partial<Record<TimeBudget, Map<string, number>>> = {};
   return (recipeId, budget) => {
-    const key = `${recipeId}@${budget}`;
-    let value = cache.get(key);
+    const byRecipe = (cache[budget] ??= new Map());
+    let value = byRecipe.get(recipeId);
     if (value === undefined) {
       const general = preferenceOf(prefs[prefKey.recipe(recipeId)]);
       const context = preferenceOf(prefs[prefKey.recipeAt(recipeId, budget)]);
       const g = general.score * general.confidence;
       const c = context.score * context.confidence;
       value = g * (1 - context.confidence) + c * context.confidence;
-      cache.set(key, value);
+      byRecipe.set(recipeId, value);
     }
     return value;
   };

@@ -414,6 +414,13 @@ export function suggestWeek({
   for (const m of existing) if (m.status !== 'skipped') markCooked(cooked, m.recipeId, m.date);
 
   const days: PlanningDay[] = [];
+  // Allowed recipes per slot – filtered once, not in every attempt.
+  const slotRecipes = new Map<MealSlot, Recipe[]>();
+  const recipesFor = (slot: MealSlot) => {
+    let list = slotRecipes.get(slot);
+    if (!list) slotRecipes.set(slot, (list = recipesForSlot(slot, profile)));
+    return list;
+  };
 
   // ---- Phase 1: day by day ----
   for (const date of dates) {
@@ -425,7 +432,7 @@ export function suggestWeek({
     // instead of blocking the whole day.
     const excluded = excludedSlotsFor(date);
     const emptySlots = slots.filter(
-      (s) => !excluded.includes(s) && !existing.some((m) => m.date === date && m.slot === s) && recipesForSlot(s, profile).length > 0,
+      (s) => !excluded.includes(s) && !existing.some((m) => m.date === date && m.slot === s) && recipesFor(s).length > 0,
     );
     if (emptySlots.length === 0) continue;
 
@@ -440,7 +447,7 @@ export function suggestWeek({
     for (let attempt = 0; attempt < 60; attempt++) {
       const picks: Recipe[] = [];
       for (const slot of emptySlots) {
-        const all = recipesForSlot(slot, profile);
+        const all = recipesFor(slot);
         const unused = all.filter((r) => !picks.includes(r));
         const options = unused.length > 0 ? unused : all;
         // Weighted random: recipes used less this week are more likely.
@@ -492,7 +499,7 @@ export function suggestWeek({
         const taken = new Set([...day.picks.filter((_, k) => k !== i).map((r) => r.id), ...day.fixed.map((m) => m.recipeId)]);
         const original = day.picks[i]!;
         let bestRecipe = original;
-        for (const alt of recipesForSlot(slot, profile)) {
+        for (const alt of recipesFor(slot)) {
           if (alt.id === original.id || taken.has(alt.id)) continue;
           day.picks[i] = alt;
           const score = scoreWeek(days, pantry, weights, context, extras).total;

@@ -5,7 +5,7 @@ import { DAY_MODE_LABEL, DAY_MODE_ORDER, TIME_BUDGET_ORDER, TIME_BUDGETS } from 
 import { estimateMinutes, trainingWeekdays } from '../../domain/training';
 import type { DayContext, DayMode, ISODate, TimeBudget } from '../../domain/types';
 import { applyWeekChange, buildWeekPlan, dayContextFor, shoppingCost, type WeekChange } from '../../domain/week';
-import { formatEur } from '../../domain/explain';
+import { budgetNote, formatEur } from '../../domain/explain';
 import { learnedTrainingDays } from '../../domain/learning';
 import { weekdayShort } from '../../lib/format';
 import { applyWithUndo } from '../../lib/undo';
@@ -69,6 +69,7 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
   const learnedDays = learnedTrainingDays(state.learning.preferences).filter((d) => dates[d]! >= t);
   const budget = state.plannerSettings.weeklyBudgetEur;
   const isCurrentWeek = dates[0]! < t;
+  const note = preview && !('error' in preview) ? budgetNote(preview.costEur, budget, state.plannerSettings.priority) : undefined;
 
   return (
     <div className={styles.checkin}>
@@ -171,8 +172,9 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
               <h3 className={styles.previewTitle}>Einkauf</h3>
               <p className={styles.muted}>
                 {preview.toBuy === 0 ? 'Alles ist schon da.' : `${preview.toBuy} Artikel – Vorrat ist schon abgezogen.`}
-                {preview.costEur > 0 ? ` ${formatEur(preview.costEur)} geschätzt${budget !== undefined ? ` (Budget ${budget} €)` : ''}.` : ''}
+                {preview.costEur > 0 ? ` ${formatEur(preview.costEur)} geschätzt.` : ''}
               </p>
+              {note && <p className={styles.muted}>{note}</p>}
             </>
           )}
         </section>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState } from '../store/persistence';
-import { explainDay, explainMeal, learnedInsights } from './explain';
+import { budgetNote, explainDay, explainMeal, learnedInsights } from './explain';
 import { learnFromEvent, type Preferences } from './learning';
 import { dayTimeline, postWorkoutSlot, preWorkoutSlot, trainingTimeFor } from './schedule';
 import { nextAction } from './today';
@@ -145,5 +145,14 @@ describe('estimated costs on the shopping list', () => {
     const cost = shoppingCost(items);
     expect(cost.unpriced).toBe(1);
     expect(cost.totalEur).toBeGreaterThan(4.4);
+  });
+});
+
+describe('budget note', () => {
+  it('says plainly whether the week fits and what would help', () => {
+    expect(budgetNote(50, undefined, 'save')).toBeUndefined();
+    expect(budgetNote(50, 60, 'balanced')).toBe('Passt in dein Budget von 60 €.');
+    expect(budgetNote(80, 60, 'balanced')).toMatch(/Sparen/);
+    expect(budgetNote(80, 60, 'save')).toMatch(/Kalorien und Protein haben Vorrang/);
   });
 });
