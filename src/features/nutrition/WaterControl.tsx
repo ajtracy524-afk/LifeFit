@@ -75,7 +75,7 @@ export function WaterControl({ date }: { date: ISODate }) {
         ) : left === 0 ? (
           `Tagesziel erreicht ✓${goal && ml > goal ? ` · ${formatLitres(ml - goal)} darüber` : ''}`
         ) : (
-          `Noch ${formatLitres(left)}`
+          `Noch ${formatLitres(left)} · ${Math.ceil(left / unit)} ${unit === 250 ? (Math.ceil(left / unit) === 1 ? 'Glas' : 'Gläser') : Math.ceil(left / unit) === 1 ? 'Flasche' : 'Flaschen'}`
         )}
       </p>
     </div>

@@ -904,6 +904,11 @@
   font-size: 13px;
   color: var(--accent);
   font-weight: 600;
+  /* A real tap target (44 px) without making the line taller than needed. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -12px 0;
 }
 
 .confirmFooter {
@@ -1020,6 +1025,12 @@
   margin-top: 10px;
   font-size: 14px;
   color: var(--text-2);
+}
+
+.budgetDay {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 .budgetDetail {

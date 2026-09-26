@@ -738,7 +738,7 @@ describe('food tracking (end to end)', () => {
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Wasser auf 0,5 L"]')!.click());
     expect(store.getState().water['2026-09-21']).toBe(500);
     expect(text()).toMatch(/0,5 L\s*\/ 2 L/);
-    expect(text()).toMatch(/Noch 1,5 L/);
+    expect(text()).toMatch(/Noch 1,5 L · 6 Gläser/);
     // The last full glass takes 250 ml back; "+250" adds one.
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml weniger"]')!.click());
     expect(store.getState().water['2026-09-21']).toBe(250);
@@ -1026,6 +1026,22 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     await startApp();
     expect(text()).toMatch(/von 10 CHF – über Budget/);
     expect(text()).toMatch(/ca\. [\d.]+–[\d.]+ CHF über Budget/);
+  });
+
+  it('Ernährung day view shows the same budget line as Heute (one calculation, one store)', async () => {
+    const settings = { priority: 'balanced', weeklyBudgetChf: 55, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' } };
+    localStorage.setItem(KEY, JSON.stringify({ ...withLog(), plannerSettings: settings }));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const line = () => text().match(/Diese Woche ca\. [\d.]+–[\d.]+ CHF von 55 CHFbisher gegessen ca\. [\d.]+–[\d.]+ CHF · frei ca\. [\d.]+–[\d.]+ CHF/)?.[0];
+    const onToday = line();
+    expect(onToday).toBeDefined();
+    await act(async () => {
+      window.location.hash = '#/nutrition';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(container.querySelector('h1')?.textContent).toMatch(/Ernährung/);
+    expect(line()).toBe(onToday);
   });
 });
 

@@ -129,6 +129,8 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
       {!isFuture && (
         <Card>
           <WaterControl date={date} />
+          {/* Same budget line (and calculation) as on Heute – week of the shown day, eaten so far up to today. */}
+          <BudgetLine week={weekStart(date)} label={weekStart(date) === weekStart(today()) ? 'Diese Woche' : `KW ${isoWeekNumber(weekStart(date))}`} progressUntil={today()} className={styles.budgetDay} />
         </Card>
       )}
 
