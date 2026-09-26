@@ -163,6 +163,17 @@ describe('camera → product lookup (BarcodeLookup)', () => {
     expect(stopTrack).toHaveBeenCalled();
   });
 
+  it('unknown barcode: "Erneut scannen" opens the camera again (a fresh stream), one lookup per scan', async () => {
+    const { src } = await renderLookup(false);
+    expect(text()).toMatch(/Du kannst den Barcode erneut scannen oder das Lebensmittel/);
+    const getUserMedia = navigator.mediaDevices.getUserMedia as ReturnType<typeof vi.fn>;
+    const before = getUserMedia.mock.calls.length;
+    await act(async () => button('Erneut scannen').click());
+    await settle(50);
+    expect(getUserMedia.mock.calls.length).toBe(before + 1);
+    expect(src.lookup).toHaveBeenCalledTimes(2);
+  });
+
   it('an unknown scanned barcode offers the manual entry with the number', async () => {
     const { onManual } = await renderLookup(false);
     expect(text()).toContain('Produkt nicht gefunden');

@@ -873,6 +873,23 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     const dialog = container.querySelector('dialog[open]')!.textContent!;
     expect(dialog).toMatch(/Zuletzt als Ersatz\s*🍗?\s*Chicken-Reis-Bowl/);
     expect(dialog).toMatch(/1× als Ersatz/);
+    // Offered once – not again under "Passend zu deinem Plan".
+    expect(dialog.match(/Chicken-Reis-Bowl/g)).toHaveLength(1);
+  });
+
+  it('a remembered replacement the user may no longer eat (now disliked) is not offered', async () => {
+    const s = withLog();
+    s.plannedMeals.push({ id: 'old', date: '2026-09-15', slot: 'lunch', recipeId: 'chicken-rice-bowl', servings: 1, status: 'eaten', source: 'swap', replacedRecipeId: 'bolognese' } as never);
+    const disliked = { ...s, nutritionProfile: { ...s.nutritionProfile, dislikedFoods: ['chicken'] } };
+    localStorage.setItem(KEY, JSON.stringify(disliked));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    await act(async () => timelineItem('Vollkorn-Pasta Bolognese').click());
+    await clickInDialog('Ersetzen');
+    const dialog = container.querySelector('dialog[open]')!.textContent!;
+    expect(dialog).not.toMatch(/Zuletzt als Ersatz/);
+    expect(dialog).not.toMatch(/Chicken-Reis-Bowl/);
+    expect(dialog).toMatch(/Passend zu deinem Plan/);
   });
 
   it('quick add sits in the header (in the layout, not floating over water or timeline) and keeps its sheet', async () => {
@@ -979,6 +996,33 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
     });
   }
 
+  it('Heute: large mg values read as g – value and reference in the same unit (Kalium 1,8 / 2 g)', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), logEntries: [{ ...scanned, micros: { potassium: 1800, calcium: 275 } }] }));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    await act(async () => open(/Mikronährstoffe anzeigen/).click());
+    const list = container.querySelector('[aria-label="Mikronährstoffe"]')!.textContent!;
+    expect(list).toMatch(/Kalium\s*1,8 g\s*\/ 2 g/);
+    expect(list).toMatch(/Calcium\s*275 mg\s*\/ 800 mg/);
+  });
+
+  it('Heute: timeline says gegessen / als Nächstes / später, shows real replacement cost and recipe cost ranges', async () => {
+    const meals = [
+      { id: 'b', date: TUE, slot: 'breakfast', recipeId: 'overnight-oats', servings: 1, status: 'skipped', source: 'suggest' },
+      { id: 'l', date: TUE, slot: 'lunch', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' },
+      { id: 'd', date: TUE, slot: 'dinner', recipeId: 'bolognese', servings: 1, status: 'planned', source: 'suggest' },
+    ];
+    const replacement = { ...scanned, replacedMealId: 'b', costChf: 2.5 };
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: meals, logEntries: [replacement] }));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const items = [...container.querySelectorAll<HTMLButtonElement>('ol button')].map((b) => b.textContent ?? '');
+    expect(items[0]).toMatch(/Frühstück · gegessen[\s\S]*Skyr[\s\S]*2\.50 CHF · statt Protein Overnight Oats/);
+    expect(items[1]).toMatch(/Mittagessen · als Nächstes[\s\S]*ca\. [\d.]+–[\d.]+ CHF/);
+    expect(items[2]).toMatch(/Abendessen · später/);
+    expect(text()).not.toMatch(/0\.00 CHF|€/);
+  });
+
   it('Heute: a day without micronutrient data says so instead of showing zeros', async () => {
     localStorage.setItem(KEY, JSON.stringify({ ...completeState(), logEntries: [planEntry] }));
     window.history.replaceState(null, '', '/#/today');
@@ -1015,7 +1059,7 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
 
     const s = store.getState();
     expect(s.logEntries).toHaveLength(1);
-    expect(s.logEntries[0]).toMatchObject({ method: 'barcode', amount: 200, macros: { kcal: 220 }, costChf: 2.5, micros: { calcium: 20 } });
+    expect(s.logEntries[0]).toMatchObject({ method: 'barcode', amount: 200, macros: { kcal: 220 }, costChf: 2.48, micros: { calcium: 20 } });
     expect(s.products['7610000000001']!.price).toMatchObject({ chf: 4.95, amount: 400 });
     expect(container.querySelector('[role="img"]')!.getAttribute('aria-label')).toMatch(/^220 von/);
     expect(text()).not.toMatch(/€/);

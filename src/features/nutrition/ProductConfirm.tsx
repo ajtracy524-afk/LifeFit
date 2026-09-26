@@ -7,7 +7,7 @@ import { pantryEstimate } from '../../domain/week';
 import { fmt, formatGrams } from '../../lib/format';
 import { newId } from '../../lib/id';
 import { useAppState } from '../../store/store';
-import { Chip, Field, parseNumber } from '../../components/ui/Controls';
+import { Chip, Field, Stepper, parseNumber } from '../../components/ui/Controls';
 import { Icon } from '../../components/ui/Icon';
 import styles from './nutrition.module.css';
 
@@ -97,6 +97,21 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat' }:
           </Chip>
         ))}
       </div>
+      {product.servingSize && purpose === 'eat' && (
+        // Counting portions (e.g. 2 Becher) – only when the product states its portion size.
+        <div className={styles.portionRow}>
+          <span>Portionen à {fmt.dec(product.servingSize)} {u}</span>
+          <Stepper
+            label="Portionen"
+            value={validAmount ? Math.round((amount / product.servingSize) * 2) / 2 : 1}
+            onChange={(n) => setAmountText(String(Math.round(n * product.servingSize! * 10) / 10))}
+            step={0.5}
+            min={0.5}
+            max={20}
+            format={(n) => (n === 1 ? '1 Portion' : `${fmt.dec(n)} Portionen`)}
+          />
+        </div>
+      )}
       <Field label={`Menge in ${u}`} inputMode="decimal" suffix={u} value={amountText} error={amountText && !validAmount ? 'Bitte eine Menge zwischen 1 und 5000 angeben.' : undefined} onChange={(e) => setAmountText(e.target.value)} className={styles.amountField} />
 
       {purpose === 'eat' && (

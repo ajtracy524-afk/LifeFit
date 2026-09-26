@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getRecipe } from '../data/recipes';
-import { emptyState, toChf } from '../store/persistence';
+import { dropLegacyEurBudget, emptyState } from '../store/persistence';
 import { catalogPrice, formatChf, formatCostRange, ingredientCostRange, MIN_PRICED_SHARE, priceLookup, recipeCostRange } from './costs';
 import { formatChfEstimate, budgetNote } from './explain';
 import { productEntry } from './foodEntry';
@@ -53,9 +53,14 @@ describe('product prices', () => {
     expect(productEntry(product(), 200)).not.toHaveProperty('costChf');
   });
 
-  it('with price: cost of the eaten amount (4.95 CHF for 400 g, 200 g eaten → 2.50 CHF, 5-Rappen steps)', () => {
+  it('with price: value of the eaten amount to the Rappen (4.95 CHF for 400 g, 200 g eaten → 2.48 CHF)', () => {
     const e = productEntry(product({ price: { chf: 4.95, amount: 400, at: `${MON}T09:00:00Z` } }), 200)!;
-    expect(e.costChf).toBe(2.5);
+    expect(e.costChf).toBe(2.48);
+    expect(formatChf(e.costChf!)).toBe('2.48 CHF');
+    // A tiny real amount is never shown as 0.00 CHF.
+    const tiny = productEntry(product({ price: { chf: 4.95, amount: 400, at: `${MON}T09:00:00Z` } }), 1)!;
+    expect(tiny.costChf).toBe(0.01);
+    expect(formatChf(0.01)).toBe('unter 0.05 CHF');
   });
 
   it('the latest real price of a linked product replaces the catalog estimate for that food', () => {
@@ -133,10 +138,22 @@ describe('weekly budget (one calculation for Heute and Ernährung)', () => {
 });
 
 describe('Swiss-only data', () => {
-  it('an old budget stored as weeklyBudgetEur is taken over as CHF – same number, no conversion', () => {
+  it('an old EUR budget is neither converted nor reused as CHF – it is dropped, the budget is back at its CHF default', () => {
     const old = { ...emptyState(), plannerSettings: { ...emptyState().plannerSettings, weeklyBudgetEur: 55 } } as unknown as AppState;
-    const s = toChf(old);
-    expect(s.plannerSettings.weeklyBudgetChf).toBe(55);
+    const s = dropLegacyEurBudget(old);
+    expect(s.plannerSettings.weeklyBudgetChf).toBeUndefined();
     expect(s.plannerSettings).not.toHaveProperty('weeklyBudgetEur');
+    // Everything else of the settings stays.
+    expect(s.plannerSettings.mealTimes).toEqual(old.plannerSettings.mealTimes);
+  });
+
+  it('a CHF budget next to a leftover EUR field keeps the CHF value – the EUR field never wins', () => {
+    const mixed = { ...emptyState(), plannerSettings: { ...emptyState().plannerSettings, weeklyBudgetChf: 70, weeklyBudgetEur: 55 } } as unknown as AppState;
+    expect(dropLegacyEurBudget(mixed).plannerSettings.weeklyBudgetChf).toBe(70);
+  });
+
+  it('data without legacy fields is returned unchanged (same object)', () => {
+    const s = emptyState();
+    expect(dropLegacyEurBudget(s)).toBe(s);
   });
 });

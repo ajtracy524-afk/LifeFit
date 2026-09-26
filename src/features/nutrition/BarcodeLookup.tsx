@@ -112,10 +112,26 @@ export function BarcodeLookup({ onFound, onManual }: Props) {
       {lookup.kind === 'not_found' && (
         <div className={styles.lookupState} role="status">
           <strong>Produkt nicht gefunden</strong>
-          <p>Zu {lookup.code} gibt es keine Daten. Du kannst es mit den Angaben der Verpackung erfassen.</p>
-          <Button variant="secondary" onClick={() => onManual(lookup.code)}>
-            Manuell erfassen
-          </Button>
+          <p>
+            Zu {lookup.code} gibt es keine Daten. Du kannst den Barcode erneut scannen oder das Lebensmittel mit den Angaben der Verpackung manuell erfassen.
+          </p>
+          <div className={styles.chipRow}>
+            {cameraAvailable() && (
+              <Button
+                variant="ghost"
+                icon="barcode"
+                onClick={() => {
+                  setLookup({ kind: 'idle' });
+                  setCamera(true);
+                }}
+              >
+                Erneut scannen
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => onManual(lookup.code)}>
+              Manuell erfassen
+            </Button>
+          </div>
         </div>
       )}
       {lookup.kind === 'error' && (

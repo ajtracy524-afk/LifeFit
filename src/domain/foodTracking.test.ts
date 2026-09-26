@@ -60,6 +60,8 @@ describe('barcode product → amount', () => {
   it('offers 100 g, one serving and the package – only if the product states them', () => {
     expect(productAmountOptions(product()).map((o) => o.amount)).toEqual([100, 40, 500]);
     expect(productAmountOptions(product({ servingSize: undefined, packageSize: undefined })).map((o) => o.amount)).toEqual([100]);
+    // A cup that is exactly one portion is offered once (as the portion), not twice.
+    expect(productAmountOptions(product({ servingSize: 140, packageSize: 140 })).map((o) => o.label)).toEqual(['100 g', '1 Portion (140 g)']);
   });
 
   it('missing macros are flagged as unknown (0 in the sum, "–" in the UI) – never guessed', () => {

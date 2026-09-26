@@ -192,7 +192,7 @@ describe('Ersetzen (replace a planned meal)', () => {
     const { weekFoodCost } = await import('../domain/week');
     const { weekStart } = await import('../domain/dates');
     expect(s.logEntries).toHaveLength(1);
-    expect(s.logEntries[0]!.costChf).toBe(1.75); // 3.90 CHF / 450 g × 200 g = 1.73 → 5-Rappen steps
+    expect(s.logEntries[0]!.costChf).toBe(1.73); // 3.90 CHF / 450 g × 200 g, to the Rappen
     expect(daySummary(s.logEntries, today).day.micros.calcium).toEqual({ value: 220, known: 1, of: 1 });
     expect(s.products[PRODUCT.barcode]!.price).toMatchObject({ chf: 3.9, amount: 450 });
     // The skipped planned meal is not in the budget any more – only the product's real cost.
@@ -204,6 +204,47 @@ describe('Ersetzen (replace a planned meal)', () => {
     actions.logProduct(today, 'snack', PRODUCT, 100, { price: { chf: 4.5, amount: 450 } });
     actions.logProduct(today, 'snack', store.getState().products[PRODUCT.barcode]!, 100);
     expect(store.getState().logEntries.map((e) => e.costChf)).toEqual([1, 1]);
+  });
+
+  it('double tap on a suggestion for an empty slot: one meal, one entry, calories once', async () => {
+    const { store, actions } = await load();
+    expect(actions.eatSuggestion(today, 'snack', 'quark-berries', 1, undefined, 'sheet-1')).toBe(true);
+    expect(actions.eatSuggestion(today, 'snack', 'quark-berries', 1, undefined, 'sheet-1')).toBe(false);
+    const s = store.getState();
+    expect(s.plannedMeals).toHaveLength(1);
+    expect(s.logEntries).toHaveLength(1);
+  });
+
+  it('double tap on "Gegessen" for a recipe replacement: the second tap changes nothing', async () => {
+    const { store, actions, undo } = await load({ plannedMeals: [meal('l', 'lunch', 'bolognese')] });
+    expect(undo.withUndo('x', () => actions.replaceWithRecipe('l', 'chili', 1, true))).toBe(true);
+    const after = store.getState();
+    expect(undo.withUndo('x', () => actions.replaceWithRecipe('l', 'chili', 1, true))).toBe(false);
+    expect(store.getState()).toBe(after);
+    expect(after.logEntries.filter((e) => e.plannedMealId === 'l')).toHaveLength(1);
+    // Learned once: the swap (+0.5) and eating it (+1) – the second tap adds nothing.
+    expect(after.learning.preferences['recipe:chili']?.pos).toBe(1.5);
+  });
+
+  it('double tap on a remembered replacement (fresh id per tap): the meal is replaced once', async () => {
+    const { store, actions } = await load({ plannedMeals: [meal('l', 'lunch', 'bolognese')] });
+    const { productEntry } = await import('../domain/foodEntry');
+    const content = productEntry(PRODUCT, 150)!;
+    expect(actions.replaceWithEntry('l', content, { id: 'tap-1' })).toBe(true);
+    expect(actions.replaceWithEntry('l', content, { id: 'tap-2' })).toBe(false);
+    expect(store.getState().logEntries).toHaveLength(1);
+  });
+
+  it('a later meal replaced by a suggestion only changes the plan – nothing logged until eaten', async () => {
+    const { store, actions } = await load({ plannedMeals: [meal('d', 'dinner', 'chili')] });
+    actions.replaceWithRecipe('d', 'bolognese', 1, false);
+    let s = store.getState();
+    expect(s.plannedMeals[0]).toMatchObject({ recipeId: 'bolognese', status: 'planned', replacedRecipeId: 'chili' });
+    expect(s.logEntries).toHaveLength(0);
+    actions.markEaten('d');
+    s = store.getState();
+    expect(s.logEntries).toHaveLength(1);
+    expect(s.logEntries[0]).toMatchObject({ recipeId: 'bolognese', plannedMealId: 'd' });
   });
 
   it('a skipped meal cannot be replaced twice', async () => {
@@ -253,5 +294,20 @@ describe('persistence', () => {
     const s = await reload();
     expect(s.products).toEqual({});
     expect(s.water).toEqual({});
+  });
+
+  it('loading data with an old EUR budget: the budget is dropped (no conversion), the next save is CHF-only', async () => {
+    const { persistence } = await load();
+    const old = { ...persistence.emptyState(), plannerSettings: { ...persistence.emptyState().plannerSettings, weeklyBudgetEur: 60 } };
+    localStorage.setItem('lifefit:v1', JSON.stringify(old));
+    const s = await reload();
+    expect(s.plannerSettings.weeklyBudgetChf).toBeUndefined();
+    expect(s.plannerSettings).not.toHaveProperty('weeklyBudgetEur');
+    // A new CHF budget is stored as CHF, the EUR field is gone from storage.
+    const actions = await import('./actions');
+    actions.updatePlannerSettings({ weeklyBudgetChf: 80 });
+    const stored = JSON.parse(localStorage.getItem('lifefit:v1')!);
+    expect(stored.plannerSettings.weeklyBudgetChf).toBe(80);
+    expect(stored.plannerSettings).not.toHaveProperty('weeklyBudgetEur');
   });
 });

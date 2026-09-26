@@ -50,7 +50,8 @@ export function productAmountOptions(product: Product): AmountOption[] {
   const u = product.unit;
   const options: AmountOption[] = [{ label: `100 ${u}`, amount: 100 }];
   if (product.servingSize) options.push({ label: `1 Portion (${fmtAmount(product.servingSize)} ${u})`, amount: product.servingSize });
-  if (product.packageSize && product.packageSize !== 100) options.push({ label: `Packung (${fmtAmount(product.packageSize)} ${u})`, amount: product.packageSize });
+  // A package that is exactly one portion (a yoghurt cup) is offered once, as the portion.
+  if (product.packageSize && product.packageSize !== 100 && product.packageSize !== product.servingSize) options.push({ label: `Packung (${fmtAmount(product.packageSize)} ${u})`, amount: product.packageSize });
   return options;
 }
 
@@ -73,12 +74,12 @@ export function productEntry(product: Product, amount: number, foodId = product.
     ...(Object.keys(n.micros).length ? { micros: n.micros } : {}),
     ...(n.unknown.length ? { unknown: n.unknown } : {}),
     ...(foodId ? { foodId } : {}),
-    ...(product.price && product.price.amount > 0 ? { costChf: roundRappen((product.price.chf / product.price.amount) * amount) } : {}),
+    ...(product.price && product.price.amount > 0 ? { costChf: toRappen((product.price.chf / product.price.amount) * amount) } : {}),
   };
 }
 
-/** Swiss amounts are paid in 5-Rappen steps. */
-const roundRappen = (chf: number) => Math.round(chf * 20) / 20;
+/** Value of what was eaten, to the Rappen (5-Rappen rounding only applies when paying). */
+const toRappen = (chf: number) => Math.round(chf * 100) / 100;
 
 // ---------- Manual entry ----------
 
@@ -136,7 +137,8 @@ export function manualEntry(input: ManualInput): { ok: true; entry: EntryContent
 
   const factor = per100 ? amount! / 100 : 1;
   const unknown = MACRO_KEYS.filter((k) => values[k] === undefined);
-  // Sodium follows exactly from salt (labelling definition) – a conversion, not an estimate.
+  // Only from a salt value the user actually typed (label value): salt is DEFINED as sodium × 2.5,
+  // so this is exact. No salt typed → no sodium (unknown, not 0).
   const sodium = values.salt !== undefined ? (values.salt / SALT_PER_SODIUM) * 1000 : undefined;
   const micros = scaleMicros({ fiber: values.fiber, sugar: values.sugar, salt: values.salt, sodium }, factor);
   const measured = input.unit === 'g' || input.unit === 'ml';

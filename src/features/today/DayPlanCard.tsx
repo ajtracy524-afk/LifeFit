@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { getRecipe } from '../../data/recipes';
 import { addDays } from '../../domain/dates';
+import { formatChf, formatCostRange, priceLookup, recipeCostRange } from '../../domain/costs';
 import { explainDay } from '../../domain/explain';
 import { plannedMealMacros } from '../../domain/nutrition';
 import { dayTimeline } from '../../domain/schedule';
@@ -42,6 +43,8 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
   const extrasKcal = state.logEntries.filter((e) => e.date === date && !e.plannedMealId && !e.replacedMealId).reduce((s, e) => s + e.macros.kcal, 0);
   // The next open meal is THE next action of the plan – highlighted, everything done steps back.
   const nextMealId = items.flatMap((i) => (i.kind === 'meal' && i.meal.status === 'planned' ? [i.meal.id] : []))[0];
+  // Costs where known: real prices first, estimates only with reliable coverage (see costs.ts).
+  const price = useMemo(() => priceLookup(state.products), [state.products]);
   const upcoming = hasTraining ? undefined : nextScheduled(state.training, state.workouts, addDays(date, 1), weekStartDate, state.workoutOverrides, state.dayContexts);
   const tomorrow = addDays(date, 1);
   const needed = weekShopping(state, weekStartDate, date).filter((i) => i.state === 'open' && i.sources.some((s) => s.date >= date && s.date <= tomorrow)).length;
@@ -101,7 +104,7 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
                     <span className={styles.timelineLabel}>{SLOT_LABEL[item.meal.slot]} · gegessen</span>
                     <strong className={styles.timelineTitle}>{item.entries.map((e) => e.name).join(', ')}</strong>
                     <span className={styles.muted}>
-                      {fmt.kcal(kcal)} · {fmt.g(protein)} Protein · statt {recipe?.title ?? 'Mahlzeit'}
+                      {[fmt.kcal(kcal), `${fmt.g(protein)} Protein`, realCost(item.entries)].filter(Boolean).join(' · ')} · statt {recipe?.title ?? 'Mahlzeit'}
                     </span>
                   </span>
                 </button>
@@ -127,12 +130,12 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
                 <span className={styles.flex}>
                   <span className={styles.timelineLabel}>
                     {SLOT_LABEL[item.meal.slot]}
-                    {done ? ' · gegessen' : next ? ' · als Nächstes' : ''}
+                    {done ? ' · gegessen' : next ? ' · als Nächstes' : ' · später'}
                     {role}
                   </span>
                   <strong className={styles.timelineTitle}>{recipe?.title ?? 'Mahlzeit'}</strong>
                   <span className={styles.muted}>
-                    {fmt.kcal(macros.kcal)} · {fmt.g(macros.protein)} Protein{done ? '' : ` · ${recipe?.prepMin ?? 0} min`}
+                    {[fmt.kcal(macros.kcal), `${fmt.g(macros.protein)} Protein`, !done && `${recipe?.prepMin ?? 0} min`, recipe && costRange(recipe, item.meal.servings, price)].filter(Boolean).join(' · ')}
                   </span>
                 </span>
               </button>
@@ -179,4 +182,14 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
       )}
     </Card>
   );
+}
+
+/** Real cost of replacement entries – only if every entry has one (otherwise no number). */
+function realCost(entries: { costChf?: number }[]): string | undefined {
+  return entries.every((e) => e.costChf !== undefined) ? formatChf(entries.reduce((sum, e) => sum + e.costChf!, 0)) : undefined;
+}
+
+function costRange(recipe: Parameters<typeof recipeCostRange>[0], servings: number, price: Parameters<typeof recipeCostRange>[2]): string | undefined {
+  const r = recipeCostRange(recipe, servings, price);
+  return r ? formatCostRange(r) : undefined;
 }

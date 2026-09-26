@@ -147,6 +147,8 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
   const { options, open } = useMemo(() => slotSuggestions(state, date, slot, t, 3, planned ? [planned.recipeId] : []), [state, date, slot, t, planned]);
   const price = useMemo(() => priceLookup(state.products), [state.products]);
   const plannedRecipe = planned ? getRecipe(planned.recipeId) : undefined;
+  // One id for this sheet: a double tap on a suggestion adds the meal once.
+  const [mealId] = useState(newId);
 
   return (
     <>
@@ -195,7 +197,7 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
                     </span>
                   ))}
                 </span>
-                <Button size="sm" variant="secondary" onClick={() => onDone(`${o.recipe.title} erfasst`, () => eatSuggestion(date, slot, o.recipe.id, o.servings, planned?.id))}>
+                <Button size="sm" variant="secondary" onClick={() => onDone(`${o.recipe.title} erfasst`, () => eatSuggestion(date, slot, o.recipe.id, o.servings, planned?.id, mealId))}>
                   Gegessen
                 </Button>
               </div>

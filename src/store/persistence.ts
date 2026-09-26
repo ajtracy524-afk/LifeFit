@@ -99,10 +99,10 @@ export function loadState(): LoadResult {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     // Migrated state is only written on the next change – loading never writes.
-    if (parsed.schemaVersion === 1) return { state: toChf(migrateV1(parsed)) };
+    if (parsed.schemaVersion === 1) return { state: dropLegacyEurBudget(migrateV1(parsed)) };
     if (parsed.schemaVersion !== 2) throw new Error('Unknown schema version');
     // Merge onto defaults so newly added fields always exist.
-    return { state: toChf({ ...emptyState(), ...parsed } as AppState) };
+    return { state: dropLegacyEurBudget({ ...emptyState(), ...parsed } as AppState) };
   } catch {
     // Never silently discard user data: keep a copy for recovery.
     try {
@@ -115,15 +115,17 @@ export function loadState(): LoadResult {
 }
 
 /**
- * LifeFit is Swiss-only: the weekly budget is CHF. Older data stored it as
- * `weeklyBudgetEur` – the number is taken over as it is (the user typed it),
- * never converted. Loading only; storage is updated on the next change.
+ * One-time migration – LifeFit is Swiss-only (CHF). Older data may contain a
+ * budget stored as `weeklyBudgetEur`. It is NOT converted and NOT reused as
+ * CHF (a euro amount is not a franc amount): it is dropped, and the budget is
+ * back at its CHF default ("kein Budget") until the user enters one in CHF.
+ * Afterwards the active model only knows `weeklyBudgetChf`.
  */
-export function toChf(state: AppState): AppState {
-  const settings = state.plannerSettings as AppState['plannerSettings'] & { weeklyBudgetEur?: number };
-  if (!settings || settings.weeklyBudgetEur === undefined) return state;
-  const { weeklyBudgetEur, ...rest } = settings;
-  return { ...state, plannerSettings: { ...rest, weeklyBudgetChf: rest.weeklyBudgetChf ?? weeklyBudgetEur } };
+export function dropLegacyEurBudget(state: AppState): AppState {
+  const settings = state.plannerSettings as AppState['plannerSettings'] & { weeklyBudgetEur?: unknown };
+  if (!settings || !('weeklyBudgetEur' in settings)) return state;
+  const { weeklyBudgetEur: _dropped, ...chfOnly } = settings;
+  return { ...state, plannerSettings: chfOnly };
 }
 
 /** Returns false if the data could not be written (quota, private mode …). */

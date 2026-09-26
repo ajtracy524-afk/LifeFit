@@ -4,7 +4,8 @@ import { formatCostRange, priceLookup, recipeCostRange } from '../../domain/cost
 import { today as todayIso } from '../../domain/dates';
 import { explainMeal } from '../../domain/explain';
 import { EMPTY_MANUAL, manualFromProduct, type EntryContent, type ManualInput } from '../../domain/foodEntry';
-import { recipeMacros } from '../../domain/nutrition';
+import { recipeAllowed, recipeMacros } from '../../domain/nutrition';
+import { matchingTastes } from '../../domain/preferences';
 import { replacementHistory, type Replacement } from '../../domain/replacements';
 import { minutesOf } from '../../domain/schedule';
 import type { PlannedMeal, Product, Recipe } from '../../domain/types';
@@ -46,7 +47,17 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
   const due = eaten || meal.date < t || (meal.date === t && now.getHours() * 60 + now.getMinutes() >= minutesOf(state.plannerSettings.mealTimes[meal.slot]) - DUE_BEFORE_MIN);
 
   const options = useMemo(() => mealAlternatives(state, meal, t, { limit: Number.POSITIVE_INFINITY }), [state, meal, t]);
-  const history = useMemo(() => replacementHistory(state, meal), [state, meal]);
+  // Remembered replacements first – but only recipes the user may still eat (diet, allergens, dislikes, avoided).
+  const history = useMemo(
+    () =>
+      replacementHistory(state, meal).filter(
+        (h) => h.kind !== 'recipe' || (recipeAllowed(getRecipe(h.recipeId)!, state.nutritionProfile) && !matchingTastes(h.recipeId, state.nutritionProfile?.avoided).length),
+      ),
+    [state, meal],
+  );
+  // A remembered recipe is not offered a second time further down.
+  const remembered = new Set(history.flatMap((h) => (h.kind === 'recipe' ? [h.recipeId] : [])));
+  const planOptions = options.filter((o) => !remembered.has(o.recipe.id));
   const price = useMemo(() => priceLookup(state.products), [state.products]);
 
   const finish = (message: string, action: () => boolean) => {
@@ -90,7 +101,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
     );
   }
 
-  const shown = showAll ? options : options.slice(0, 3);
+  const shown = showAll ? planOptions : planOptions.slice(0, 3);
   return (
     <div className={styles.replace}>
       <Segmented
@@ -117,9 +128,9 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
               </div>
             </>
           )}
-          <p className={styles.listCaption}>Passend zu deinem Plan</p>
-          {options.length === 0 ? (
-            <p className={styles.searchHint}>Mit deinen Filtern gibt es keine Alternative für diese Mahlzeit.</p>
+          {(planOptions.length > 0 || history.length === 0) && <p className={styles.listCaption}>Passend zu deinem Plan</p>}
+          {planOptions.length === 0 ? (
+            history.length === 0 && <p className={styles.searchHint}>Mit deinen Filtern gibt es keine Alternative für diese Mahlzeit.</p>
           ) : (
             <div>
               {shown.map((o) => {
@@ -145,9 +156,9 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
               })}
             </div>
           )}
-          {options.length > 3 && (
+          {planOptions.length > 3 && (
             <button type="button" className={styles.moreToggle} onClick={() => setShowAll(!showAll)}>
-              {showAll ? 'Weniger anzeigen' : `Alle ${options.length} Gerichte anzeigen`}
+              {showAll ? 'Weniger anzeigen' : `Alle ${planOptions.length} Gerichte anzeigen`}
             </button>
           )}
         </>

@@ -112,6 +112,8 @@ const chfNumber = (v: number, digits: number) => v.toLocaleString('de-CH', { min
 
 /** An exact amount (e.g. a price the user entered): "4.95 CHF". */
 export function formatChf(v: number): string {
+  // Never "0.00 CHF" for a tiny but real amount.
+  if (v > 0 && v < 0.05) return 'unter 0.05 CHF';
   return `${chfNumber(v, 2)} CHF`;
 }
 

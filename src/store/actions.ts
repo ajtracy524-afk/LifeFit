@@ -239,6 +239,8 @@ export function replaceWithProduct(mealId: string, input: Product, amount: numbe
 export function replaceWithRecipe(mealId: string, recipeId: string, servings: number, eat: boolean): boolean {
   const meal = getState().plannedMeals.find((m) => m.id === mealId);
   if (!meal || meal.status === 'skipped') return false;
+  // Already done (e.g. a second tap before the sheet closed): nothing changes, no second toast.
+  if (meal.recipeId === recipeId && (!eat || meal.status === 'eaten')) return false;
   if (!applyChange({ type: 'replaceMeal', mealId, recipeId, servings }).ok) return false;
   if (eat) markEaten(mealId);
   return true;
@@ -273,14 +275,10 @@ export function removeLogEntry(id: string): void {
  * exchanged (a real swap – learned like one) and marked eaten; otherwise the
  * suggestion is added as eaten. Both go through the cascade.
  */
-export function eatSuggestion(date: ISODate, slot: MealSlot, recipeId: string, servings: number, replaceMealId?: string): boolean {
-  if (replaceMealId) {
-    const result = applyChange({ type: 'replaceMeal', mealId: replaceMealId, recipeId, servings });
-    if (!result.ok) return false;
-    markEaten(replaceMealId);
-    return true;
-  }
-  return applyChange({ type: 'addMeal', date, slot, recipeId, servings, eaten: true }).ok;
+export function eatSuggestion(date: ISODate, slot: MealSlot, recipeId: string, servings: number, replaceMealId?: string, id?: string): boolean {
+  if (replaceMealId) return replaceWithRecipe(replaceMealId, recipeId, servings, true);
+  // A fixed id per sheet: a second tap is refused by the cascade (no second meal, no double kcal).
+  return applyChange({ type: 'addMeal', date, slot, recipeId, servings, eaten: true, ...(id ? { id } : {}) }).ok;
 }
 
 // ---------- Water ----------

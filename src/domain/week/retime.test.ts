@@ -103,6 +103,13 @@ describe('time budget – re-evaluation in both directions', () => {
     expect(recipesOn(setBudget(high, 'normal').state)).toEqual(expected);
   });
 
+  it('Viel → Wenig: elaborate dishes chosen for a long day give way to quick ones', () => {
+    const high = setBudget(state({ plannedMeals: slowDay() }), 'high').state;
+    const r = setBudget(high, 'low');
+    for (const m of r.state.plannedMeals) expect(prep(m.recipeId)).toBeLessThanOrEqual(15);
+    expect(recipesOn(r.state)).toEqual(expectedAfter(high, 'low', 15));
+  });
+
   it('no exchange without a clear gain – and the user is told so', () => {
     // A breakfast the planner itself ranks first under "Wenig Zeit" stays.
     const probe = state({ plannedMeals: [meal('b', 'breakfast', 'overnight-oats')], dayContexts: { [WED]: { timeBudget: 'low', mode: 'normal' } } });

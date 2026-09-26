@@ -7,6 +7,11 @@ import styles from './nutrition.module.css';
 /** Same number format as all other nutrient values of the app (only CHF amounts use the Swiss point). */
 const num = (v: number) => v.toLocaleString('de-DE', { maximumFractionDigits: v < 10 ? 2 : v < 100 ? 1 : 0 });
 
+/** Thousands of mg read better as g ("1,8 / 2 g" for potassium) – value and reference always in the same unit. */
+function displayUnit(unit: 'g' | 'mg' | 'µg', scale: number): { unit: string; divide: number } {
+  return unit === 'mg' && scale >= 1000 ? { unit: 'g', divide: 1000 } : { unit, divide: 1 };
+}
+
 /**
  * Vitamins and minerals of the day – from the eaten entries only (the same
  * summary as the macros). Only values that are really known are shown; a
@@ -47,17 +52,18 @@ export function MicronutrientPanel({ summary }: { summary: NutritionSummary }) {
               {known.map((k) => {
                 const info = NUTRIENTS[k];
                 const m = summary.micros[k];
+                const shown = displayUnit(info.unit, info.nrv ?? m.value);
                 return (
                   <li key={k}>
                     <span className={styles.microName}>{info.label}</span>
                     <span className={styles.microValue}>
                       <strong>
-                        {num(m.value)} {info.unit}
+                        {num(m.value / shown.divide)} {shown.unit}
                       </strong>
                       {info.nrv !== undefined && (
                         <span className={styles.microRef}>
                           {' '}
-                          / {num(info.nrv)} {info.unit}
+                          / {num(info.nrv / shown.divide)} {shown.unit}
                         </span>
                       )}
                     </span>

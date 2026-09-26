@@ -81,6 +81,35 @@ describe('micronutrients from eaten entries', () => {
     expect(slots.lunch.micros.calcium.value).toBe(220);
   });
 
+  it('sodium: products only from the source data – a product with salt but without sodium has NO sodium', () => {
+    const saltOnly = productEntry(product({ micros100: { salt: 1.2 } }), 100)!;
+    expect(saltOnly.micros).toEqual({ salt: 1.2 });
+    expect(summarizeEntries([asEntry(saltOnly)]).micros.sodium.known).toBe(0);
+  });
+
+  it('sodium: manual entries only with a typed salt value; no salt → sodium unknown (not 0), salt 0 → sodium 0', () => {
+    const none = manualEntry({ ...EMPTY_MANUAL, name: 'Brot', kcal: '250' });
+    const zero = manualEntry({ ...EMPTY_MANUAL, name: 'Wasser-Eis', kcal: '20', salt: '0' });
+    if (!none.ok || !zero.ok) throw new Error('invalid');
+    expect(none.entry.micros).toBeUndefined();
+    expect(zero.entry.micros).toEqual({ salt: 0, sodium: 0 });
+  });
+
+  it('planned (not yet eaten) meals never count – only log entries do', () => {
+    // A planned meal has no log entry until it is eaten; the summary only reads entries.
+    const s = daySummary([], MON);
+    expect(s.day.entries).toBe(0);
+    for (const k of VITAL_NUTRIENTS) expect(s.day.micros[k].known).toBe(0);
+  });
+
+  it('portions: a product amount scales every declared value linearly', () => {
+    const p = product({ micros100: { calcium: 120, vitaminC: 30, iron: 1.5 } });
+    const half = summarizeEntries([asEntry(productEntry(p, 50))]).micros;
+    const double = summarizeEntries([asEntry(productEntry(p, 200))]).micros;
+    expect([half.calcium.value, half.vitaminC.value, half.iron.value]).toEqual([60, 15, 0.75]);
+    expect([double.calcium.value, double.vitaminC.value, double.iron.value]).toEqual([240, 60, 3]);
+  });
+
   it('other days never leak into the day', () => {
     const other = asEntry(productEntry(product(), 100), { date: '2026-09-22' });
     expect(daySummary([other], MON).day.micros.calcium.known).toBe(0);
