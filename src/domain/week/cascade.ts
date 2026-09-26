@@ -37,6 +37,8 @@ export type WeekChange =
   | { type: 'haveAtHome'; week: ISODate; foodId: string }
   | { type: 'notAtHome'; week: ISODate; foodId: string }
   | { type: 'setPantry'; foodId: string; quantityG: number | null }
+  /** F8: do not restock this basic this week ("Hab ich noch genug"). */
+  | { type: 'skipRestock'; week: ISODate; foodId: string }
   /**
    * F1 weekly check-in: training days and day contexts of one week, then the
    * week is (re)planned from today on. One change → one undo.
@@ -240,11 +242,17 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
       return { ok: true, title: `${getFood(change.foodId)?.name ?? 'Artikel'} wieder auf der Liste` };
     }
 
+    case 'skipRestock': {
+      const w = shoppingWeek(s, change.week);
+      w.restockSkipped = [...new Set([...(w.restockSkipped ?? []), change.foodId])];
+      return { ok: true, title: `${getFood(change.foodId)?.name ?? 'Artikel'}: diese Woche nicht nachkaufen` };
+    }
+
     case 'setPantry': {
       const food = getFood(change.foodId);
       if (!food) return fail('Lebensmittel nicht gefunden.');
       setPantryQuantity(s, food.id, change.quantityG, nowIso);
-      return { ok: true, title: change.quantityG ? `Vorrat: ${food.name} aktualisiert` : `Vorrat: ${food.name} leer` };
+      return { ok: true, title: change.quantityG ? `Vorrat: ${food.name} aktualisiert` : `Vorrat: ${food.name} aufgebraucht` };
     }
   }
 }
@@ -474,6 +482,7 @@ function weekOf(state: AppState, change: WeekChange, today: ISODate): ISODate {
     case 'undoPurchase':
     case 'haveAtHome':
     case 'notAtHome':
+    case 'skipRestock':
       return change.week;
     case 'setPantry':
       return weekStart(today);

@@ -220,6 +220,8 @@ export interface WeightEntry {
 export interface ShoppingWeekState {
   /** foodId -> grams bought this week (credited to the pantry when ticked off). */
   purchased: Record<string, number>;
+  /** F8: basics the user does not want to restock this week. */
+  restockSkipped?: string[];
   manual: { id: string; name: string; checked: boolean }[];
 }
 

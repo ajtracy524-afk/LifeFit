@@ -383,6 +383,37 @@ describe('pantry in the shopping list (F2)', () => {
   });
 });
 
+describe('restock of basics (F8)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 10, 0));
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('a low basic shows as restock, "Diese Woche nicht nachkaufen" hides it, undo brings it back', async () => {
+    const pantry = { oats: { foodId: 'oats', quantityG: 100, updatedAt: '2026-09-21T06:00:00Z' } };
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), pantry }));
+    window.history.replaceState(null, '', '/#/shopping');
+    const store = await startApp();
+
+    expect(text()).toMatch(/Haferflocken\s*200 g · Nachkauf – Vorrat niedrig/);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Wofür wird Haferflocken gebraucht?"]')!.click());
+    expect(container.querySelector('dialog[open]')?.textContent).toMatch(/Grundvorrat: mindestens 300 g im Haus/);
+    const before = store.getState();
+    await click('Diese Woche nicht nachkaufen');
+    expect(text()).not.toMatch(/Nachkauf – Vorrat niedrig/);
+    await click('Rückgängig');
+    expect(store.getState()).toBe(before);
+    expect(text()).toMatch(/Nachkauf – Vorrat niedrig/);
+  });
+});
+
 describe('weekly autopilot (F1)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });

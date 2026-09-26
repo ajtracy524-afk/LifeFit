@@ -5,6 +5,7 @@ import { resolveWorkouts, type PlannedWorkout } from '../training';
 import type { AppState, DayContext, ISODate, Macros, NutritionTarget, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { pantryEstimate } from './pantry';
+import { applyRestock, restockRules } from './restock';
 
 /**
  * WeekPlan is a DERIVED view – never stored. Sources of truth are
@@ -59,7 +60,11 @@ export function availablePantry(state: AppState, from: ISODate, today: ISODate, 
 /** Shopping list of a week: gross need from the plan minus free pantry and purchases. */
 export function weekShopping(state: AppState, week: ISODate, today: ISODate, estimate = pantryEstimate(state)): ShoppingListItem[] {
   const { from, to } = shoppingRange(week, today);
-  return applyStock(buildShoppingList(state.plannedMeals, from, to), availablePantry(state, from, today, estimate), state.shopping[week]?.purchased ?? {});
+  const available = availablePantry(state, from, today, estimate);
+  const purchased = state.shopping[week]?.purchased ?? {};
+  const items = applyStock(buildShoppingList(state.plannedMeals, from, to), available, purchased);
+  // F8: basics are topped up to their minimum stock – on the same list, one position per food.
+  return applyRestock(items, restockRules(state, week, today), available, purchased);
 }
 
 /** Open generated + open manual items – the number on the Einkauf tab. */

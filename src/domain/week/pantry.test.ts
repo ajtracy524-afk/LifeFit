@@ -75,6 +75,8 @@ describe('F2 · purchase → pantry → shopping', () => {
     const s = state({
       plannedMeals: [meal('2026-09-23', 'dinner', 'chicken-rice-bowl', 500 / 80)],
       pantry: { rice: { foodId: 'rice', quantityG: 200, updatedAt: '2026-09-20T10:00:00Z' } },
+      // Pure pantry subtraction – the F8 minimum stock is tested in restock.test.ts.
+      shopping: { [MON]: { purchased: {}, manual: [], restockSkipped: ['rice'] } },
     });
     const rice = item(s, MON, 'rice')!;
     expect(rice.neededG).toBeCloseTo(500);

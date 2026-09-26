@@ -43,19 +43,24 @@ export function pantryEstimate(state: Pick<AppState, 'pantry' | 'logEntries'>): 
   return result;
 }
 
-/** Sets the pantry amount of a food. `null` or ≤ 0 removes it ("leer"). Mutates the draft. */
+/**
+ * Sets the pantry amount of a food. `null` removes it from the pantry (not kept
+ * at home any more); 0 means "aufgebraucht" – the food stays known, so a basic
+ * can be restocked. Mutates the draft.
+ */
 export function setPantryQuantity(draft: AppState, foodId: string, grams: number | null, nowIso: string): void {
-  if (grams === null || grams <= 0) {
+  if (grams === null) {
     delete draft.pantry[foodId];
     return;
   }
-  draft.pantry[foodId] = { foodId, quantityG: Math.round(grams), updatedAt: nowIso };
+  draft.pantry[foodId] = { foodId, quantityG: Math.max(0, Math.round(grams)), updatedAt: nowIso };
 }
 
 /** Adds (or with negative grams removes) an amount on top of the current estimate. Mutates the draft. */
 export function addToPantry(draft: AppState, foodId: string, grams: number, nowIso: string): void {
   const current = pantryEstimate(draft)[foodId] ?? 0;
-  setPantryQuantity(draft, foodId, current + grams, nowIso);
+  // Taking back a purchase down to nothing removes the entry again.
+  setPantryQuantity(draft, foodId, current + grams > 0 ? current + grams : null, nowIso);
 }
 
 /**

@@ -179,25 +179,43 @@ export function ShoppingScreen() {
       <Sheet open={!!detail} onClose={() => setDetail(null)} title={detail?.name ?? ''} subtitle={detail ? `${detail.quantity}${detail.hint ? ` · ${detail.hint}` : ''}` : undefined}>
         {detail && (
           <>
-            <p className={styles.detailCaption}>Wird gebraucht für</p>
-            <ul className={styles.sourceList}>
-              {detail.sources.map((s, i) => (
-                <li key={`${s.mealId}-${i}`}>
-                  <a href={href('nutrition', { view: 'day', date: s.date })} onClick={() => setDetail(null)}>
-                    <span>
-                      <strong>{s.recipeTitle}</strong>
-                      <span className={styles.muted}>
-                        {relativeDay(s.date)} · {SLOT_LABEL[s.slot]}
-                      </span>
-                    </span>
-                    <span className={styles.muted}>{formatGrams(s.grams)}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
+            {detail.sources.length > 0 && (
+              <>
+                <p className={styles.detailCaption}>Wird gebraucht für</p>
+                <ul className={styles.sourceList}>
+                  {detail.sources.map((s, i) => (
+                    <li key={`${s.mealId}-${i}`}>
+                      <a href={href('nutrition', { view: 'day', date: s.date })} onClick={() => setDetail(null)}>
+                        <span>
+                          <strong>{s.recipeTitle}</strong>
+                          <span className={styles.muted}>
+                            {relativeDay(s.date)} · {SLOT_LABEL[s.slot]}
+                          </span>
+                        </span>
+                        <span className={styles.muted}>{formatGrams(s.grams)}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {detail.restockMinG !== undefined && (
+              <p className={styles.detailCaption}>Grundvorrat: mindestens {formatGrams(detail.restockMinG)} im Haus</p>
+            )}
             <PantryEditor key={detail.foodId} foodId={detail.foodId} name={detail.name} onDone={() => setDetail(null)} />
             <div className={styles.detailActions}>
-              {detail.state === 'have' ? (
+              {detail.restockG ? (
+                <Button
+                  variant="secondary"
+                  block
+                  onClick={() => {
+                    if (applyWithUndo({ type: 'skipRestock', week, foodId: detail.foodId })) setDetail(null);
+                  }}
+                >
+                  Diese Woche nicht nachkaufen
+                </Button>
+              ) : null}
+              {detail.sources.length === 0 ? null : detail.state === 'have' ? (
                 <Button
                   variant="secondary"
                   block
@@ -261,7 +279,7 @@ function PantryEditor({ foodId, name, onDone }: { foodId: string; name: string; 
         </Button>
       </div>
       {current > 0 && (
-        <button type="button" className={styles.pantryEmpty} onClick={() => save(null)}>
+        <button type="button" className={styles.pantryEmpty} onClick={() => save(0)}>
           Ist aufgebraucht
         </button>
       )}
@@ -298,6 +316,9 @@ function ItemRow({ item, done, haveLabel, onToggle, onDetail }: ItemRowProps) {
           <span className={styles.qty}>
             {haveLabel ? 'Hab ich schon' : item.quantity}
             {!haveLabel && item.hint && <span className={styles.hint}> · {item.hint}</span>}
+            {!haveLabel && item.restockG ? (
+              <span className={styles.hint}>{item.sources.length ? ' · inkl. Vorrat auffüllen' : ' · Nachkauf – Vorrat niedrig'}</span>
+            ) : null}
           </span>
         </span>
       </button>

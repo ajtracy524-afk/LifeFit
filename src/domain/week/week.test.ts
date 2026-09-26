@@ -187,6 +187,8 @@ describe('pantry', () => {
       pantry: { quark: { foodId: 'quark', quantityG: 500, updatedAt: '2026-09-14T10:00:00Z' } },
       logEntries: [logAt({ ...last, servings: 300 / quarkPerServing }, '2026-09-15T12:00:00Z')],
       plannedMeals: [meal(MON, 'lunch', 'quark-berries', { servings: 200 / quarkPerServing })],
+      // Pure pantry behaviour – the F8 minimum stock of quark is covered in restock.test.ts.
+      shopping: { [MON]: { purchased: {}, manual: [], restockSkipped: ['quark'] } },
     });
     expect(pantryEstimate(s).quark).toBe(200);
     const item = weekShopping(s, MON, MON).find((i) => i.foodId === 'quark')!;
@@ -307,7 +309,11 @@ describe('migration v1 → v2', () => {
     expect(s.shopping['2026-09-14']!.purchased).toEqual({}); // past week: no pantry invented
     const list = weekShopping(s, MON, MON);
     expect(list.find((i) => i.foodId === 'chicken')!.state).toBe('checked');
-    expect(list.find((i) => i.foodId === 'rice')!.state).toBe('have');
+    // "Hab ich schon" became pantry covering the plan's need; rice is also a basic,
+    // so only the F8 minimum stock is still open – nothing for the plan itself.
+    const rice = list.find((i) => i.foodId === 'rice')!;
+    expect(s.pantry.rice!.quantityG).toBe(80);
+    expect(rice.remainingG).toBe(rice.restockG);
     expect(list.find((i) => i.foodId === 'broccoli')?.state).toBe('open');
   });
 });

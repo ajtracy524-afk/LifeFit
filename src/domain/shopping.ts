@@ -73,6 +73,10 @@ export interface ShoppingListItem extends ShoppingItem {
   neededG: number;
   /** Grams still to buy after pantry and purchases. `quantity` describes this amount for open items. */
   remainingG: number;
+  /** F8: minimum stock of this basic (set if the basic is restocked this week). */
+  restockMinG?: number;
+  /** F8: part of `remainingG` that only refills the stock (not needed by the plan). */
+  restockG?: number;
 }
 
 /**
