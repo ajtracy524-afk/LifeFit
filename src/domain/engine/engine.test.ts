@@ -58,6 +58,65 @@ function completed(templateId: string, date: string): Workout {
 
 const byKind = (recs: Recommendation[], kind: Recommendation['kind']) => recs.find((r) => r.kind === kind);
 
+describe('engine · meal suggestions are data-based and explained', () => {
+  const plain = (patch: Partial<AppState> = {}) => baseState({ training: null, ...patch });
+  // Breakfast eaten, the rest of the day is open.
+  const morning = [quick(SATURDAY, 'breakfast', 600, 30)];
+  const meals = (s: AppState, hour = 12) => {
+    const gap = byKind(runEngine(s, { date: SATURDAY, hour, limit: 20 }), 'nutrition_gap')!;
+    return { gap, actions: gap.actions.filter((a): a is Extract<typeof a, { type: 'add_meal' }> => a.type === 'add_meal') };
+  };
+
+  it('every suggested meal carries its facts: time, kcal, protein – and a price only when the data allows it', () => {
+    const { actions } = meals(plain({ logEntries: morning }));
+    expect(actions.length).toBeGreaterThan(0);
+    for (const a of actions) {
+      const recipe = getRecipe(a.recipeId)!;
+      expect(a.details).toBeDefined();
+      expect(a.details!.prepMin).toBe(recipe.prepMin);
+      expect(a.details!.kcal).toBeGreaterThan(0);
+      if (a.details!.cost) expect(a.details!.cost.lowChf).toBeLessThanOrEqual(a.details!.cost.highChf);
+    }
+  });
+
+  it('"Wenig Zeit": only quick recipes, and the reason says so', () => {
+    const s = plain({ logEntries: morning, dayContexts: { [SATURDAY]: { timeBudget: 'low', mode: 'normal' } } });
+    const { gap, actions } = meals(s);
+    expect(actions.length).toBeGreaterThan(0);
+    for (const a of actions) expect(getRecipe(a.recipeId)!.prepMin).toBeLessThanOrEqual(15);
+    expect(gap.message).toMatch(/^Wenig Zeit heute · noch ca\. [\d.]+ kcal offen – passend für/);
+    expect(actions[0]!.details!.because.some((b) => /^nur \d+ min – passt zu „Wenig Zeit“$/.test(b))).toBe(true);
+  });
+
+  it('a training day is named and weighs protein higher', () => {
+    const s = baseState({ logEntries: morning }); // trains Mon–Sat
+    const { gap } = meals(s);
+    expect(gap.facts.trainingDay).toBe(true);
+    expect(gap.message).toMatch(/Trainingstag/);
+    expect(meals(plain({ logEntries: morning })).gap.message).not.toMatch(/Trainingstag/);
+  });
+
+  it('learned taste counts: a meal the user keeps replacing drops, a loved one says "isst du gern"', () => {
+    const first = meals(plain({ logEntries: morning })).actions[0]!;
+    const at = '2026-09-20T12:00:00';
+    const disliked = plain({ logEntries: morning, learning: { preferences: { [`recipe:${first.recipeId}`]: { pos: 0, neg: 12, updatedAt: at } } } });
+    expect(meals(disliked).actions[0]!.recipeId).not.toBe(first.recipeId);
+    const second = meals(plain({ logEntries: morning })).actions[1]!;
+    const loved = plain({ logEntries: morning, learning: { preferences: { [`recipe:${second.recipeId}`]: { pos: 12, neg: 0, updatedAt: at } } } });
+    const top = meals(loved).actions.find((a) => a.recipeId === second.recipeId)!;
+    expect(top.details!.because).toContain('isst du gern');
+  });
+
+  it('never an impossible suggestion: no excluded food, never above the open calories by far', () => {
+    const s = plain({ logEntries: morning, nutritionProfile: { diet: 'vegetarian', excluded: [], slots: ['breakfast', 'snack', 'lunch', 'dinner'] } });
+    const { gap, actions } = meals(s);
+    for (const a of actions) {
+      expect(recipeAllowed(getRecipe(a.recipeId)!, s.nutritionProfile)).toBe(true);
+      expect(a.details!.kcal).toBeLessThanOrEqual(Number(gap.facts.openKcal) * 1.2);
+    }
+  });
+});
+
 describe('engine · nutrition gap', () => {
   // Without a training plan every day has the plain stored target (no training/rest-day shift).
   const plain = (patch: Partial<AppState> = {}) => baseState({ training: null, ...patch });

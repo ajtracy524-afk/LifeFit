@@ -70,16 +70,32 @@ export function roundMicro(key: MicroNutrient, v: number): number {
   return Math.round(v * precision) / precision;
 }
 
-/** Fiber of a recipe (catalog data) – sugar and salt are not known for the catalog. */
+/**
+ * Salt and sodium are never summed for a recipe: the salt added while cooking
+ * is not in the recipe data, so the ingredient sum would look lower than what
+ * is really eaten.
+ */
+const RECIPE_SKIPS: ReadonlySet<MicroNutrient> = new Set(['salt', 'sodium']);
+
+/**
+ * Micronutrients of a recipe from the catalog data (FoodData Central). A
+ * nutrient is known only if EVERY ingredient has a value for it – one gap
+ * makes it unknown, never guessed or counted as 0.
+ */
 export function recipeMicros(recipe: Recipe, servings = 1): Micros {
-  let fiber = 0;
-  for (const ing of recipe.ingredients) {
-    const f = getFood(ing.foodId)?.micros?.fiber;
-    // One ingredient without fiber data makes the recipe's value unknown – never guessed.
-    if (f === undefined) return {};
-    fiber += (f * ing.grams) / 100;
+  const out: Micros = {};
+  if (!recipe.ingredients.length) return out;
+  for (const key of MICRO_NUTRIENTS) {
+    if (RECIPE_SKIPS.has(key)) continue;
+    let sum = 0;
+    const known = recipe.ingredients.every((ing) => {
+      const v = getFood(ing.foodId)?.micros?.[key];
+      if (v !== undefined) sum += (v * ing.grams) / 100;
+      return v !== undefined;
+    });
+    if (known) out[key] = roundMicro(key, sum * servings);
   }
-  return { fiber: roundMicro('fiber', fiber * servings) };
+  return out;
 }
 
 export function recipeMacros(recipe: Recipe, servings = 1): Macros {

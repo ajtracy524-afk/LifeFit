@@ -27,13 +27,18 @@ export const LEFTOVER_PREP_MIN = 5;
 export const LEFTOVER_DAYS = 2;
 export const MEAL_PREP_TAG = 'Meal Prep';
 
-export const DAY_MODE_ORDER: DayMode[] = ['normal', 'eating_out', 'busy', 'travel'];
+/**
+ * Two independent dimensions of a day, each with ONE meaning:
+ * - TimeBudget: how much time there is for cooking (and training).
+ * - DayMode: whether dinner is eaten at home or out.
+ * "Busy" and "Reise" used to be modes, but they only ever meant "little
+ * time" – they are stored as timeBudget 'low' now (see persistence).
+ */
+export const DAY_MODE_ORDER: DayMode[] = ['normal', 'eating_out'];
 
 export const DAY_MODE_LABEL: Record<DayMode, string> = {
-  normal: 'Normal',
+  normal: 'Zuhause',
   eating_out: 'Auswärts',
-  busy: 'Busy',
-  travel: 'Reise',
 };
 
 /**
@@ -48,11 +53,7 @@ export function excludedSlots(context: DayContext | undefined): MealSlot[] {
   return context?.mode === 'eating_out' ? EATING_OUT_SLOTS : [];
 }
 
-/**
- * The budget that actually applies to a day: "Busy" and "Reise" mean little
- * time, whatever budget was set – one time model, no second set of rules.
- */
+/** The time budget of a day – the only time model (planner, training, cascade). */
 export function effectiveTimeBudget(context: DayContext | undefined): TimeBudget {
-  if (!context) return 'normal';
-  return context.mode === 'busy' || context.mode === 'travel' ? 'low' : context.timeBudget;
+  return context?.timeBudget ?? 'normal';
 }

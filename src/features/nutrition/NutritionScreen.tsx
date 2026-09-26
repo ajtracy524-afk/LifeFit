@@ -29,6 +29,7 @@ import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { WaterControl } from './WaterControl';
 import { MicronutrientPanel } from './MicronutrientPanel';
 import { BudgetLine } from './BudgetLine';
+import { CalorieStatusBadge } from './CalorieStatusBadge';
 import styles from './nutrition.module.css';
 
 type View = 'day' | 'week';
@@ -118,6 +119,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
               {totals.kcal <= target.kcal ? `${fmt.int(target.kcal - totals.kcal)} übrig` : `+${fmt.int(totals.kcal - target.kcal)} kcal`}
             </span>
           </div>
+          {!isFuture && <CalorieStatusBadge date={date} eatenKcal={totals.kcal} targetKcal={target.kcal} />}
           <div className={styles.macroStack}>
             <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
           </div>
@@ -195,22 +197,28 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
 
 const MICRO_LABEL = { fiber: 'Ballaststoffe', sugar: 'Zucker', salt: 'Salz' } as const;
 
-/** Fiber, sugar, salt – only when data exists, and marked if not every entry had it. */
+/**
+ * "Weitere Nährwerte": fiber, sugar, salt side by side – one glance, smaller
+ * than the macros. Appears once any of them is known; a value without data
+ * says "keine Daten" (never 0), a sum over only some entries says so.
+ */
 function OptionalNutrients({ summary }: { summary: NutritionSummary }) {
-  const known = BASIC_NUTRIENTS.filter((k) => summary.micros[k].known > 0);
-  if (!known.length) return null;
+  if (!BASIC_NUTRIENTS.some((k) => summary.micros[k].known > 0)) return null;
   return (
-    <p className={styles.microLine}>
-      {known.map((k) => {
+    <dl className={styles.extraNutrients} aria-label="Weitere Nährwerte">
+      {BASIC_NUTRIENTS.map((k) => {
         const m = summary.micros[k];
         return (
-          <span key={k} title={m.known < m.of ? `Nur ${m.known} von ${m.of} Einträgen haben diese Angabe` : undefined}>
-            {MICRO_LABEL[k]} <strong>{fmt.micro(k, m.value)}</strong>
-            {m.known < m.of && <span className={styles.partial}> · aus {m.known} von {m.of}</span>}
-          </span>
+          <div key={k} className={styles.extraCell} title={m.known > 0 && m.known < m.of ? `Nur ${m.known} von ${m.of} Einträgen haben diese Angabe` : undefined}>
+            <dt>{MICRO_LABEL[k]}</dt>
+            <dd>
+              {m.known > 0 ? <strong>{fmt.micro(k, m.value)}</strong> : <span className={styles.partial}>keine Daten</span>}
+              {m.known > 0 && m.known < m.of && <span className={styles.extraPartial}>aus {m.known} von {m.of}</span>}
+            </dd>
+          </div>
         );
       })}
-    </p>
+    </dl>
   );
 }
 

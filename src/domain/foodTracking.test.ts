@@ -139,10 +139,11 @@ describe('day and meal totals', () => {
     expect(day.incomplete).toBe(1);
   });
 
-  it('a planned meal carries its fiber from the catalog, never sugar or salt', () => {
-    const e = logFromMeal({ id: 'm', date: MON, slot: 'breakfast', recipeId: 'overnight-oats', servings: 1, status: 'eaten', source: 'suggest' });
+  it('a planned meal carries its fiber from the catalog, never salt (cooking salt is unknown)', () => {
+    const e = logFromMeal({ id: 'm', date: MON, slot: 'lunch', recipeId: 'chili', servings: 1, status: 'eaten', source: 'suggest' });
     expect(e.micros?.fiber).toBeGreaterThan(0);
-    expect(e.micros).not.toHaveProperty('sugar');
+    expect(e.micros).not.toHaveProperty('salt');
+    expect(e.micros).not.toHaveProperty('sodium');
     expect(summarizeEntries([e]).micros.fiber.known).toBe(1);
   });
 });

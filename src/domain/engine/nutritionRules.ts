@@ -5,7 +5,10 @@ import { addDays } from '../dates';
 import { dayTotals, foodAllowed, foodMacros, recipeAllowed, recipeMacros, roundServings, targetForDate } from '../nutrition';
 import { recipesForSlot, servingsForSlot, swapOptions } from '../planner';
 import type { Macros, MealSlot, Recipe } from '../types';
-import { pantryEstimate } from '../week';
+import { dayContextFor, pantryEstimate, weekFoodCost } from '../week';
+import { formatCostRange, priceLookup, recipeCostRange, type CostRange } from '../costs';
+import { plannerAffinity } from '../preferences';
+import { effectiveTimeBudget, TIME_BUDGETS } from '../timeBudget';
 import type { EngineContext } from './context';
 import type { EngineAction, Recommendation } from './types';
 
@@ -27,6 +30,13 @@ export const NUTRITION_RULES = {
   varietyDays: 2,
   /** Pantry leftovers below this amount are not worth a suggestion. */
   minLeftoverG: 50,
+  /** Protein shortfall weight – higher on a training day (the day target already has more protein). */
+  proteinWeight: 1.2,
+  proteinWeightTraining: 1.5,
+  /** Learned taste (−1 … 1, avoided far below): a clear, but not dominating pull. */
+  affinityWeight: 0.15,
+  /** Per CHF of a serving, only when the week is already over its budget. */
+  overBudgetPerChf: 0.03,
 } as const;
 
 /** Ready-to-eat foods that close a protein gap without many calories. */
@@ -45,13 +55,21 @@ export interface MealSuggestion {
   /** Ingredients not at home – they land on the shopping list once the meal is planned. */
   missingFoods: string[];
   score: number;
+  /** Price range of the serving – only with enough price data (never invented). */
+  cost?: CostRange;
+  /** Short, factual reasons ("nur 15 min – passt zu „Wenig Zeit“"). */
+  because: string[];
 }
 
 /**
  * Scores every allowed recipe for the next free slot. Lower score = better.
- *   calorie fit + protein shortfall (weighted 1.2) + missing ingredients
- *   + recently eaten + long prep late in the day
- * Diet and allergen exclusions are hard filters, never scored.
+ *   calorie fit + protein shortfall (heavier on a training day)
+ *   + missing ingredients + recently eaten + long prep late in the day
+ *   − learned taste (favorites, eaten/replaced meals – see preferences.ts)
+ *   + cost, only when the week is already over its CHF budget
+ * Hard filters: diet and allergens; the day's time budget as long as at least
+ * one recipe fits it (fitting first, like the cascade). Every suggestion
+ * carries the facts it was chosen for, so the UI can say why.
  */
 export function suggestMealsForGap(ctx: EngineContext, gap: Pick<Macros, 'kcal' | 'protein'>, limit = 3): MealSuggestion[] {
   const target = ctx.target;
@@ -75,23 +93,50 @@ export function suggestMealsForGap(ctx: EngineContext, gap: Pick<Macros, 'kcal' 
   const slot = slots.find((s) => recipesForSlot(s, profile).length > 0);
   if (!slot) return [];
 
-  return recipesForSlot(slot, profile)
-    .filter((r) => !(ctx.hour >= 20 && r.prepMin > 30))
+  const timeBudget = effectiveTimeBudget(dayContextFor(ctx.state, ctx.date));
+  const maxPrep = TIME_BUDGETS[timeBudget].maxPrepMin;
+  const trainingDay = !!ctx.todaysSession || ctx.trainedToday;
+  const affinity = plannerAffinity(ctx.state.learning?.preferences ?? {}, profile);
+  const price = priceLookup(ctx.state.products);
+  const weekBudget = ctx.state.plannerSettings?.weeklyBudgetChf;
+  const weekCost = weekBudget !== undefined ? weekFoodCost(ctx.state, ctx.weekStart) : undefined;
+  const overBudget = weekBudget !== undefined && !!weekCost && weekCost.lowChf > weekBudget;
+
+  const allowed = recipesForSlot(slot, profile).filter((r) => !(ctx.hour >= 20 && r.prepMin > 30));
+  const fitting = allowed.filter((r) => r.prepMin <= maxPrep);
+  const pool = fitting.length ? fitting : allowed;
+
+  return pool
     .map((recipe) => {
       const servings = roundServings(mealKcal / (recipeMacros(recipe).kcal || 1));
       const macros = recipeMacros(recipe, servings);
       const missingFoods = recipe.ingredients.filter((i) => !ctx.pantry.has(i.foodId)).map((i) => i.foodId);
+      const cost = recipeCostRange(recipe, servings, price);
+      const liked = affinity(recipe.id, timeBudget);
 
       const kcalError = Math.abs(macros.kcal - mealKcal) / mealKcal;
       const proteinShort = mealProtein > 0 ? Math.max(0, mealProtein - macros.protein) / mealProtein : 0;
       const score =
         kcalError +
-        1.2 * proteinShort +
+        (trainingDay ? R.proteinWeightTraining : R.proteinWeight) * proteinShort +
         0.08 * missingFoods.length +
         (recent.has(recipe.id) ? 0.25 : 0) +
-        (ctx.hour >= 18 && recipe.prepMin > 20 ? 0.1 : 0);
+        (ctx.hour >= 18 && recipe.prepMin > 20 ? 0.1 : 0) +
+        (recipe.prepMin > maxPrep ? 0.5 : 0) -
+        R.affinityWeight * liked +
+        (overBudget && cost ? R.overBudgetPerChf * ((cost.lowChf + cost.highChf) / 2) : 0);
 
-      return { recipe, slot, servings, macros, missingFoods, score };
+      const because = [
+        timeBudget === 'low' && recipe.prepMin <= maxPrep ? `nur ${recipe.prepMin} min – passt zu „${TIME_BUDGETS.low.label}“` : null,
+        mealProtein >= 10 && macros.protein >= mealProtein * 0.8 ? `${fmt.g(macros.protein)} Protein – deckt deine offene Menge` : null,
+        trainingDay && macros.protein >= 25 ? 'eiweißreich – heute ist Trainingstag' : null,
+        kcalError <= 0.15 ? `${fmt.kcal(macros.kcal)} – passt zu deinen offenen Kalorien` : null,
+        missingFoods.length === 0 ? 'alle Zutaten laut Vorrat da' : null,
+        liked >= 0.3 ? 'isst du gern' : null,
+        overBudget && cost ? `günstig: ${formatCostRange(cost)}` : null,
+      ].filter((b): b is string => !!b);
+
+      return { recipe, slot, servings, macros, missingFoods, score, cost, because };
     })
     .sort((a, b) => a.score - b.score)
     .slice(0, limit);
@@ -123,6 +168,13 @@ export function suggestProteinFoods(ctx: EngineContext, proteinGap: number, kcal
     .map(({ food, grams, macros }) => ({ foodId: food.id, name: food.name, grams, macros }));
 }
 
+/** "Wenig Zeit heute · Trainingstag · noch ca. 620 kcal offen" – the situation the suggestion answers. */
+function situation(timeBudget: keyof typeof TIME_BUDGETS, trainingDay: boolean, openKcal: number): string {
+  const parts = [timeBudget !== 'normal' ? `${TIME_BUDGETS[timeBudget].label} heute` : null, trainingDay ? 'Trainingstag' : null, `noch ca. ${fmt.kcal(openKcal)} offen`];
+  const text = parts.filter(Boolean).join(' · ');
+  return text[0]!.toUpperCase() + text.slice(1);
+}
+
 // ---------- Rules ----------
 
 /** "Heute fehlen noch 650 kcal und 50 g Protein" → suggest matching meals. */
@@ -147,6 +199,8 @@ export function nutritionGapRule(ctx: EngineContext): Recommendation[] {
   }
 
   const late = ctx.hour >= R.lateHour;
+  const timeBudget = effectiveTimeBudget(dayContextFor(ctx.state, ctx.date));
+  const trainingDay = !!ctx.todaysSession || ctx.trainedToday;
   const facts = {
     targetKcal: t.kcal,
     targetProtein: t.protein,
@@ -157,6 +211,8 @@ export function nutritionGapRule(ctx: EngineContext): Recommendation[] {
     openKcal: Math.round(open.kcal),
     openProtein: Math.round(open.protein),
     late,
+    timeBudget,
+    trainingDay,
   };
 
   let actions: EngineAction[] = [];
@@ -171,6 +227,7 @@ export function nutritionGapRule(ctx: EngineContext): Recommendation[] {
       slot: m.slot,
       recipeId: m.recipe.id,
       servings: m.servings,
+      details: { title: `${m.recipe.emoji} ${m.recipe.title}`, prepMin: m.recipe.prepMin, kcal: Math.round(m.macros.kcal), protein: Math.round(m.macros.protein), cost: m.cost, because: m.because },
     }));
     const best = meals[0];
     if (best) {
@@ -179,7 +236,7 @@ export function nutritionGapRule(ctx: EngineContext): Recommendation[] {
         : ' Alle Zutaten sind laut Einkaufsliste da.';
       message = late
         ? `Für heute Abend reicht ein kleiner, eiweißreicher Snack – der Rest ist kein Problem.${missingNote}`
-        : `Passend für ${SLOT_LABEL[best.slot]}:${missingNote}`;
+        : `${situation(timeBudget, trainingDay, open.kcal)} – passend für ${SLOT_LABEL[best.slot]}:${missingNote}`;
     } else {
       message = 'Kein Rezept passt zu deinen Ernährungsvorlieben – erfasse einfach, was du isst.';
     }

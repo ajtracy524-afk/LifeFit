@@ -324,7 +324,8 @@ export interface ShoppingWeekState {
 // ---------- Week plan: context, overrides, pantry ----------
 
 export type TimeBudget = 'low' | 'normal' | 'high';
-export type DayMode = 'normal' | 'eating_out' | 'travel' | 'busy';
+/** Where the day's dinner happens. Time is a separate dimension (TimeBudget). */
+export type DayMode = 'normal' | 'eating_out';
 
 export interface DayContext {
   timeBudget: TimeBudget;

@@ -99,10 +99,10 @@ export function loadState(): LoadResult {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     // Migrated state is only written on the next change – loading never writes.
-    if (parsed.schemaVersion === 1) return { state: dropLegacyEurBudget(migrateV1(parsed)) };
+    if (parsed.schemaVersion === 1) return { state: migrateLegacy(migrateV1(parsed)) };
     if (parsed.schemaVersion !== 2) throw new Error('Unknown schema version');
     // Merge onto defaults so newly added fields always exist.
-    return { state: dropLegacyEurBudget({ ...emptyState(), ...parsed } as AppState) };
+    return { state: migrateLegacy({ ...emptyState(), ...parsed } as AppState) };
   } catch {
     // Never silently discard user data: keep a copy for recovery.
     try {
@@ -112,6 +112,26 @@ export function loadState(): LoadResult {
     }
     return { state: emptyState(), notice: 'recovered' };
   }
+}
+
+/** All one-time clean-ups of older stored data, applied on load. */
+function migrateLegacy(state: AppState): AppState {
+  return normalizeLegacyDayModes(dropLegacyEurBudget(state));
+}
+
+/**
+ * One-time migration: the day modes "Busy" and "Reise" only ever meant
+ * "little time" (the planner treated them exactly like timeBudget 'low'). They
+ * are stored as what they meant – timeBudget 'low', dinner at home – so the
+ * app has one time model and no synonyms. Same plan as before, no replanning.
+ */
+export function normalizeLegacyDayModes(state: AppState): AppState {
+  const contexts = state.dayContexts ?? {};
+  const legacy = Object.entries(contexts).filter(([, c]) => (c.mode as string) === 'busy' || (c.mode as string) === 'travel');
+  if (!legacy.length) return state;
+  const dayContexts = { ...contexts };
+  for (const [date] of legacy) dayContexts[date] = { timeBudget: 'low', mode: 'normal' };
+  return { ...state, dayContexts };
 }
 
 /**

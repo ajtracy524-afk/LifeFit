@@ -61,9 +61,9 @@ describe('F1 · check-in → week plan', () => {
   });
 
   it('stores time budgets and exceptions in dayContexts', () => {
-    const days = { ...allNormal(MON), [WED]: ctx('low'), [THU]: ctx('normal', 'eating_out'), [SAT]: ctx('normal', 'travel') };
+    const days = { ...allNormal(MON), [WED]: ctx('low'), [THU]: ctx('normal', 'eating_out'), [SAT]: ctx('high') };
     const r = ok(applyWeekChange(state(), plan(state(), [0, 2, 4], days), NOW));
-    expect(r.state.dayContexts).toEqual({ [WED]: ctx('low'), [THU]: ctx('normal', 'eating_out'), [SAT]: ctx('normal', 'travel') });
+    expect(r.state.dayContexts).toEqual({ [WED]: ctx('low'), [THU]: ctx('normal', 'eating_out'), [SAT]: ctx('high') });
   });
 
   it('creates training, meals and shopping from the same plan', () => {
@@ -141,15 +141,15 @@ describe('F1 · exception days', () => {
     expect(activeWorkouts(out.training, out.workoutOverrides, [], MON).map((w) => w.date)).toEqual([TUE, THU, SAT]);
   });
 
-  it('Busy = little time: quick meals, short training', () => {
-    const r = ok(applyWeekChange(state(), plan(state(), [1, 3, 5], { ...allNormal(MON), [THU]: ctx('normal', 'busy') }), NOW)).state;
+  it('Wenig Zeit (formerly "Busy"): quick meals, short training', () => {
+    const r = ok(applyWeekChange(state(), plan(state(), [1, 3, 5], { ...allNormal(MON), [THU]: ctx('low') }), NOW)).state;
     expect(meals(r, THU).every((m) => getRecipe(m.recipeId)!.prepMin <= 20 || m.recipeId === 'chili')).toBe(true);
     const session = activeWorkouts(r.training, r.workoutOverrides, [], MON, r.dayContexts).find((w) => w.date === THU)!;
     expect(session.template.name).toMatch(/\(kurz\)$/);
   });
 
-  it('Reise: simple quick meals, training shortened but kept', () => {
-    const r = ok(applyWeekChange(state(), plan(state(), [1, 3, 5], { ...allNormal(MON), [SAT]: ctx('normal', 'travel') }), NOW)).state;
+  it('Wenig Zeit on a weekend (formerly "Reise"): simple quick meals, training shortened but kept', () => {
+    const r = ok(applyWeekChange(state(), plan(state(), [1, 3, 5], { ...allNormal(MON), [SAT]: ctx('low') }), NOW)).state;
     const cooked = new Map<string, string[]>();
     r.plannedMeals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
     expect(meals(r, SAT).filter((m) => effectivePrepMin(getRecipe(m.recipeId)!, SAT, cooked) > 15).length).toBeLessThanOrEqual(1);

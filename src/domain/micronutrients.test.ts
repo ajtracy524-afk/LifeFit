@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { FOOD_MICROS } from '../data/foodMicros';
+import { getFood } from '../data/foods';
 import { NUTRIENTS } from '../data/nutrients';
 import { EMPTY_MANUAL, manualEntry, productEntry } from './foodEntry';
 import { daySummary, logFromMeal, summarizeEntries, VITAL_NUTRIENTS } from './nutrition';
@@ -51,12 +53,35 @@ describe('micronutrients from eaten entries', () => {
     expect(s.micros.iron).toEqual({ value: 4, known: 1, of: 2 });
   });
 
-  it('a recipe brings fiber from the catalog, but no vitamins or minerals (no data – not 0)', () => {
-    const e = logFromMeal(plan('chili', 1.5));
-    const s = summarizeEntries([e]);
+  it('a recipe brings vitamins and minerals from the catalog (FoodData Central), scaled by servings – salt/sodium never summed', () => {
+    const one = logFromMeal(plan('chili', 1)).micros!;
+    const s = summarizeEntries([logFromMeal(plan('chili', 1.5))]);
     expect(s.micros.fiber.known).toBe(1);
-    expect(s.micros.fiber.value).toBeCloseTo(logFromMeal(plan('chili', 1)).micros!.fiber! * 1.5, 0);
-    for (const k of VITAL_NUTRIENTS) expect(s.micros[k].known).toBe(0);
+    expect(s.micros.fiber.value).toBeCloseTo(one.fiber! * 1.5, 0);
+    // Every chili ingredient has iron, potassium and vitamin C in the source.
+    for (const k of ['iron', 'potassium', 'vitaminC'] as const) {
+      expect(s.micros[k].known).toBe(1);
+      expect(s.micros[k].value).toBeCloseTo(one[k]! * 1.5, 0);
+    }
+    // Cooking salt is not in the recipe data – so salt and sodium stay unknown, not a too-low sum.
+    expect(s.micros.salt.known).toBe(0);
+    expect(s.micros.sodium.known).toBe(0);
+  });
+
+  it('one ingredient without data (whey, berry mix) makes the recipe value unknown – never 0, never guessed', () => {
+    const oats = logFromMeal(plan('overnight-oats'));
+    expect(oats.micros ?? {}).toEqual({});
+    const s = summarizeEntries([oats]);
+    for (const k of VITAL_NUTRIENTS) expect(s.micros[k]).toEqual({ value: 0, known: 0, of: 1 });
+  });
+
+  it('catalog values are copied from the source with their FoodData Central id; salt follows sodium × 2.5', () => {
+    expect(FOOD_MICROS.broccoli).toMatchObject({ fdc: 170379, vitaminC: 89.2, calcium: 47 });
+    expect(getFood('broccoli')!.micros).toMatchObject({ vitaminC: 89.2, sodium: 33, salt: 0.08 });
+    // Unknown in the source → left out, not 0 (oats list no vitamin E in SR Legacy).
+    expect(getFood('oats')!.micros).not.toHaveProperty('vitaminE');
+    expect(getFood('whey')!.micros).toBeUndefined();
+    expect(getFood('wrap')!.micros).toEqual({ fiber: 3 });
   });
 
   it('manual entry: salt given → sodium follows exactly (salt = sodium × 2.5), nothing else invented', () => {
@@ -69,7 +94,8 @@ describe('micronutrients from eaten entries', () => {
   });
 
   it('partial data is reported as partial – a sum over 1 of 3 entries is not presented as complete', () => {
-    const s = summarizeEntries([asEntry(productEntry(product(), 100)), logFromMeal(plan('chili')), logFromMeal(plan('bolognese'))]);
+    // Both recipes contain an ingredient without data (whey / berry mix) → no calcium from them.
+    const s = summarizeEntries([asEntry(productEntry(product(), 100)), logFromMeal(plan('overnight-oats')), logFromMeal(plan('skyr-bowl'))]);
     expect(s.micros.calcium).toEqual({ value: 110, known: 1, of: 3 });
   });
 

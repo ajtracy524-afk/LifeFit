@@ -562,3 +562,87 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* "Zeit zum Kochen" / "Abendessen": two separate questions, each with its own caption. */
+.dayQuestion {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dayQuestion + .dayQuestion {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.dayQuestionLabel {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* Training / Ruhetag: one slim row, clearly different – tappable only on training days. */
+.dayType {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+}
+
+.dayTypeTraining {
+  border-left: 4px solid var(--accent);
+}
+
+.dayTypeTraining:hover {
+  background: var(--accent-soft);
+}
+
+.dayTypeRest {
+  border-left: 4px solid var(--text-3);
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.dayTypeIcon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dayTypeText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.dayTypeText strong {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dayTypeKicker {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.dayTypeTraining .dayTypeKicker {
+  color: var(--accent);
+}

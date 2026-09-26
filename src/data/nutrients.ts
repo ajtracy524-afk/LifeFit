@@ -49,8 +49,8 @@ export const FROM_GRAMS: Record<NutrientInfo['unit'], number> = { g: 1, mg: 1000
 /**
  * Declared "Salz" IS defined as sodium × 2.5 (EU Regulation 1169/2011,
  * Annex I no. 11; same in the Swiss labelling ordinance). A salt value from a
- * label therefore determines sodium exactly – used ONLY for manual entries
- * where the user typed a salt value. Products take sodium straight from the
- * source data, never from this factor.
+ * label therefore determines sodium exactly. Used for manual entries where the
+ * user typed a salt value and for catalog foods (FoodData Central sodium →
+ * salt). Scanned products take sodium straight from the source data.
  */
 export const SALT_PER_SODIUM = 2.5;

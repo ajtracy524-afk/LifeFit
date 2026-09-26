@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getRecipe } from '../../data/recipes';
-import { emptyState } from '../../store/persistence';
+import { emptyState, normalizeLegacyDayModes } from '../../store/persistence';
 import { weekDays } from '../dates';
 import { plannedMealMacros } from '../nutrition';
 import { ELABORATE_PREP_MIN, PLANNER_WEIGHTS, seededRandom, suggestWeek } from '../planner';
@@ -200,8 +200,11 @@ describe('user decisions are respected', () => {
     expect(s).toEqual(copy);
   });
 
-  it('busy/travel mean little time – same re-evaluation', () => {
-    const r = ok(applyWeekChange(state({ plannedMeals: slowDay() }), { type: 'setDayContext', date: WED, context: { mode: 'busy' } }, NOW));
+  it('stored "Busy"/"Reise" days load as "Wenig Zeit" (what they always meant) – same re-evaluation', () => {
+    const legacy = { [WED]: { timeBudget: 'normal', mode: 'busy' }, ['2026-09-24']: { timeBudget: 'high', mode: 'travel' } } as unknown as AppState['dayContexts'];
+    const loaded = normalizeLegacyDayModes(state({ plannedMeals: slowDay(), dayContexts: legacy }));
+    expect(loaded.dayContexts).toEqual({ [WED]: { timeBudget: 'low', mode: 'normal' }, ['2026-09-24']: { timeBudget: 'low', mode: 'normal' } });
+    const r = ok(applyWeekChange(state({ plannedMeals: slowDay() }), { type: 'setDayContext', date: WED, context: { timeBudget: 'low' } }, NOW));
     for (const m of r.state.plannedMeals) expect(prep(m.recipeId)).toBeLessThanOrEqual(15);
   });
 });

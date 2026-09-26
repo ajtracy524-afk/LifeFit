@@ -4,6 +4,11 @@ import { VITAL_NUTRIENTS, type NutritionSummary } from '../../domain/nutrition';
 import { ProgressBar } from '../../components/ui/Progress';
 import styles from './nutrition.module.css';
 
+const GROUPS = [
+  { id: 'vitamin', label: 'Vitamine' },
+  { id: 'mineral', label: 'Mineralstoffe' },
+] as const;
+
 /** Same number format as all other nutrient values of the app (only CHF amounts use the Swiss point). */
 const num = (v: number) => v.toLocaleString('de-DE', { maximumFractionDigits: v < 10 ? 2 : v < 100 ? 1 : 0 });
 
@@ -38,50 +43,66 @@ export function MicronutrientPanel({ summary }: { summary: NutritionSummary }) {
         <div className={styles.microBody}>
           {known.length === 0 ? (
             <p className={styles.microNote}>
-              Für heute liegen keine Angaben vor. Vitamine und Mineralstoffe kommen aus gescannten Produkten, die sie auf der Verpackung ausweisen – Rezepte und Katalog-Lebensmittel
-              enthalten dazu keine Daten.
+              Für heute liegen keine Angaben vor. Werte kommen aus Rezepten und Lebensmitteln mit vollständigen Nährwertdaten und aus gescannten Produkten, die sie auf der
+              Verpackung ausweisen.
             </p>
           ) : (
             <>
-            {partialOnce && (
-              <p className={styles.microNote}>
-                Werte aus {shared} von {summary.entries} Einträgen – die übrigen haben keine Angabe (nicht 0).
-              </p>
-            )}
-            <ul className={styles.microList} aria-label="Mikronährstoffe">
-              {known.map((k) => {
-                const info = NUTRIENTS[k];
-                const m = summary.micros[k];
-                const shown = displayUnit(info.unit, info.nrv ?? m.value);
-                return (
-                  <li key={k}>
-                    <span className={styles.microName}>{info.label}</span>
-                    <span className={styles.microValue}>
-                      <strong>
-                        {num(m.value / shown.divide)} {shown.unit}
-                      </strong>
-                      {info.nrv !== undefined && (
-                        <span className={styles.microRef}>
-                          {' '}
-                          / {num(info.nrv / shown.divide)} {shown.unit}
-                        </span>
-                      )}
-                    </span>
-                    {info.nrv !== undefined ? <ProgressBar value={m.value} max={info.nrv} height={4} label={info.label} /> : <span />}
-                    {m.known < m.of && !partialOnce && (
-                      <span className={styles.microPartial}>
-                        nur aus {m.known} von {m.of} Einträgen – der Rest hat keine Angabe
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+              {partialOnce && (
+                <p className={styles.microNote}>
+                  Werte aus {shared} von {summary.entries} Einträgen – die übrigen haben keine Angabe (nicht 0).
+                </p>
+              )}
+              <div role="group" aria-label="Mikronährstoffe" className={styles.microGroups}>
+                {GROUPS.map((group) => {
+                  const rows = known.filter((k) => NUTRIENTS[k].group === group.id);
+                  if (!rows.length) return null;
+                  return (
+                    <section key={group.id} className={styles.microGroup} aria-label={group.label}>
+                      <h3 className={styles.microGroupTitle}>{group.label}</h3>
+                      <ul className={styles.microList}>
+                        {rows.map((k) => {
+                          const info = NUTRIENTS[k];
+                          const m = summary.micros[k];
+                          const shown = displayUnit(info.unit, info.nrv ?? m.value);
+                          return (
+                            <li key={k}>
+                              <span className={styles.microName}>{info.label}</span>
+                              <span className={styles.microValue}>
+                                <strong>
+                                  {num(m.value / shown.divide)} {shown.unit}
+                                </strong>
+                                {info.nrv !== undefined && (
+                                  <span className={styles.microRef}>
+                                    {' '}
+                                    / {num(info.nrv / shown.divide)} {shown.unit}
+                                  </span>
+                                )}
+                              </span>
+                              {info.nrv !== undefined ? <ProgressBar value={m.value} max={info.nrv} height={4} label={info.label} /> : <span />}
+                              {m.known < m.of && !partialOnce && (
+                                <span className={styles.microPartial}>
+                                  nur aus {m.known} von {m.of} Einträgen – der Rest hat keine Angabe
+                                </span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                  );
+                })}
+              </div>
             </>
           )}
           {known.length > 0 && missing.length > 0 && <p className={styles.microNote}>Keine Daten: {missing.map((k) => NUTRIENTS[k].label).join(', ')}</p>}
           {/* The reference note belongs to values – without any it would only be noise. */}
-          {known.length > 0 && <p className={styles.microNote}>Referenz = Nährstoffbezugswert der Lebensmittelkennzeichnung (NRV) – ein Vergleichswert, kein persönliches Ziel.</p>}
+          {known.length > 0 && (
+            <p className={styles.microNote}>
+              Referenz = Nährstoffbezugswert der Lebensmittelkennzeichnung (NRV) – ein Vergleichswert, kein persönliches Ziel. Quellen: USDA FoodData Central (Rezepte,
+              Lebensmittel), Verpackungsangaben via Open Food Facts (gescannte Produkte).
+            </p>
+          )}
         </div>
       )}
     </div>

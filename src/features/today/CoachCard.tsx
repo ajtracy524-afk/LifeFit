@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
 import { DISCLAIMER, runEngine, type EngineAction, type EngineDomain, type Recommendation } from '../../domain/engine';
+import { formatCostRange } from '../../domain/costs';
+import { fmt } from '../../lib/format';
+import { Icon } from '../../components/ui/Icon';
 import { today } from '../../domain/dates';
 import { navigate } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
@@ -52,6 +55,8 @@ export function CoachCard({ domains, title = 'Für dich' }: { domains: EngineDom
 
 function RecommendationItem({ rec }: { rec: Recommendation }) {
   const [showReasons, setShowReasons] = useState(false);
+  // Meal suggestions with facts get the richer layout; everything else stays a row of buttons.
+  const meals = rec.actions.filter((a): a is MealAction => a.type === 'add_meal' && !!a.details);
 
   const run = (action: EngineAction) => {
     if (action.type === 'open') return navigate(action.route);
@@ -70,6 +75,19 @@ function RecommendationItem({ rec }: { rec: Recommendation }) {
       </div>
       <p className={styles.message}>{rec.message}</p>
 
+      {meals.length > 0 ? (
+        <MealSuggestions actions={meals} onRun={run} />
+      ) : (
+        rec.actions.length > 0 && (
+          <div className={styles.actions}>
+            {rec.actions.map((a, i) => (
+              <Button key={a.label} size="sm" variant={i === 0 ? 'primary' : 'secondary'} onClick={() => run(a)} className={styles.action}>
+                {a.label}
+              </Button>
+            ))}
+          </div>
+        )
+      )}
       {rec.reasons.length > 0 && (
         <>
           <button type="button" className={styles.why} onClick={() => setShowReasons(!showReasons)} aria-expanded={showReasons}>
@@ -84,18 +102,60 @@ function RecommendationItem({ rec }: { rec: Recommendation }) {
           )}
         </>
       )}
-
-      {rec.actions.length > 0 && (
-        <div className={styles.actions}>
-          {rec.actions.map((a, i) => (
-            <Button key={a.label} size="sm" variant={i === 0 ? 'primary' : 'secondary'} onClick={() => run(a)} className={styles.action}>
-              {a.label}
-            </Button>
-          ))}
-        </div>
-      )}
     </li>
   );
+}
+
+type MealAction = Extract<EngineAction, { type: 'add_meal' }> & { details: NonNullable<Extract<EngineAction, { type: 'add_meal' }>['details']> };
+
+/**
+ * The best meal first – with time, protein, kcal, price (only with enough
+ * price data) and why it was chosen – then the alternatives as compact rows.
+ */
+function MealSuggestions({ actions, onRun }: { actions: MealAction[]; onRun: (a: EngineAction) => void }) {
+  const [best, ...others] = actions;
+  const d = best!.details;
+  return (
+    <div className={styles.suggestion}>
+      <div className={styles.featured}>
+        <strong className={styles.featuredTitle}>{d.title}</strong>
+        <ul className={styles.facts} aria-label="Eckdaten">
+          <li>
+            <Icon name="clock" size={14} /> {d.prepMin} min
+          </li>
+          <li>{d.protein} g Protein</li>
+          <li>{fmt.kcal(d.kcal)}</li>
+          {d.cost && <li>{formatCostRange(d.cost)}</li>}
+        </ul>
+        {d.because.length > 0 && <p className={styles.because}>Empfohlen, weil {joinReasons(d.because.slice(0, 2))}.</p>}
+        <Button size="sm" icon="plus" onClick={() => onRun(best!)} className={styles.featuredButton}>
+          Einplanen
+        </Button>
+      </div>
+      {others.length > 0 && (
+        <ul className={styles.alternatives} aria-label="Weitere passende Gerichte">
+          {others.map((a) => (
+            <li key={a.recipeId}>
+              <button type="button" className={styles.alternative} onClick={() => onRun(a)} aria-label={`${a.details.title} einplanen`}>
+                <span className={styles.alternativeTitle}>{a.details.title}</span>
+                <span className={styles.alternativeMeta}>
+                  {[`${a.details.prepMin} min`, `${a.details.protein} g P`, fmt.kcal(a.details.kcal), a.details.cost && formatCostRange(a.details.cost)]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+                <Icon name="plus" size={18} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** "a, b und c" */
+function joinReasons(parts: string[]): string {
+  return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} und ${parts[parts.length - 1]}`;
 }
 
 function doneMessage(action: EngineAction): string {

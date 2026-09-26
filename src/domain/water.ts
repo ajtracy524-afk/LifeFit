@@ -1,3 +1,4 @@
+import { addDays } from './dates';
 import type { AppState, ISODate } from './types';
 
 /**
@@ -40,4 +41,23 @@ export function formatLitres(ml: number): string {
 /** Simple history: ml per given day. */
 export function waterHistory(state: Pick<AppState, 'water'>, dates: ISODate[]): { date: ISODate; ml: number }[] {
   return dates.map((date) => ({ date, ml: waterOn(state, date) }));
+}
+
+/** A series is only worth mentioning from this many days on. */
+export const WATER_STREAK_MIN_DAYS = 2;
+
+/**
+ * Days in a row on which at least `goalMl` was drunk – counted back from
+ * yesterday, plus today once today reaches it (today is still running, so an
+ * unfinished today never breaks the series). Read from the stored day values
+ * only: a day without an entry is a day below the goal, nothing is assumed.
+ * The threshold is the CURRENT goal and is shown with the number ("≥ 2 L"),
+ * because earlier goals are not stored.
+ */
+export function waterStreak(state: Pick<AppState, 'water'>, today: ISODate, goalMl: number | undefined): number {
+  if (!goalMl || goalMl <= 0) return 0;
+  let days = waterOn(state, today) >= goalMl ? 1 : 0;
+  // Bounded walk back – stops at the first day below the goal.
+  for (let d = addDays(today, -1), i = 0; i < 366 && waterOn(state, d) >= goalMl; d = addDays(d, -1), i++) days++;
+  return days;
 }

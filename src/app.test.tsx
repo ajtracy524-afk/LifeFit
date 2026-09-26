@@ -462,7 +462,7 @@ describe('weekly autopilot (F1)', () => {
     await act(async () => inDialog('Weiter').click());
     await act(async () => tab('Zeit Do 24.', 'Wenig Zeit').click());
     await act(async () => inDialog('Weiter').click());
-    await act(async () => tab('Ausnahme Mi 23.', 'Auswärts').click());
+    await act(async () => tab('Abendessen Mi 23.', 'Auswärts').click());
     await act(async () => inDialog('Weiter').click());
 
     // Preview – nothing stored yet.
@@ -958,7 +958,7 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     window.history.replaceState(null, '', '/#/today');
     await startApp();
     expect(container.querySelectorAll('button[aria-label^="Wasser auf"], button[aria-label="250 ml weniger"]')).toHaveLength(4);
-    expect(text()).toMatch(/Tagesziel erreicht ✓ · 0,5 L darüber/);
+    expect(text()).toMatch(/Tagesziel erreicht 🎉 · 0,5 L darüber/);
   });
 
   it('Ernährung: a replacement shows "statt …" like on Heute, the replaced meal is marked', async () => {
@@ -1262,5 +1262,113 @@ describe('polish: barcode loading, remembered price, manual price', () => {
     await act(async () => dialogButton('Hinzufügen').click());
     expect(store.getState().logEntries[0]).toMatchObject({ name: 'Sandwich', costChf: 6.9, macros: { kcal: 420 } });
     expect(text()).not.toMatch(/€/);
+  });
+});
+
+describe('Heute & Ernährung: status signals, day type, clear day options, explained suggestions', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 12, 45)); // Tuesday 12:45
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const TUE = '2026-09-22';
+  const log = (kcal: number, patch: Record<string, unknown> = {}) => ({
+    id: `e-${kcal}`, date: TUE, slot: 'lunch', loggedAt: `${TUE}T12:00:00Z`, name: 'Eintrag', method: 'quick', macros: { kcal, protein: 40, carbs: 100, fat: 30 }, ...patch,
+  });
+  // Tuesday's target frozen at exactly 2700 kcal (zone ±270) – independent of the training-day shift.
+  const plain = (patch: Record<string, unknown> = {}) => ({ ...completeState(), closedDayTargets: { [TUE]: 2700 }, ...patch });
+  const go = async (route: string) =>
+    act(async () => {
+      window.location.hash = `#/${route}`;
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+  const badge = () => container.querySelector('[role="status"][aria-label]')?.textContent ?? '';
+
+  it('calorie status: the same zone on Heute and Ernährung – "Im Ziel", then "deutlich darüber" in friendly words', async () => {
+    localStorage.setItem(KEY, JSON.stringify(plain({ logEntries: [log(2600)] })));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    expect(badge()).toMatch(/Im Ziel 🎯/);
+    await go('nutrition');
+    expect(badge()).toMatch(/Im Ziel 🎯/);
+    // A second entry on Ernährung → both pages move to the next state at once.
+    await act(async () => store.update((s) => void s.logEntries.push(log(700, { id: 'e-2' }) as never)));
+    expect(badge()).toMatch(/Heute deutlich darüber.*über dem Ziel – morgen einfach normal weiter/);
+    await go('today');
+    expect(badge()).toMatch(/Heute deutlich darüber/);
+  });
+
+  it('Heute: a rest day is plain information, a training day links to the training', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState())); // trains Mon/Wed/Fri → Tuesday is a rest day
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const rest = container.querySelector('[aria-label="Heute Ruhetag: Erholung"]')!;
+    expect(rest.tagName).toBe('DIV');
+    expect(rest.textContent).toMatch(/Ruhetag.*Erholung/);
+
+    await act(async () => root?.unmount());
+    root = undefined;
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), training: { programId: 'full-body', weekdays: [1, 3, 5] } }));
+    await startApp();
+    const training = container.querySelector<HTMLAnchorElement>('a[aria-label^="Heute Training:"]')!;
+    expect(training.getAttribute('href')).toBe('#/training');
+    expect(training.textContent).toMatch(/Training · ~\d+ min · \d+ Übungen/);
+  });
+
+  it('Ernährung: fiber, sugar and salt side by side – a missing value says "keine Daten", never 0', async () => {
+    localStorage.setItem(KEY, JSON.stringify(plain({ logEntries: [log(500, { micros: { fiber: 12.4, salt: 1.84 } })] })));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    const row = container.querySelector('[aria-label="Weitere Nährwerte"]')!;
+    expect(row.textContent).toBe('Ballaststoffe12,4 gZuckerkeine DatenSalz1,8 g');
+  });
+
+  it('time and situation are two clear questions – no "Busy"/"Reise" synonyms any more', async () => {
+    localStorage.setItem(KEY, JSON.stringify(plain({ dayContexts: { [TUE]: { timeBudget: 'normal', mode: 'busy' } } })));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    // A stored "Busy" day was loaded as what it meant: little time, dinner at home.
+    expect(store.getState().dayContexts[TUE]).toEqual({ timeBudget: 'low', mode: 'normal' });
+    const groups = [...container.querySelectorAll('[role="tablist"]')].map((g) => g.getAttribute('aria-label'));
+    expect(groups).toEqual(expect.arrayContaining(['Zeit zum Kochen', 'Abendessen']));
+    const dinner = container.querySelector('[role="tablist"][aria-label="Abendessen"]')!;
+    expect([...dinner.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Zuhause', 'Auswärts']);
+    expect(text()).not.toMatch(/Busy|Reise/);
+    expect(text()).toMatch(/Nur schnelle Gerichte \(bis 15 min\)/);
+  });
+
+  it('water: a real series from stored days, and a calm moment when today is reached – same on both pages', async () => {
+    const goal = { ...completeState().nutritionProfile, waterGoalMl: 2000 };
+    localStorage.setItem(KEY, JSON.stringify(plain({ nutritionProfile: goal, water: { '2026-09-21': 2000, '2026-09-20': 2500, '2026-09-19': 500, [TUE]: 1750 } })));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    expect(text()).toMatch(/2 Tage in Folge ≥ 2 L/);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
+    expect(text()).toMatch(/Tagesziel erreicht 🎉/);
+    expect(text()).toMatch(/3 Tage in Folge ≥ 2 L/);
+    await go('nutrition');
+    expect(text()).toMatch(/Tagesziel erreicht 🎉/);
+    expect(text()).toMatch(/3 Tage in Folge ≥ 2 L/);
+  });
+
+  it('suggestions on Ernährung: the best dish with time, protein, kcal and why – one tap plans it', async () => {
+    const breakfast = log(500, { slot: 'breakfast', macros: { kcal: 500, protein: 25, carbs: 60, fat: 15 } });
+    localStorage.setItem(KEY, JSON.stringify(plain({ logEntries: [breakfast], dayContexts: { [TUE]: { timeBudget: 'low', mode: 'normal' } } })));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    expect(text()).toMatch(/Wenig Zeit heute · noch ca\. [\d.]+ kcal offen – passend für Mittagessen/);
+    const facts = container.querySelector('[aria-label="Eckdaten"]')!.textContent!;
+    expect(facts.trim()).toMatch(/^\d+ min\d+ g Protein[\d.]+ kcal/);
+    expect(text()).toMatch(/Empfohlen, weil nur \d+ min – passt zu „Wenig Zeit“/);
+    expect(text()).not.toMatch(/€|EUR/);
+    await click('Einplanen');
+    expect(store.getState().plannedMeals.some((m) => m.date === TUE && m.slot === 'lunch')).toBe(true);
   });
 });

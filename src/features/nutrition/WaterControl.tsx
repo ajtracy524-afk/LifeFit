@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import type { ISODate } from '../../domain/types';
-import { formatLitres, waterOn } from '../../domain/water';
+import { today } from '../../domain/dates';
+import { formatLitres, waterOn, waterStreak, WATER_STREAK_MIN_DAYS } from '../../domain/water';
 import { href } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
 import { addWaterMl } from '../../store/actions';
@@ -28,6 +29,8 @@ export function WaterControl({ date }: { date: ISODate }) {
   const count = goal ? Math.max(1, Math.ceil(goal / unit)) : DEFAULT_GLASSES;
   const full = Math.floor(ml / unit);
   const left = goal ? Math.max(0, goal - ml) : undefined;
+  // A real series from the stored day values (today only counts once reached) – shown from 2 days on.
+  const streak = date === today() ? waterStreak(state, date, goal) : 0;
 
   const setTo = (next: number) => {
     const delta = next - ml;
@@ -49,7 +52,12 @@ export function WaterControl({ date }: { date: ISODate }) {
         </button>
       </div>
       {/* The bottles share the full width – fits every phone without wrapping. */}
-      <div className={styles.glasses} style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }} role="group" aria-label={`Wasser: ${unit} ml pro ${unit === 250 ? 'Glas' : 'Flasche'}`}>
+      <div
+        className={styles.glasses}
+        style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}
+        role="group"
+        aria-label={`Wasser: ${unit} ml pro ${unit === 250 ? 'Glas' : 'Flasche'}`}
+      >
         {Array.from({ length: count }, (_, i) => {
           const level = i < full ? 1 : i === full ? (ml % unit) / unit : 0;
           // Beyond the goal every bottle is full – tapping one then sets that level.
@@ -68,14 +76,21 @@ export function WaterControl({ date }: { date: ISODate }) {
         })}
       </div>
       <p className={styles.waterLeft}>
-        {left === undefined ? (
-          <a className={styles.waterGoalLink} href={href('profile', { section: 'water' })}>
-            Tagesziel festlegen
-          </a>
-        ) : left === 0 ? (
-          `Tagesziel erreicht ✓${goal && ml > goal ? ` · ${formatLitres(ml - goal)} darüber` : ''}`
-        ) : (
-          `Noch ${formatLitres(left)} · ${Math.ceil(left / unit)} ${unit === 250 ? (Math.ceil(left / unit) === 1 ? 'Glas' : 'Gläser') : Math.ceil(left / unit) === 1 ? 'Flasche' : 'Flaschen'}`
+        <span key={left === 0 ? 'reached' : 'open'} className={left === 0 ? styles.waterReached : undefined}>
+          {left === undefined ? (
+            <a className={styles.waterGoalLink} href={href('profile', { section: 'water' })}>
+              Tagesziel festlegen
+            </a>
+          ) : left === 0 ? (
+            `Tagesziel erreicht 🎉${goal && ml > goal ? ` · ${formatLitres(ml - goal)} darüber` : ''}`
+          ) : (
+            `Noch ${formatLitres(left)} · ${Math.ceil(left / unit)} ${unit === 250 ? (Math.ceil(left / unit) === 1 ? 'Glas' : 'Gläser') : Math.ceil(left / unit) === 1 ? 'Flasche' : 'Flaschen'}`
+          )}
+        </span>
+        {streak >= WATER_STREAK_MIN_DAYS && goal && (
+          <span className={styles.waterStreak}>
+            {streak} Tage in Folge ≥ {formatLitres(goal)}
+          </span>
         )}
       </p>
     </div>
@@ -94,7 +109,13 @@ function Bottle({ level }: { level: number }) {
         </clipPath>
       </defs>
       {level > 0 && <rect x="0" y={top} width="16" height={30 - top} fill="var(--water)" clipPath={`url(#${clip})`} />}
-      <path d="M5.5 1.5h5v4l2.5 3v18.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 27V8.5l2.5-3z" fill="none" stroke={level > 0 ? 'var(--water)' : 'var(--text-3)'} strokeWidth="1.4" strokeLinejoin="round" />
+      <path
+        d="M5.5 1.5h5v4l2.5 3v18.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 27V8.5l2.5-3z"
+        fill="none"
+        stroke={level > 0 ? 'var(--water)' : 'var(--text-3)'}
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

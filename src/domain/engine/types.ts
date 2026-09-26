@@ -1,3 +1,4 @@
+import type { CostRange } from '../costs';
 import type { ISODate, Macros, MealSlot, WorkoutTemplate } from '../types';
 
 /**
@@ -32,12 +33,23 @@ export type Priority = 'high' | 'medium' | 'low';
 export type Confidence = 'high' | 'medium' | 'low';
 
 export type EngineAction =
-  | { type: 'add_meal'; label: string; date: ISODate; slot: MealSlot; recipeId: string; servings: number }
+  | { type: 'add_meal'; label: string; date: ISODate; slot: MealSlot; recipeId: string; servings: number; details?: MealSuggestionDetails }
   | { type: 'log_food'; label: string; date: ISODate; slot: MealSlot; foodId: string; grams: number }
   | { type: 'swap_meal'; label: string; mealId: string; recipeId: string; servings: number }
   | { type: 'start_workout'; label: string; template: WorkoutTemplate }
   | { type: 'set_targets'; label: string; macros: Macros }
   | { type: 'open'; label: string; route: 'shopping' | 'training' | 'nutrition' | 'progress' };
+
+/** What the UI shows for a suggested meal – facts only, cost only with enough price data. */
+export interface MealSuggestionDetails {
+  title: string;
+  prepMin: number;
+  kcal: number;
+  protein: number;
+  cost?: CostRange;
+  /** Why it was chosen ("nur 15 min – passt zu „Wenig Zeit“"). */
+  because: string[];
+}
 
 export interface Recommendation {
   /** Stable per day and subject – used for dismissals. */

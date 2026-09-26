@@ -1,4 +1,6 @@
-import type { Allergen, Food, ShoppingCategory } from '../domain/types';
+import type { Allergen, Food, Micros, ShoppingCategory } from '../domain/types';
+import { FOOD_MICROS } from './foodMicros';
+import { SALT_PER_SODIUM } from './nutrients';
 
 /** Supermarket walking order, used to sort the shopping list. */
 export const CATEGORIES: { id: ShoppingCategory; label: string }[] = [
@@ -112,14 +114,19 @@ const EST_PRICE_PER_KG: Record<string, number> = {
   'olive-oil': 16.0, 'peanut-butter': 12.0, almonds: 20.0, honey: 16.0, 'soy-sauce': 12.0,
 };
 
-/** Dietary fiber in g per 100 g (standard food tables). */
-const FIBER_PER_100G: Record<string, number> = {
-  broccoli: 2.6, 'bell-pepper': 2.1, zucchini: 1.0, tomato: 1.2, cucumber: 0.5, onion: 1.7, potato: 2.2,
-  'sweet-potato': 3.0, banana: 2.6, apple: 2.4, avocado: 6.7, lettuce: 1.6, orange: 2.4,
-  oats: 10.0, rice: 1.3, pasta: 7.0, couscous: 5.0, quinoa: 7.0, bread: 7.0, wrap: 3.0, 'rice-cakes': 3.0, toast: 6.0,
-  tofu: 1.0, kidney: 6.4, chickpeas: 7.6, corn: 2.4, 'canned-tomato': 1.2, lentils: 11.0,
-  berries: 4.0, spinach: 2.2, edamame: 5.2, 'peanut-butter': 6.0, almonds: 12.5, 'soy-sauce': 0.8,
-};
+/**
+ * Fiber (g per 100 g, standard food tables) for the few foods without an entry
+ * in FOOD_MICROS. Foods in neither table have unknown fiber – never 0.
+ */
+const FIBER_ONLY: Record<string, number> = { wrap: 3.0, berries: 4.0 };
+
+/** Catalog micronutrients per 100 g: FoodData Central values, salt from sodium (salt = sodium × 2.5 by definition). */
+function catalogMicros(id: string): Micros | undefined {
+  const entry = FOOD_MICROS[id];
+  if (!entry) return FIBER_ONLY[id] !== undefined ? { fiber: FIBER_ONLY[id] } : undefined;
+  const { fdc: _source, ...micros } = entry;
+  return micros.sodium !== undefined ? { ...micros, salt: Math.round((micros.sodium * SALT_PER_SODIUM) / 10) / 100 } : micros;
+}
 
 export const FOODS: Food[] = RAW.map(([id, name, category, kcal, protein, carbs, fat, diet, allergens = [], extra = {}]) => ({
   id,
@@ -131,7 +138,7 @@ export const FOODS: Food[] = RAW.map(([id, name, category, kcal, protein, carbs,
   allergens,
   ...extra,
   ...(EST_PRICE_PER_KG[id] !== undefined ? { estPricePerKg: EST_PRICE_PER_KG[id] } : {}),
-  micros: { fiber: FIBER_PER_100G[id] ?? 0 },
+  ...(catalogMicros(id) ? { micros: catalogMicros(id) } : {}),
 }));
 
 const BY_ID = new Map(FOODS.map((f) => [f.id, f]));

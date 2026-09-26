@@ -22,6 +22,8 @@ import { LogFoodSheet, type LogTarget } from '../nutrition/LogFoodSheet';
 import { WaterControl } from '../nutrition/WaterControl';
 import { MicronutrientPanel } from '../nutrition/MicronutrientPanel';
 import { BudgetLine } from '../nutrition/BudgetLine';
+import { CalorieStatusBadge } from '../nutrition/CalorieStatusBadge';
+import { DayTypeBadge } from './DayTypeBadge';
 import { MealSheet } from '../nutrition/MealSheet';
 import { WeightSheet } from '../progress/WeightSheet';
 import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
@@ -141,6 +143,9 @@ export function TodayScreen() {
         </Card>
       )}
 
+      {/* Training or rest day – at a glance, a training day links to the session. */}
+      <DayTypeBadge session={todaysSession} completed={isCompletedOn(state.workouts, t)} running={running} />
+
       {/* Daily target */}
       {target && (
         <Card>
@@ -154,6 +159,7 @@ export function TodayScreen() {
                 <strong>{fmt.int(totals.kcal)}</strong> / {fmt.kcal(target.kcal)}
               </p>
               <p className={styles.muted}>heute gegessen</p>
+              <CalorieStatusBadge date={t} eatenKcal={totals.kcal} targetKcal={target.kcal} />
             </div>
           </div>
           <div className={styles.macroRow}>

@@ -117,13 +117,13 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
 
       {step === 2 && (
         <section className={styles.section}>
-          <h3 className={styles.question}>Gibt es Ausnahmen?</h3>
-          <p className={styles.muted}>Auswärts: Abendessen entfällt im Plan · Busy/Reise: schnelle Gerichte, kürzeres Training</p>
+          <h3 className={styles.question}>Wo isst du zu Abend?</h3>
+          <p className={styles.muted}>Auswärts: Abendessen entfällt im Plan und auf der Einkaufsliste. Wenig Zeit hast du im Schritt davor festgelegt.</p>
           {open.map((d) => (
             <div key={d} className={styles.dayRow}>
               <span className={styles.dayLabel}>{dayLabel(d)}</span>
               <Segmented<DayMode>
-                label={`Ausnahme ${dayLabel(d)}`}
+                label={`Abendessen ${dayLabel(d)}`}
                 value={days[d]!.mode}
                 onChange={(mode) => setDay(d, { mode })}
                 options={DAY_MODE_ORDER.map((m) => ({ value: m, label: DAY_MODE_LABEL[m] }))}

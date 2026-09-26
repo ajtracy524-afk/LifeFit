@@ -12,8 +12,8 @@ export const fmt = {
   g: (n: number) => `${num.format(Math.round(n))} g`,
   kg: (n: number) => `${num1.format(n)} kg`,
   servings: (n: number) => (n === 1 ? '1 Portion' : `${num1.format(n)} Portionen`),
-  /** Optional nutrients: salt needs two decimals (0,03 g is not "0 g"). */
-  micro: (key: 'fiber' | 'sugar' | 'salt', n: number) => `${key === 'salt' ? num2.format(n) : num1.format(n)} g`,
+  /** Optional nutrients: salt below 1 g gets two decimals (0,03 g is not "0 g"), above that one is enough. */
+  micro: (key: 'fiber' | 'sugar' | 'salt', n: number) => `${key === 'salt' && n < 1 ? num2.format(n) : num1.format(n)} g`,
 };
 
 export function formatGrams(g: number): string {
