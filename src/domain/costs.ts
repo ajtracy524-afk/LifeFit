@@ -87,20 +87,25 @@ export function ingredientCostRange(items: CostItem[], price: PriceLookup = cata
   let exact = 0;
   let estimate = 0;
   for (const item of items) {
-    if (item.grams <= 0) continue;
-    total += item.grams;
     if ('exactChf' in item) {
-      priced += item.grams;
+      // A real amount always counts – with an unknown weight (e.g. "1 Portion") it just does not
+      // take part in the weight coverage.
       exact += item.exactChf;
+      if (item.grams > 0) {
+        total += item.grams;
+        priced += item.grams;
+      }
       continue;
     }
+    if (item.grams <= 0) continue;
+    total += item.grams;
     const p = price(item.foodId);
     if (!p) continue;
     priced += item.grams;
     if (p.exact) exact += (item.grams / 1000) * p.perKgChf;
     else estimate += (item.grams / 1000) * p.perKgChf;
   }
-  if (total === 0 || priced / total < MIN_PRICED_SHARE) return undefined;
+  if (total === 0 ? exact === 0 : priced / total < MIN_PRICED_SHARE) return undefined;
   const low = exact + estimate * 0.9;
   const high = exact + estimate * 1.15;
   const step = high < 5 ? 0.5 : 1;

@@ -80,7 +80,8 @@ export function MicronutrientPanel({ summary }: { summary: NutritionSummary }) {
             </>
           )}
           {known.length > 0 && missing.length > 0 && <p className={styles.microNote}>Keine Daten: {missing.map((k) => NUTRIENTS[k].label).join(', ')}</p>}
-          <p className={styles.microNote}>Referenz = Nährstoffbezugswert der Lebensmittelkennzeichnung (NRV) – ein Vergleichswert, kein persönliches Ziel.</p>
+          {/* The reference note belongs to values – without any it would only be noise. */}
+          {known.length > 0 && <p className={styles.microNote}>Referenz = Nährstoffbezugswert der Lebensmittelkennzeichnung (NRV) – ein Vergleichswert, kein persönliches Ziel.</p>}
         </div>
       )}
     </div>

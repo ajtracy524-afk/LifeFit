@@ -81,7 +81,10 @@ export function ManualForm({ initial, onSubmit, onBack }: Props) {
           ]}
         />
       )}
-      <Field label="Kalorien" inputMode="decimal" suffix="kcal" value={input.kcal} error={errors.kcal} onChange={(e) => set({ kcal: e.target.value })} />
+      <div className={styles.fieldRow}>
+        <Field label="Kalorien" inputMode="decimal" suffix="kcal" value={input.kcal} error={errors.kcal} onChange={(e) => set({ kcal: e.target.value })} />
+        <Field label="Preis (optional)" inputMode="decimal" suffix="CHF" placeholder="–" value={input.price ?? ''} error={errors.price} onChange={(e) => set({ price: e.target.value })} />
+      </div>
       <div className={styles.fieldRow3}>
         <Field label="Protein" inputMode="decimal" suffix="g" placeholder="–" value={input.protein} error={errors.protein} onChange={(e) => set({ protein: e.target.value })} />
         <Field label="Kohlenh." inputMode="decimal" suffix="g" placeholder="–" value={input.carbs} error={errors.carbs} onChange={(e) => set({ carbs: e.target.value })} />
@@ -98,7 +101,7 @@ export function ManualForm({ initial, onSubmit, onBack }: Props) {
           + Ballaststoffe, Zucker, Salz
         </button>
       )}
-      <p className={styles.sourceNote}>Nur Kalorien sind nötig. Leere Felder bleiben leer – LifeFit schätzt nichts dazu.</p>
+      <p className={styles.sourceNote}>Nur Kalorien sind nötig. Leere Felder bleiben leer – LifeFit schätzt nichts dazu, auch keinen Preis.</p>
       <div className={styles.confirmFooter}>
         {onBack && (
           <Button variant="secondary" onClick={onBack}>

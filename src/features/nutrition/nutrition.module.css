@@ -824,6 +824,7 @@
 
 .moreToggle {
   align-self: flex-start;
+  min-height: 44px;
   color: var(--accent);
   font-weight: 600;
   font-size: 14px;
@@ -868,7 +869,7 @@
 
 .glass {
   min-width: 0;
-  height: 40px;
+  height: 44px;
   display: grid;
   place-items: center;
   border-radius: 10px;
@@ -880,7 +881,7 @@
 
 .glassAdd {
   flex: none;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 12px;
   border-radius: 999px;
   background: var(--surface-2);
@@ -940,7 +941,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 36px;
+  min-height: 44px;
   color: var(--accent);
   font-weight: 600;
   font-size: 14px;

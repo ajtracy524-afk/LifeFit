@@ -550,3 +550,15 @@
 .macroRow {
   margin-top: 16px;
 }
+
+.nextTitleButton {
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+
+.nextTitleButton:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

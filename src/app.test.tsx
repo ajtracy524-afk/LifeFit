@@ -505,7 +505,7 @@ describe('Heute is focused (next action)', () => {
     expect(card()).toMatch(/Frühstück: Protein Overnight Oats/);
     expect(text()).not.toMatch(/Hinweise zum Training/);
 
-    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Nächste Aktion"] button')!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Nächste Aktion"] button')].find((b) => b.textContent?.trim() === 'Gegessen')!.click());
     expect(store.getState().plannedMeals.find((m) => m.id === 'm0')!.status).toBe('eaten');
     // Monday is a training day → training is next.
     expect(card()).toMatch(/Training starten/);
@@ -727,18 +727,18 @@ describe('food tracking (end to end)', () => {
   });
 
   it('Heute: water – tap a bottle, see goal · drunk · left, tap the last one to take it back', async () => {
-    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), nutritionProfile: { ...completeState().nutritionProfile, waterGoalMl: 2500 } }));
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), nutritionProfile: { ...completeState().nutritionProfile, waterGoalMl: 2000 } }));
     window.history.replaceState(null, '', '/#/today');
     const store = await startApp();
     const water = () => container.querySelector('[aria-label^="Wasser: 250 ml pro Glas"]')!;
-    // 2.5 L goal → 10 glasses of 250 ml.
-    expect(water().querySelectorAll('button[aria-label^="Wasser auf"]')).toHaveLength(10);
-    expect(text()).toMatch(/Noch 2,5 L/);
+    // 2 L goal → 8 glasses of 250 ml.
+    expect(water().querySelectorAll('button[aria-label^="Wasser auf"]')).toHaveLength(8);
+    expect(text()).toMatch(/Noch 2 L/);
     // Tapping the 2nd glass fills up to it: +500 ml in one tap.
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Wasser auf 0,5 L"]')!.click());
     expect(store.getState().water['2026-09-21']).toBe(500);
-    expect(text()).toMatch(/0,5 L\s*\/ 2,5 L/);
-    expect(text()).toMatch(/Noch 2 L/);
+    expect(text()).toMatch(/0,5 L\s*\/ 2 L/);
+    expect(text()).toMatch(/Noch 1,5 L/);
     // The last full glass takes 250 ml back; "+250" adds one.
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml weniger"]')!.click());
     expect(store.getState().water['2026-09-21']).toBe(250);
@@ -747,7 +747,21 @@ describe('food tracking (end to end)', () => {
     // Same control, same data on "Ernährung".
     await act(async () => window.location.assign('#/nutrition'));
     await act(async () => new Promise((r) => setTimeout(r, 0)));
-    expect(text()).toMatch(/0,5 L\s*\/ 2,5 L/);
+    expect(text()).toMatch(/0,5 L\s*\/ 2 L/);
+  });
+
+  it('Heute: a large goal uses 500-ml bottles (big enough to tap on a phone), +250 stays the fine step', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), nutritionProfile: { ...completeState().nutritionProfile, waterGoalMl: 2500 } }));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const water = container.querySelector('[aria-label^="Wasser: 500 ml pro Flasche"]')!;
+    expect(water.querySelectorAll('button')).toHaveLength(5);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Wasser auf 1 L"]')!.click());
+    expect(store.getState().water['2026-09-21']).toBe(1000);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
+    expect(store.getState().water['2026-09-21']).toBe(1250);
+    expect(text()).toMatch(/1,25 L\s*\/ 2,5 L/);
+    expect(text()).toMatch(/Noch 1,25 L/);
   });
 
   it('Heute: water without a goal shows a neutral scale and asks for a goal – nothing invented', async () => {
@@ -892,6 +906,39 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     expect(dialog).toMatch(/Passend zu deinem Plan/);
   });
 
+  it('next-action card: time, all macros, cost; "Ersetzen" opens the suggestions directly; the name opens details', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withLog()));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const card = () => container.querySelector('[aria-label="Nächste Aktion"]')!;
+    expect(card().textContent).toMatch(/Jetzt · 12:30/);
+    expect(card().textContent).toMatch(/Mittagessen: Vollkorn-Pasta Bolognese/);
+    expect(card().textContent).toMatch(/kcal · \d+ g P · \d+ g KH · \d+ g F · ca\. [\d.]+–[\d.]+ CHF/);
+    const btn = (label: string) => [...card().querySelectorAll('button')].find((b) => b.textContent?.trim() === label)!;
+    await act(async () => btn('Ersetzen').click());
+    expect(container.querySelector('dialog[open]')!.textContent).toMatch(/Vollkorn-Pasta Bolognese ersetzen[\s\S]*Passend zu deinem Plan/);
+    await act(async () => container.querySelector<HTMLButtonElement>('dialog[open] button[aria-label="Schließen"]')?.click());
+    await act(async () => card().querySelector<HTMLButtonElement>('button[aria-label$="– Details"]')!.click());
+    expect(container.querySelector('dialog[open]')!.textContent).toMatch(/Warum dieses Gericht\?/);
+  });
+
+  it('next-action "Gegessen": one entry, balance and timeline update, the next open meal moves up', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withLog()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const card = () => container.querySelector('[aria-label="Nächste Aktion"]')!;
+    const eat = () => [...card().querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Gegessen')!;
+    await act(async () => eat().click());
+    const s = store.getState();
+    expect(s.plannedMeals.find((m) => m.id === 'l')!.status).toBe('eaten');
+    expect(s.logEntries.filter((e) => e.plannedMealId === 'l')).toHaveLength(1);
+    expect(ringKcal()).toBe(Math.round(545 + s.logEntries.find((e) => e.plannedMealId === 'l')!.macros.kcal));
+    expect(timelineItem('Vollkorn-Pasta Bolognese').dataset.state).toBe('eaten');
+    expect(timelineItem('Chili con Carne').dataset.state).toBe('next');
+    // The card moves on (by design shopping needed today/tomorrow comes before a meal that is not due yet).
+    expect(card().textContent).not.toMatch(/Mittagessen/);
+  });
+
   it('quick add sits in the header (in the layout, not floating over water or timeline) and keeps its sheet', async () => {
     localStorage.setItem(KEY, JSON.stringify(withLog()));
     window.history.replaceState(null, '', '/#/today');
@@ -1030,6 +1077,8 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
     await act(async () => open(/Mikronährstoffe anzeigen/).click());
     expect(text()).toMatch(/Für heute liegen keine Angaben vor/);
     expect(container.querySelector('[aria-label="Mikronährstoffe"]')).toBeNull();
+    // No values → no reference note (it only explains values).
+    expect(text()).not.toMatch(/Referenz = Nährstoffbezugswert/);
   });
 
   it('Heute: Essen erfassen → Barcode → Kamera → Produkt → Menge → Preis 4.95 CHF → Tagesbilanz + Budget', async () => {
@@ -1082,5 +1131,90 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
     await act(async () => window.location.assign('#/nutrition?view=week'));
     await settle();
     expect(text()).toMatch(/Diese Woche ca\. [\d.]+–[\d.]+ CHF von 55 CHF/);
+  });
+});
+
+describe('polish: barcode loading, remembered price, manual price', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 12, 45));
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 30)));
+  const dialogButton = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === label)!;
+
+  it('while looking up: "Produkt wird gesucht …", the button is disabled and a second submit sends no second request', async () => {
+    let resolve!: (r: Response) => void;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>((r) => (resolve = r)));
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Barcode');
+    await type('Barcode-Nummer', '4000000000009');
+    await click('Produkt suchen');
+    expect(text()).toContain('Produkt wird gesucht');
+    const busy = dialogButton('Produkt wird gesucht …');
+    expect(busy.disabled).toBe(true);
+    await act(async () => container.querySelector('dialog[open] form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    await act(async () => resolve(new Response(JSON.stringify({ status: 0 }), { status: 404 })));
+    await settle();
+    expect(text()).toContain('Produkt nicht gefunden');
+  });
+
+  it('a remembered price is prefilled and used, but not saved again when unchanged', async () => {
+    const product = { barcode: '7610000000009', name: 'Joghurt', per100: { kcal: 80, protein: 4, carbs: 12, fat: 1.5 }, micros100: {}, unit: 'g', servingSize: 150, packageSize: 150, source: 'openfoodfacts', fetchedAt: '2026-09-01T08:00:00Z', price: { chf: 1.95, amount: 150, at: '2026-09-01T08:00:00Z' } };
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), products: { [product.barcode]: product } }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Barcode');
+    await type('Barcode-Nummer', product.barcode);
+    await click('Produkt suchen');
+    await settle();
+    const priceInput = [...container.querySelectorAll<HTMLLabelElement>('dialog[open] label')].find((l) => l.textContent?.startsWith('Packungspreis'))!;
+    expect((document.getElementById(priceInput.htmlFor) as HTMLInputElement).value).toBe('1.95');
+    await act(async () => dialogButton('Hinzufügen').click());
+    const s = store.getState();
+    expect(s.logEntries[0]).toMatchObject({ amount: 150, costChf: 1.95 });
+    expect(s.products[product.barcode]!.price!.at).toBe('2026-09-01T08:00:00Z');
+  });
+
+  it('budget set but too little price data: "Preis nicht verfügbar" instead of a number – never 0 CHF', async () => {
+    // A planned meal plus 3 kg of a scanned product without price or catalog link → below 80 % priced weight.
+    const shakes = [{ id: 's', date: '2026-09-22', slot: 'breakfast', recipeId: 'skyr-bowl', servings: 1, status: 'planned', source: 'suggest' }];
+    const unpriced = { id: 'u', date: '2026-09-22', slot: 'snack', loggedAt: '2026-09-22T10:00:00Z', name: 'Unbekannt', method: 'barcode', barcode: '1', grams: 3000, amount: 3000, unit: 'g', macros: { kcal: 900, protein: 10, carbs: 100, fat: 30 } };
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: shakes, logEntries: [unpriced], plannerSettings: { priority: 'balanced', weeklyBudgetChf: 55, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' } } }));
+    const { weekFoodCost } = await import('./domain/week');
+    window.history.replaceState(null, '', '/#/nutrition?view=week');
+    const store = await startApp();
+    if (weekFoodCost(store.getState(), '2026-09-21')) throw new Error('fixture has reliable prices – adjust');
+    expect(text()).toMatch(/Diese Woche: Preis nicht verfügbar – zu wenig Preisdaten · Budget 55 CHF/);
+    expect(text()).not.toMatch(/0 CHF von|0\.00 CHF/);
+  });
+
+  it('manual entry with a price: cost on the entry, CHF only', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    await type('Name', 'Sandwich');
+    await type('Kalorien', '420');
+    await type('Preis (optional)', '-3');
+    await act(async () => dialogButton('Hinzufügen').click());
+    expect(text()).toContain('Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.');
+    expect(store.getState().logEntries).toHaveLength(0);
+    await type('Preis (optional)', '6.90');
+    await act(async () => dialogButton('Hinzufügen').click());
+    expect(store.getState().logEntries[0]).toMatchObject({ name: 'Sandwich', costChf: 6.9, macros: { kcal: 420 } });
+    expect(text()).not.toMatch(/€/);
   });
 });

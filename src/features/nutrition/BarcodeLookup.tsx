@@ -100,13 +100,13 @@ export function BarcodeLookup({ onFound, onManual }: Props) {
           }}
         />
         <Button type="submit" block icon="search" disabled={lookup.kind === 'loading' || !code.trim()}>
-          {lookup.kind === 'loading' ? 'Suche Produkt …' : 'Produkt suchen'}
+          {lookup.kind === 'loading' ? 'Produkt wird gesucht …' : 'Produkt suchen'}
         </Button>
       </form>
 
       {lookup.kind === 'loading' && (
         <p className={styles.searchHint} role="status">
-          Suche in {productSourceName()} …
+          Produkt wird gesucht ({productSourceName()}) …
         </p>
       )}
       {lookup.kind === 'not_found' && (

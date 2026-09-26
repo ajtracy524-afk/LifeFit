@@ -3,7 +3,7 @@ import { getRecipe } from '../data/recipes';
 import { dropLegacyEurBudget, emptyState } from '../store/persistence';
 import { catalogPrice, formatChf, formatCostRange, ingredientCostRange, MIN_PRICED_SHARE, priceLookup, recipeCostRange } from './costs';
 import { formatChfEstimate, budgetNote } from './explain';
-import { productEntry } from './foodEntry';
+import { EMPTY_MANUAL, manualEntry, productEntry } from './foodEntry';
 import type { AppState, LogEntry, PlannedMeal, Product } from './types';
 import { weekFoodCost } from './week';
 
@@ -134,6 +134,36 @@ describe('weekly budget (one calculation for Heute and Ernährung)', () => {
     const eaten = meal('a', 'chili', { status: 'eaten' });
     const s = state({ plannedMeals: [eaten], logEntries: [entry({ plannedMealId: 'a', grams: 500, costChf: 99 }), entry({ date: '2026-09-29', grams: 500, costChf: 99 })] });
     expect(weekFoodCost(s, MON)!.highChf).toBeLessThan(20);
+  });
+});
+
+describe('manual prices', () => {
+  it('an optional price becomes the real cost of exactly this entry; empty stays "no price"', () => {
+    const withPrice = manualEntry({ ...EMPTY_MANUAL, name: 'Pizza', amount: '1', unit: 'portion', kcal: '900', price: '18.50' });
+    const without = manualEntry({ ...EMPTY_MANUAL, name: 'Pizza', kcal: '900' });
+    expect(withPrice.ok && withPrice.entry.costChf).toBe(18.5);
+    expect(without.ok && without.entry).not.toHaveProperty('costChf');
+  });
+
+  it('rejects negative, zero-like or non-numeric prices and invalid amounts', () => {
+    for (const price of ['-2', '0', 'gratis', '0.01', '5000']) {
+      const r = manualEntry({ ...EMPTY_MANUAL, name: 'x', kcal: '100', price });
+      expect(r.ok ? 'ok' : r.errors.price).toBe('Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.');
+    }
+    for (const amount of ['0', '-100', 'viel']) {
+      const r = manualEntry({ ...EMPTY_MANUAL, name: 'x', kcal: '100', amount });
+      expect(r.ok ? 'ok' : r.errors.amount).toBe('Bitte prüfe die Menge.');
+    }
+    expect(manualEntry({ ...EMPTY_MANUAL, name: 'x', kcal: '100', price: '4,95' }).ok).toBe(true); // comma or point
+  });
+
+  it('a real price without a weight ("1 Portion") still counts in the week – exactly, without changing the 80 % rule', () => {
+    const s = state({ logEntries: [entry({ method: 'manual', grams: undefined, costChf: 18.5 })] });
+    expect(weekFoodCost(s, MON)).toEqual({ lowChf: 18, highChf: 19 });
+    // Next to a planned week the real amount is added to the estimate range.
+    const planned = state({ plannedMeals: [meal('a', 'chili')] });
+    const both = { ...planned, logEntries: s.logEntries };
+    expect(weekFoodCost(both, MON)!.lowChf).toBeGreaterThanOrEqual(weekFoodCost(planned, MON)!.lowChf + 18);
   });
 });
 

@@ -38,6 +38,11 @@ export function TodayScreen() {
   const start = weekStart(t);
 
   const [openMeal, setOpenMeal] = useState<string | null>(null);
+  const [replaceFirst, setReplaceFirst] = useState(false);
+  const openMealSheet = (id: string, replace = false) => {
+    setReplaceFirst(replace);
+    setOpenMeal(id);
+  };
   const [logTarget, setLogTarget] = useState<LogTarget | null>(null);
   const [weightOpen, setWeightOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
@@ -165,7 +170,7 @@ export function TodayScreen() {
       )}
 
       {/* The one next action of the day */}
-      <NextActionCard action={action} onPlanWeek={setPlanningWeek} onStart={begin} onOpenMeal={setOpenMeal} />
+      <NextActionCard action={action} onPlanWeek={setPlanningWeek} onStart={begin} onOpenMeal={(id) => openMealSheet(id)} onReplaceMeal={(id) => openMealSheet(id, true)} />
 
       {/* Only safety notices belong on "Heute" – training hints live in Training, plan suggestions in Ernährung. */}
       <CoachCard domains={['safety']} />
@@ -177,7 +182,7 @@ export function TodayScreen() {
           weekStartDate={start}
           startInNextAction={action.kind === 'start_training'}
           running={!!running}
-          onOpenMeal={setOpenMeal}
+          onOpenMeal={(id) => openMealSheet(id)}
           onStart={begin}
           onMoveTraining={() => setPlanOpen(true)}
           onLogFood={() => setLogTarget({ date: t, slot: logSlot() })}
@@ -265,7 +270,8 @@ export function TodayScreen() {
         }}
       />
       <WorkoutPlanSheet session={planOpen ? (todaysSession ?? null) : null} week={week} today={t} onClose={() => setPlanOpen(false)} />
-      <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} />
+      {/* Keyed by mode: "Ersetzen" from the card starts a fresh sheet in that view. */}
+      <MealSheet key={replaceFirst ? "replace" : "details"} mealId={openMeal} startReplacing={replaceFirst} onClose={() => setOpenMeal(null)} />
       <LogFoodSheet target={logTarget} onClose={() => setLogTarget(null)} />
       <WeightSheet open={weightOpen} onClose={() => setWeightOpen(false)} />
     </Screen>

@@ -58,7 +58,9 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat' }:
   const [priceText, setPriceText] = useState(product.price && product.price.amount === product.packageSize ? String(product.price.chf) : '');
   const priceValue = parseNumber(priceText);
   const priceValid = priceText.trim() === '' || (Number.isFinite(priceValue) && priceValue >= 0.05 && priceValue <= 1000);
-  const price = priceText.trim() && priceValid && priceBase ? { chf: Math.round(priceValue * 100) / 100, amount: priceBase } : undefined;
+  const typed = priceText.trim() && priceValid && priceBase ? { chf: Math.round(priceValue * 100) / 100, amount: priceBase } : undefined;
+  // Only a new or corrected price is saved – an unchanged remembered price stays as it was.
+  const price = typed && !(product.price && product.price.chf === typed.chf && product.price.amount === typed.amount) ? typed : undefined;
   const choice: ProductChoice | null =
     validAmount && priceValid && (nutrients || purpose === 'purchase') ? { id, amount, foodId, fromPantry: stock > 0 ? fromPantry : true, ...(price ? { price } : {}) } : null;
 
@@ -150,8 +152,8 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat' }:
         value={priceText}
         error={priceValid ? undefined : 'Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.'}
         hint={
-          price && validAmount && purpose === 'eat' && price.amount !== amount
-            ? `Deine Menge (${fmt.int(amount)} ${u}) ≈ ${formatChf((price.chf / price.amount) * amount)}`
+          typed && validAmount && purpose === 'eat' && typed.amount !== amount
+            ? `Deine Menge (${fmt.int(amount)} ${u}) ≈ ${formatChf((typed.chf / typed.amount) * amount)}`
             : product.price && !priceText
               ? `Zuletzt: ${formatChf(product.price.chf)} für ${fmt.int(product.price.amount)} ${u}`
               : 'Fließt in dein Budget ein – ohne Angabe nutzt LifeFit nur Schätzpreise.'

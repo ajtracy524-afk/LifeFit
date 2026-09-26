@@ -9,7 +9,10 @@ import styles from './nutrition.module.css';
 
 /** Glasses shown without a goal – just a friendly scale, not a target. */
 const DEFAULT_GLASSES = 8;
-const MAX_GLASSES = 12;
+/** More than this many 250-ml glasses get too narrow to tap on a phone – then 500-ml bottles are shown. */
+const MAX_GLASSES = 8;
+/** The quick button always adds one glass – the fine step, whatever the bottle size. */
+const STEP_ML = 250;
 
 /**
  * Water at a glance: goal · drunk · left, and one tap per glass. Tapping an
@@ -41,8 +44,8 @@ export function WaterControl({ date }: { date: ISODate }) {
           <strong>{formatLitres(ml)}</strong>
           {goal ? ` / ${formatLitres(goal)}` : ''}
         </span>
-        <button type="button" className={styles.glassAdd} onClick={() => setTo(ml + unit)} aria-label={`${unit} ml Wasser hinzufügen`}>
-          +{unit}
+        <button type="button" className={styles.glassAdd} onClick={() => setTo(ml + STEP_ML)} aria-label={`${STEP_ML} ml Wasser hinzufügen`}>
+          +{STEP_ML}
         </button>
       </div>
       {/* The bottles share the full width – fits every phone without wrapping. */}

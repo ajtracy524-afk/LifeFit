@@ -127,8 +127,10 @@ export function weekFoodCost(state: AppState, week: ISODate): CostRange | undefi
     .filter((m) => inWeek(m.date) && m.status !== 'skipped')
     .flatMap((m) => (getRecipe(m.recipeId)?.ingredients ?? []).map((i) => ({ foodId: i.foodId, grams: i.grams * m.servings })));
   for (const e of state.logEntries) {
-    if (!inWeek(e.date) || e.plannedMealId || !e.grams) continue;
-    if (e.costChf !== undefined) items.push({ grams: e.grams, exactChf: e.costChf });
+    if (!inWeek(e.date) || e.plannedMealId) continue;
+    // A real price counts even without a weight (manual "1 Portion" with price).
+    if (e.costChf !== undefined) items.push({ grams: e.grams ?? 0, exactChf: e.costChf });
+    else if (!e.grams) continue;
     else if (e.foodId) items.push({ foodId: e.foodId, grams: e.grams });
     // A product without price and without catalog link: its weight counts as unpriced.
     else items.push({ foodId: '', grams: e.grams });

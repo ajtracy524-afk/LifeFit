@@ -17,17 +17,19 @@ import styles from './nutrition.module.css';
 interface MealSheetProps {
   mealId: string | null;
   onClose: () => void;
+  /** Open straight in "Ersetzen" (e.g. from the next-action card on Heute). */
+  startReplacing?: boolean;
 }
 
 /**
  * Details of a planned meal: eaten, "Ersetzen" (suggestions, barcode,
  * manual – also what "Anders gegessen" means), portion size, remove.
  */
-export function MealSheet({ mealId, onClose }: MealSheetProps) {
+export function MealSheet({ mealId, onClose, startReplacing = false }: MealSheetProps) {
   const state = useAppState();
   const meal = state.plannedMeals.find((m) => m.id === mealId);
   const [disliking, setDisliking] = useState(false);
-  const [replacing, setReplacing] = useState(false);
+  const [replacing, setReplacing] = useState(startReplacing);
   const recipe = meal ? getRecipe(meal.recipeId) : undefined;
   const open = !!meal && !!recipe;
 

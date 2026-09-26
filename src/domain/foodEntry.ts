@@ -96,14 +96,16 @@ export interface ManualInput {
   fiber: string;
   sugar: string;
   salt: string;
+  /** Optional real price in CHF for exactly this entry. Empty = no price (never 0 by assumption). */
+  price?: string;
   barcode?: string;
   brand?: string;
   foodId?: string;
 }
 
-export type ManualErrors = Partial<Record<'kcal' | 'amount' | MacroKey | 'fiber' | 'sugar' | 'salt', string>>;
+export type ManualErrors = Partial<Record<'kcal' | 'amount' | 'price' | MacroKey | 'fiber' | 'sugar' | 'salt', string>>;
 
-export const EMPTY_MANUAL: ManualInput = { name: '', amount: '', unit: 'g', per: 'amount', kcal: '', protein: '', carbs: '', fat: '', fiber: '', sugar: '', salt: '' };
+export const EMPTY_MANUAL: ManualInput = { name: '', amount: '', unit: 'g', per: 'amount', kcal: '', protein: '', carbs: '', fat: '', fiber: '', sugar: '', salt: '', price: '' };
 
 /** "12,5" and "12.5" both work; empty stays empty. */
 function parse(value: string): number | undefined {
@@ -133,6 +135,8 @@ export function manualEntry(input: ManualInput): { ok: true; entry: EntryContent
     if (Number.isNaN(v) || v < 0 || v > 1000) errors[key] = 'Bitte prüfe den Wert.';
     else values[key] = v;
   }
+  const price = parse(input.price ?? '');
+  if (price !== undefined && (Number.isNaN(price) || price < 0.05 || price > 1000)) errors.price = 'Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.';
   if (Object.keys(errors).length) return { ok: false, errors };
 
   const factor = per100 ? amount! / 100 : 1;
@@ -156,6 +160,7 @@ export function manualEntry(input: ManualInput): { ok: true; entry: EntryContent
       ...(input.barcode ? { barcode: input.barcode } : {}),
       ...(input.brand ? { brand: input.brand } : {}),
       ...(input.foodId ? { foodId: input.foodId } : {}),
+      ...(price !== undefined ? { costChf: Math.round(price! * 100) / 100 } : {}),
     },
   };
 }
