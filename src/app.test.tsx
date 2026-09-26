@@ -926,10 +926,117 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
   });
 
   it('budget line: an estimated range against the budget, only with reliable prices', async () => {
-    const s = { ...withLog(), plannerSettings: { priority: 'balanced', weeklyBudgetEur: 55, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' } } };
+    const s = { ...withLog(), plannerSettings: { priority: 'balanced', weeklyBudgetChf: 55, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' } } };
     localStorage.setItem(KEY, JSON.stringify(s));
     window.history.replaceState(null, '', '/#/today');
     await startApp();
-    expect(text()).toMatch(/Diese Woche ca\. [\d,]+–[\d,]+ € von 55 €/);
+    expect(text()).toMatch(/Diese Woche ca\. [\d.]+–[\d.]+ CHF von 55 CHF/);
+    expect(text()).not.toMatch(/€/);
+  });
+});
+
+describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 12, 45)); // Tuesday 12:45
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    HTMLMediaElement.prototype.play = vi.fn(() => Promise.resolve());
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    const scanner = await import('./services/barcodeScanner');
+    scanner.setDecoderFactory(undefined);
+  });
+
+  const TUE = '2026-09-22';
+  const scanned = {
+    id: 'e-p', date: TUE, slot: 'breakfast', loggedAt: `${TUE}T08:00:00Z`, name: 'Skyr', method: 'barcode', barcode: '7610000000001', amount: 250, unit: 'g', grams: 250,
+    macros: { kcal: 150, protein: 27, carbs: 10, fat: 0.5 }, micros: { calcium: 275, sodium: 90 },
+  };
+  const planEntry = { id: 'e-b', date: TUE, slot: 'lunch', loggedAt: `${TUE}T12:00:00Z`, name: 'Chili', plannedMealId: 'l', recipeId: 'chili', servings: 1, method: 'plan', macros: { kcal: 680, protein: 51, carbs: 90, fat: 9 }, micros: { fiber: 12 } };
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 30)));
+  const open = (label: RegExp) => [...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => label.test(b.textContent ?? ''))!;
+
+  for (const route of ['today', 'nutrition'] as const) {
+    it(`${route === 'today' ? 'Heute' : 'Ernährung'}: micronutrients – known values with NRV reference, partial data marked, missing never shown as 0`, async () => {
+      localStorage.setItem(KEY, JSON.stringify({ ...completeState(), logEntries: [scanned, planEntry] }));
+      window.history.replaceState(null, '', `/#/${route}`);
+      await startApp();
+      await act(async () => open(/Mikronährstoffe anzeigen/).click());
+      const list = container.querySelector('[aria-label="Mikronährstoffe"]')!.textContent!;
+      expect(list).toMatch(/Calcium\s*275 mg\s*\/ 800 mg/);
+      expect(text()).toMatch(/Werte aus 1 von 2 Einträgen – die übrigen haben keine Angabe \(nicht 0\)/);
+      expect(list).toMatch(/Natrium\s*90 mg/);
+      expect(list).not.toMatch(/Vitamin C/);
+      expect(text()).toMatch(/Keine Daten: Vitamin A, Vitamin C/);
+      expect(text()).not.toMatch(/Vitamin C\s*0/);
+      expect(text()).toMatch(/Referenz = Nährstoffbezugswert/);
+    });
+  }
+
+  it('Heute: a day without micronutrient data says so instead of showing zeros', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), logEntries: [planEntry] }));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    await act(async () => open(/Mikronährstoffe anzeigen/).click());
+    expect(text()).toMatch(/Für heute liegen keine Angaben vor/);
+    expect(container.querySelector('[aria-label="Mikronährstoffe"]')).toBeNull();
+  });
+
+  it('Heute: Essen erfassen → Barcode → Kamera → Produkt → Menge → Preis 4.95 CHF → Tagesbilanz + Budget', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop: vi.fn() }] })) } });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ status: 1, product: { product_name: 'Poulet-Brust', nutriments: { 'energy-kcal_100g': 110, proteins_100g: 23, carbohydrates_100g: 0, fat_100g: 1.5, calcium_100g: 0.01 }, product_quantity: 400, product_quantity_unit: 'g' } }), { status: 200 }),
+    );
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannerSettings: { priority: 'balanced', weeklyBudgetChf: 55, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' } } }));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    // After startApp: the same module instance the app uses.
+    const { setDecoderFactory } = await import('./services/barcodeScanner');
+    setDecoderFactory(async () => ({ decode: async () => '7610000000001' }));
+
+    // No plan today → quick add in the header → "Essen".
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Schnell erfassen"]')!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === 'Essen')!.click());
+    await click('Barcode');
+    await click('Mit Kamera scannen');
+    await settle();
+    await settle();
+    expect(text()).toContain('Poulet-Brust');
+    await type('Menge in g', '200');
+    await type('Packungspreis (400 g) – optional', '4.95');
+    expect(text()).toMatch(/Deine Menge \(200 g\) ≈ 2\.48 CHF/);
+    await click('Hinzufügen');
+
+    const s = store.getState();
+    expect(s.logEntries).toHaveLength(1);
+    expect(s.logEntries[0]).toMatchObject({ method: 'barcode', amount: 200, macros: { kcal: 220 }, costChf: 2.5, micros: { calcium: 20 } });
+    expect(s.products['7610000000001']!.price).toMatchObject({ chf: 4.95, amount: 400 });
+    expect(container.querySelector('[role="img"]')!.getAttribute('aria-label')).toMatch(/^220 von/);
+    expect(text()).not.toMatch(/€/);
+  });
+
+  it('Ernährung: price field validates CHF and the week budget line speaks CHF', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ status: 1, product: { product_name: 'Reis', nutriments: { 'energy-kcal_100g': 350 }, product_quantity: 1, product_quantity_unit: 'kg' } }), { status: 200 }));
+    const meals = [{ id: 'l', date: TUE, slot: 'lunch', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' }];
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: meals, plannerSettings: { priority: 'balanced', weeklyBudgetChf: 55, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' } } }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Barcode');
+    await type('Barcode-Nummer', '7610000000002');
+    await click('Produkt suchen');
+    await settle();
+    await type('Packungspreis (1 kg) – optional', 'abc');
+    expect(text()).toContain('Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.');
+    expect([...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === 'Hinzufügen')!.disabled).toBe(true);
+    await act(async () => window.location.assign('#/nutrition?view=week'));
+    await settle();
+    expect(text()).toMatch(/Diese Woche ca\. [\d.]+–[\d.]+ CHF von 55 CHF/);
   });
 });

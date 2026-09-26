@@ -1,5 +1,5 @@
 import { getFood } from '../data/foods';
-import type { Food, Recipe } from './types';
+import type { Food, Product, Recipe } from './types';
 import { purchaseAmount } from './week/pantry';
 
 /**
@@ -14,24 +14,24 @@ export function purchaseCost(food: Food, neededG: number): number | undefined {
 }
 
 export interface CostEstimate {
-  /** Sum of all priced purchases in EUR. */
-  totalEur: number;
+  /** Sum of all priced purchases in CHF. */
+  totalChf: number;
   /** Items to buy without a known price – the total is a lower bound then. */
   unpriced: number;
 }
 
 /** Estimate for a list of (foodId, grams still to buy). */
 export function estimateCost(items: { foodId: string; grams: number }[]): CostEstimate {
-  let totalEur = 0;
+  let totalChf = 0;
   let unpriced = 0;
   for (const { foodId, grams } of items) {
     if (grams <= 0) continue;
     const food = getFood(foodId);
     const cost = food ? purchaseCost(food, grams) : undefined;
     if (cost === undefined) unpriced++;
-    else totalEur += cost;
+    else totalChf += cost;
   }
-  return { totalEur, unpriced };
+  return { totalChf, unpriced };
 }
 
 // ---------- Rough ranges (never presented as exact) ----------
@@ -40,44 +40,89 @@ export function estimateCost(items: { foodId: string; grams: number }[]): CostEs
 export const MIN_PRICED_SHARE = 0.8;
 
 export interface CostRange {
-  lowEur: number;
-  highEur: number;
+  lowChf: number;
+  highChf: number;
 }
+
+/** Price of a food per kg in CHF – real (entered by the user) or estimated (catalog). */
+export type PriceLookup = (foodId: string) => { perKgChf: number; exact: boolean } | undefined;
+
+/** Catalog estimates only. */
+export const catalogPrice: PriceLookup = (foodId) => {
+  const p = getFood(foodId)?.estPricePerKg;
+  return p === undefined ? undefined : { perKgChf: p, exact: false };
+};
 
 /**
- * Cost of ingredient amounts as a rounded range – the value of what is eaten
- * (grams × estimated price), no package rounding. Undefined when less than
- * MIN_PRICED_SHARE of the weight has a price: then LifeFit shows nothing
- * rather than a made-up number.
+ * The ONE price source for costs: the latest real price the user entered for
+ * a scanned product linked to the food, otherwise the catalog estimate.
+ * Build once per render/computation – lookups are then map reads.
  */
-export function ingredientCostRange(items: { foodId: string; grams: number }[]): CostRange | undefined {
-  let total = 0;
-  let priced = 0;
-  let eur = 0;
-  for (const { foodId, grams } of items) {
-    if (grams <= 0) continue;
-    total += grams;
-    const price = getFood(foodId)?.estPricePerKg;
-    if (price === undefined) continue;
-    priced += grams;
-    eur += (grams / 1000) * price;
+export function priceLookup(products: Record<string, Product> | undefined): PriceLookup {
+  const real = new Map<string, { perKgChf: number; at: string }>();
+  for (const p of Object.values(products ?? {})) {
+    if (!p.foodId || !p.price || p.price.amount <= 0) continue;
+    const known = real.get(p.foodId);
+    if (!known || p.price.at > known.at) real.set(p.foodId, { perKgChf: (p.price.chf / p.price.amount) * 1000, at: p.price.at });
   }
-  if (total === 0 || priced / total < MIN_PRICED_SHARE) return undefined;
-  // Estimates vary with shop and brand: −10 % … +15 %, rounded outwards.
-  const low = eur * 0.9;
-  const high = eur * 1.15;
-  const step = high < 5 ? 0.5 : 1;
-  return { lowEur: Math.floor(low / step) * step, highEur: Math.max(Math.ceil(high / step) * step, Math.floor(low / step) * step + step) };
+  if (real.size === 0) return catalogPrice;
+  return (foodId) => {
+    const r = real.get(foodId);
+    return r ? { perKgChf: r.perKgChf, exact: true } : catalogPrice(foodId);
+  };
 }
 
-/** "ca. 2–3 €", "ca. 30–36 €", "unter 1 €". */
+/** One cost item: a food amount (priced via the lookup) or an amount with a known real cost. */
+export type CostItem = { foodId: string; grams: number } | { grams: number; exactChf: number };
+
+/**
+ * Cost of amounts as a rounded range – the value of what is eaten (grams ×
+ * price), no package rounding. Real prices count exactly, estimates with a
+ * margin (−10 % … +15 %). Undefined when less than MIN_PRICED_SHARE of the
+ * weight has a price: then LifeFit shows nothing rather than a made-up number.
+ */
+export function ingredientCostRange(items: CostItem[], price: PriceLookup = catalogPrice): CostRange | undefined {
+  let total = 0;
+  let priced = 0;
+  let exact = 0;
+  let estimate = 0;
+  for (const item of items) {
+    if (item.grams <= 0) continue;
+    total += item.grams;
+    if ('exactChf' in item) {
+      priced += item.grams;
+      exact += item.exactChf;
+      continue;
+    }
+    const p = price(item.foodId);
+    if (!p) continue;
+    priced += item.grams;
+    if (p.exact) exact += (item.grams / 1000) * p.perKgChf;
+    else estimate += (item.grams / 1000) * p.perKgChf;
+  }
+  if (total === 0 || priced / total < MIN_PRICED_SHARE) return undefined;
+  const low = exact + estimate * 0.9;
+  const high = exact + estimate * 1.15;
+  const step = high < 5 ? 0.5 : 1;
+  return { lowChf: Math.floor(low / step) * step, highChf: Math.max(Math.ceil(high / step) * step, Math.floor(low / step) * step + step) };
+}
+
+/** Swiss number format: 4.95, 1’250. */
+const chfNumber = (v: number, digits: number) => v.toLocaleString('de-CH', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+/** An exact amount (e.g. a price the user entered): "4.95 CHF". */
+export function formatChf(v: number): string {
+  return `${chfNumber(v, 2)} CHF`;
+}
+
+/** "ca. 2–3 CHF", "ca. 1.5–2 CHF", "unter 1 CHF". */
 export function formatCostRange(r: CostRange): string {
-  const n = (v: number) => v.toLocaleString('de-DE', { maximumFractionDigits: 1 });
-  if (r.highEur <= 1) return 'unter 1 €';
-  return `ca. ${n(r.lowEur)}–${n(r.highEur)} €`;
+  const n = (v: number) => chfNumber(v, Number.isInteger(v) ? 0 : 1);
+  if (r.highChf <= 1) return 'unter 1 CHF';
+  return `ca. ${n(r.lowChf)}–${n(r.highChf)} CHF`;
 }
 
 /** Rough cost of one planned portion of a recipe (undefined without reliable prices). */
-export function recipeCostRange(recipe: Recipe, servings: number): CostRange | undefined {
-  return ingredientCostRange(recipe.ingredients.map((i) => ({ foodId: i.foodId, grams: i.grams * servings })));
+export function recipeCostRange(recipe: Recipe, servings: number, price: PriceLookup = catalogPrice): CostRange | undefined {
+  return ingredientCostRange(recipe.ingredients.map((i) => ({ foodId: i.foodId, grams: i.grams * servings })), price);
 }

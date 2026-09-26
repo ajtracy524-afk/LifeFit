@@ -77,9 +77,9 @@ export const PLANNER_WEIGHTS = {
    * time or the hard filters.
    */
   preference: 0.12,
-  /** Estimated purchase cost, per 10 € (only foods with a price estimate). */
+  /** Estimated purchase cost, per 10 CHF (only foods with a price estimate). */
   cost: 0.05,
-  /** Estimated cost above the (pro-rata) budget, per 10 €. */
+  /** Estimated cost above the (pro-rata) budget, per 10 CHF. */
   budgetOver: 0.6,
   /** Fiber shortfall per day as a share of the day's fiber orientation value. */
   fiberGap: 0.05,
@@ -128,8 +128,8 @@ interface SuggestInput {
   excludedSlotsFor?: (date: ISODate) => MealSlot[];
   /** Personalization: learned affinity −1 … +1 per recipe and day budget (pre-aggregated). */
   affinity?: (recipeId: string, budget: TimeBudget) => number;
-  /** Budget in EUR for the purchases of the planned days (already pro rata). */
-  budgetEur?: number;
+  /** Budget in CHF for the purchases of the planned days (already pro rata). */
+  budgetChf?: number;
   priority?: PlanPriority;
   /** Meal slot right after training on a training day (gets protein priority). */
   postWorkoutSlotFor?: (date: ISODate) => MealSlot | undefined;
@@ -156,7 +156,7 @@ export interface PlanningDay {
 /** Everything besides the days that the week score needs (all optional). */
 export interface ScoreExtras {
   affinity?: (recipeId: string, budget: TimeBudget) => number;
-  budgetEur?: number;
+  budgetChf?: number;
   pantryAgeDays?: Record<string, number>;
 }
 
@@ -174,8 +174,8 @@ export interface WeekScore {
   preference: number;
   /** Cost and budget term. */
   cost: number;
-  /** Estimated purchase cost of the week in EUR (priced foods only). */
-  costEur: number;
+  /** Estimated purchase cost of the week in CHF (priced foods only). */
+  costChf: number;
   /** Fiber and post-workout protein term. */
   quality: number;
   /** Foods that have to be bought for the week. */
@@ -338,14 +338,14 @@ export function scoreWeek(
 
   const foodsToBuy: string[] = [];
   let waste = 0;
-  let costEur = 0;
+  let costChf = 0;
   for (const [foodId, grams] of need) {
     const toBuy = grams - (pantry[foodId] ?? 0);
     if (toBuy <= 0.5) continue;
     foodsToBuy.push(foodId);
     const food = getFood(foodId);
     // Cost of what is actually bought (whole packages), pantry already deducted.
-    if (food) costEur += purchaseCost(food, toBuy) ?? 0;
+    if (food) costChf += purchaseCost(food, toBuy) ?? 0;
     if (food?.packageG && PERISHABLE.has(food.category)) {
       const packs = Math.ceil(toBuy / food.packageG);
       waste += (packs * food.packageG - toBuy) / food.packageG;
@@ -362,7 +362,7 @@ export function scoreWeek(
     unused += (Math.max(0, stock - (need.get(foodId) ?? 0)) / stock) * (1 + Math.min(1, age / 7));
   }
   const pantryUnused = W.pantryUnused * unused;
-  const cost = (W.cost * costEur) / 10 + (extras.budgetEur !== undefined ? (W.budgetOver * Math.max(0, costEur - extras.budgetEur)) / 10 : 0);
+  const cost = (W.cost * costChf) / 10 + (extras.budgetChf !== undefined ? (W.budgetOver * Math.max(0, costChf - extras.budgetChf)) / 10 : 0);
 
   return {
     total: nutrition + variety + newFoods + packageWaste + time + pantryUnused + preference + cost + quality,
@@ -374,7 +374,7 @@ export function scoreWeek(
     pantryUnused,
     preference,
     cost,
-    costEur,
+    costChf,
     quality,
     foodsToBuy,
   };
@@ -404,7 +404,7 @@ export function suggestWeek({
   timeBudgetFor = () => 'normal',
   excludedSlotsFor = () => [],
   affinity,
-  budgetEur,
+  budgetChf,
   priority = 'balanced',
   postWorkoutSlotFor = () => undefined,
   pantryAgeDays,
@@ -413,7 +413,7 @@ export function suggestWeek({
 }: SuggestInput): PlannedMeal[] {
   const W = weightsFor(priority, overrides);
   const weights = W;
-  const extras: ScoreExtras = { affinity, budgetEur, pantryAgeDays };
+  const extras: ScoreExtras = { affinity, budgetChf, pantryAgeDays };
   const usage = new Map<string, number>();
   for (const m of existing) usage.set(m.recipeId, (usage.get(m.recipeId) ?? 0) + 1);
 

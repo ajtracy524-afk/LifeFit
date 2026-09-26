@@ -58,6 +58,15 @@ describe('normalizing Open Food Facts data', () => {
     expect(p.packageSize).toBeUndefined();
   });
 
+  it('vitamins and minerals: only declared ones, converted from grams (as OFF stores them)', () => {
+    const p = normalizeOffProduct('7613034626844', {
+      product_name: 'Chocapic',
+      nutriments: { 'energy-kcal_100g': 380, calcium_100g: 0.502, iron_100g: 0.012, 'vitamin-d_100g': 0.0000031, 'vitamin-pp_100g': 0.015, sodium_100g: 0.088, 'pantothenic-acid_100g': 0.0057 },
+    })!;
+    expect(p.micros100).toEqual({ calcium: 502, iron: 12, vitaminD: 3.1, vitaminB3: 15, sodium: 88 });
+    expect(p.micros100.vitaminC).toBeUndefined();
+  });
+
   it('kcal from kJ is a unit conversion of a real value, never an estimate from macros', () => {
     expect(normalizeOffProduct('1', { product_name: 'X', nutriments: { 'energy-kj_100g': 418.4 } })!.per100.kcal).toBe(100);
     expect(normalizeOffProduct('1', { product_name: 'X', nutriments: { proteins_100g: 10, fat_100g: 5 } })!.per100.kcal).toBeUndefined();

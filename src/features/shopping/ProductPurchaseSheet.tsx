@@ -41,7 +41,7 @@ export function ProductPurchaseSheet({ week, open, onClose }: { week: ISODate; o
                   disabled={!choice?.foodId}
                   onClick={() => {
                     if (!choice?.foodId) return;
-                    saveProduct({ ...product, foodId: choice.foodId });
+                    saveProduct({ ...product, foodId: choice.foodId, ...(choice.price ? { price: { ...choice.price, at: new Date().toISOString() } } : {}) });
                     if (applyWithUndo({ type: 'purchase', week, foodId: choice.foodId, grams: Math.round(choice.amount) })) close();
                   }}
                 >

@@ -140,18 +140,18 @@ describe('estimated costs on the shopping list', () => {
   it('prices open items by whole packages and counts items without a price', () => {
     const s = state({ plannedMeals: [meal('d', TUE, 'dinner', 'chicken-rice-bowl'), meal('s', TUE, 'snack', 'protein-shake')] });
     const items = weekShopping(s, MON, MON);
-    expect(items.find((i) => i.foodId === 'chicken')!.estCostEur).toBeCloseTo(4.4);
-    expect(items.find((i) => i.foodId === 'whey')!.estCostEur).toBeUndefined();
+    expect(items.find((i) => i.foodId === 'chicken')!.estCostChf).toBeCloseTo(11.2); // one 400 g pack at ~28 CHF/kg
+    expect(items.find((i) => i.foodId === 'whey')!.estCostChf).toBeUndefined();
     const cost = shoppingCost(items);
     expect(cost.unpriced).toBe(1);
-    expect(cost.totalEur).toBeGreaterThan(4.4);
+    expect(cost.totalChf).toBeGreaterThan(11.2);
   });
 });
 
 describe('budget note', () => {
   it('says plainly whether the week fits and what would help', () => {
     expect(budgetNote(50, undefined, 'save')).toBeUndefined();
-    expect(budgetNote(50, 60, 'balanced')).toBe('Passt in dein Budget von 60 €.');
+    expect(budgetNote(50, 60, 'balanced')).toBe('Passt in dein Budget von 60 CHF.');
     expect(budgetNote(80, 60, 'balanced')).toMatch(/Sparen/);
     expect(budgetNote(80, 60, 'save')).toMatch(/Kalorien und Protein haben Vorrang/);
   });

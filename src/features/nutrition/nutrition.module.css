@@ -765,12 +765,47 @@
   gap: 12px;
 }
 
+/* Camera scanner: big in portrait, never wider than the sheet. */
+.scanner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.viewfinder {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  max-height: 60vh;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #000;
+}
+
 .video {
   width: 100%;
-  aspect-ratio: 4 / 3;
+  height: 100%;
   object-fit: cover;
+  display: block;
+}
+
+.scanFrame {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 38%;
+  height: 24%;
+  border: 3px solid rgb(255 255 255 / 90%);
   border-radius: 14px;
-  background: #000;
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 35%);
+  pointer-events: none;
+}
+
+.scanHint {
+  margin: 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-2);
 }
 
 .lookupState {
@@ -894,4 +929,83 @@
 .budgetWeek {
   text-align: center;
   margin: -4px 0 4px;
+}
+
+/* ---------- Micronutrients (compact, optional) ---------- */
+.micro {
+  margin-top: 12px;
+}
+
+.microToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.microCount {
+  color: var(--text-3);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.microBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.microList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.microList li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'name value' 'bar bar' 'note note';
+  gap: 2px 8px;
+  font-size: 14px;
+}
+
+.microName {
+  grid-area: name;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.microValue {
+  grid-area: value;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.microRef {
+  color: var(--text-3);
+}
+
+.microList li > :nth-child(3) {
+  grid-area: bar;
+}
+
+.microPartial {
+  grid-area: note;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.microNote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-3);
 }

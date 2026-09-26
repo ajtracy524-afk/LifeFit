@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { addDays, isoWeekNumber, today, weekStart } from '../../domain/dates';
 import { groupByCategory, shoppingRange, type ShoppingListItem } from '../../domain/shopping';
-import { formatEur } from '../../domain/explain';
+import { formatChfEstimate } from '../../domain/explain';
 import { pantryEstimate, shoppingCost, weekShopping } from '../../domain/week';
 import { formatGrams, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { href, navigate, useRoute } from '../../lib/router';
@@ -33,7 +33,7 @@ export function ShoppingScreen() {
   const items = useMemo(() => weekShopping(state, week, t), [state, week, t]);
   const open = items.filter((i) => i.state === 'open');
   const cost = shoppingCost(items);
-  const budget = state.plannerSettings.weeklyBudgetEur;
+  const budget = state.plannerSettings.weeklyBudgetChf;
   const checked = items.filter((i) => i.state === 'checked');
   const have = items.filter((i) => i.state === 'have');
   const manualOpen = weekState.manual.filter((m) => !m.checked);
@@ -95,10 +95,10 @@ export function ShoppingScreen() {
             </span>
           </div>
           <ProgressBar value={total - remaining} max={total} label="Einkaufsfortschritt" />
-          {cost.totalEur > 0 && (
+          {cost.totalChf > 0 && (
             <p className={styles.costLine}>
-              {formatEur(cost.totalEur)} geschätzt
-              {budget !== undefined && week === thisWeek ? ` · Wochenbudget ${budget} €` : ''}
+              {formatChfEstimate(cost.totalChf)} geschätzt
+              {budget !== undefined && week === thisWeek ? ` · Wochenbudget ${budget} CHF` : ''}
               {cost.unpriced > 0 ? ` · ${cost.unpriced} Artikel ohne Preis` : ''}
             </p>
           )}
@@ -215,8 +215,8 @@ export function ShoppingScreen() {
                 </ul>
               </>
             )}
-            {detail.estCostEur !== undefined && detail.state === 'open' && (
-              <p className={styles.detailCaption}>{formatEur(detail.estCostEur)} (geschätzt, ganze Packungen)</p>
+            {detail.estCostChf !== undefined && detail.state === 'open' && (
+              <p className={styles.detailCaption}>{formatChfEstimate(detail.estCostChf)} (geschätzt, ganze Packungen)</p>
             )}
             {detail.restockMinG !== undefined && (
               <p className={styles.detailCaption}>Grundvorrat: mindestens {formatGrams(detail.restockMinG)} im Haus</p>

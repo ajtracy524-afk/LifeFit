@@ -95,19 +95,21 @@ const RAW: FoodInput[] = [
 ];
 
 /**
- * ESTIMATED supermarket prices in EUR per kg (Germany, discounter to mid-range).
- * Estimates only – the UI always says "geschätzt". Foods whose price varies too
+ * ESTIMATED supermarket prices in CHF per kg – Switzerland (Aldi/Lidl Suisse
+ * to Migros/Coop, standard ranges, 2025 level). Own estimates, not converted
+ * from other currencies. The UI always says "geschätzt" / "ca."; a price the
+ * user enters for a scanned product always wins. Foods whose price varies too
  * much (whey, protein bars) have none and are treated as neutral by the planner.
  */
 const EST_PRICE_PER_KG: Record<string, number> = {
-  broccoli: 3.0, 'bell-pepper': 4.0, zucchini: 2.5, tomato: 3.0, cucumber: 2.0, onion: 1.5, potato: 1.2,
-  'sweet-potato': 3.0, banana: 1.5, apple: 2.5, avocado: 8.0, lettuce: 10.0, orange: 2.5,
-  oats: 1.8, rice: 2.5, pasta: 3.0, couscous: 3.5, quinoa: 8.0, bread: 4.0, wrap: 5.5, 'rice-cakes': 12.0, toast: 3.0,
-  chicken: 11.0, 'beef-mince': 11.0, salmon: 25.0,
-  egg: 5.0, milk: 1.1, skyr: 3.3, quark: 2.6, cottage: 6.0, feta: 11.0, mozzarella: 8.0, tofu: 9.0, gouda: 10.0, 'greek-yogurt': 5.0,
-  tuna: 12.0, kidney: 3.2, chickpeas: 3.4, corn: 5.7, 'canned-tomato': 2.0, lentils: 4.0,
-  berries: 5.0, spinach: 3.5, edamame: 8.0,
-  'olive-oil': 12.0, 'peanut-butter': 9.0, almonds: 15.0, honey: 10.0, 'soy-sauce': 13.0,
+  broccoli: 5.0, 'bell-pepper': 6.5, zucchini: 4.5, tomato: 5.0, cucumber: 3.5, onion: 2.5, potato: 2.5,
+  'sweet-potato': 5.5, banana: 2.9, apple: 4.0, avocado: 12.0, lettuce: 18.0, orange: 3.8,
+  oats: 2.4, rice: 3.5, pasta: 4.0, couscous: 5.0, quinoa: 12.0, bread: 6.0, wrap: 9.0, 'rice-cakes': 14.0, toast: 5.0,
+  chicken: 28.0, 'beef-mince': 22.0, salmon: 40.0,
+  egg: 10.0, milk: 1.7, skyr: 6.5, quark: 5.0, cottage: 8.0, feta: 16.0, mozzarella: 10.0, tofu: 12.0, gouda: 16.0, 'greek-yogurt': 7.0,
+  tuna: 20.0, kidney: 4.0, chickpeas: 4.0, corn: 6.0, 'canned-tomato': 3.0, lentils: 6.0,
+  berries: 10.0, spinach: 5.0, edamame: 12.0,
+  'olive-oil': 16.0, 'peanut-butter': 12.0, almonds: 20.0, honey: 16.0, 'soy-sauce': 12.0,
 };
 
 /** Dietary fiber in g per 100 g (standard food tables). */

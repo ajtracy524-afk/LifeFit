@@ -109,7 +109,7 @@ export function ProfileScreen() {
           <Row
             icon="cart"
             label="Budget & Schwerpunkt"
-            value={`${PRIORITY_LABEL[state.plannerSettings.priority]}${state.plannerSettings.weeklyBudgetEur ? ` · ${state.plannerSettings.weeklyBudgetEur} € pro Woche` : ' · kein Budget'}`}
+            value={`${PRIORITY_LABEL[state.plannerSettings.priority]}${state.plannerSettings.weeklyBudgetChf ? ` · ${state.plannerSettings.weeklyBudgetChf} CHF pro Woche` : ' · kein Budget'}`}
             onClick={() => setPanel('budget')}
           />
           <Row
@@ -191,12 +191,12 @@ export function ProfileScreen() {
 
 function BudgetSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const state = useAppState();
-  const [budget, setBudget] = useState(state.plannerSettings.weeklyBudgetEur ? String(state.plannerSettings.weeklyBudgetEur) : '');
+  const [budget, setBudget] = useState(state.plannerSettings.weeklyBudgetChf ? String(state.plannerSettings.weeklyBudgetChf) : '');
   const [priority, setPriority] = useState<PlanPriority>(state.plannerSettings.priority);
   const value = parseNumber(budget);
   const valid = budget.trim() === '' || (Number.isFinite(value) && value >= 10 && value <= 1000);
   const save = () => {
-    updatePlannerSettings({ priority, weeklyBudgetEur: budget.trim() === '' ? undefined : Math.round(value) });
+    updatePlannerSettings({ priority, weeklyBudgetChf: budget.trim() === '' ? undefined : Math.round(value) });
     showToast('Gespeichert – gilt für die nächste Planung');
     onClose();
   };
@@ -206,10 +206,10 @@ function BudgetSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
         <Field
           label="Wochenbudget für Lebensmittel"
           inputMode="numeric"
-          suffix="€"
+          suffix="CHF"
           placeholder="kein Budget"
           value={budget}
-          error={valid ? undefined : 'Bitte einen Betrag zwischen 10 und 1000 € angeben.'}
+          error={valid ? undefined : 'Bitte einen Betrag zwischen 10 und 1000 CHF angeben.'}
           onChange={(e) => setBudget(e.target.value)}
         />
         <Segmented<PlanPriority>

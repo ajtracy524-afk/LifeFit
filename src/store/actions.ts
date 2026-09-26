@@ -167,12 +167,26 @@ export function logFood(date: ISODate, slot: MealSlot, foodId: string, grams: nu
   );
 }
 
+export type ProductOptions = LogOptions & {
+  /** null = explicitly no catalog link. */
+  foodId?: string | null;
+  /** A price the user just entered: CHF paid for `amount` (in the product's unit). */
+  price?: { chf: number; amount: number };
+};
+
+/** The product with the user's choices from the confirm screen (catalog link, entered price). */
+function withChoice(input: Product, opts: ProductOptions): { product: Product; foodId: string | undefined } {
+  const foodId = opts.foodId === null ? undefined : (opts.foodId ?? input.foodId);
+  const price = opts.price ? { ...opts.price, at: new Date().toISOString() } : input.price;
+  return { product: { ...input, ...(price ? { price } : {}) }, foodId };
+}
+
 /**
  * Logs `amount` of a scanned product. The product (with the user's catalog
- * link) is kept in the local cache so it can be found again offline.
+ * link and price) is kept in the local cache so it can be found again offline.
  */
-export function logProduct(date: ISODate, slot: MealSlot, product: Product, amount: number, opts: LogOptions & { foodId?: string | null } = {}): boolean {
-  const foodId = opts.foodId === null ? undefined : (opts.foodId ?? product.foodId);
+export function logProduct(date: ISODate, slot: MealSlot, input: Product, amount: number, opts: ProductOptions = {}): boolean {
+  const { product, foodId } = withChoice(input, opts);
   const content = productEntry(product, amount, foodId);
   if (!content) return false;
   const id = opts.id ?? newId();
@@ -208,8 +222,8 @@ export function replaceWithEntry(mealId: string, content: EntryContent, opts: Lo
   return true;
 }
 
-export function replaceWithProduct(mealId: string, product: Product, amount: number, opts: LogOptions & { foodId?: string | null } = {}): boolean {
-  const foodId = opts.foodId === null ? undefined : (opts.foodId ?? product.foodId);
+export function replaceWithProduct(mealId: string, input: Product, amount: number, opts: ProductOptions = {}): boolean {
+  const { product, foodId } = withChoice(input, opts);
   const content = productEntry(product, amount, foodId);
   if (!content) return false;
   const done = replaceWithEntry(mealId, content, opts);

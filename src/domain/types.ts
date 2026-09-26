@@ -46,17 +46,39 @@ export interface Food {
   vegan: boolean;
   vegetarian: boolean;
   allergens: Allergen[];
-  /** Estimated price per kg in EUR – an estimate, never shown as exact. Missing = unknown. */
+  /** Estimated price per kg in CHF (Swiss shops) – an estimate, never shown as exact. Missing = unknown. */
   estPricePerKg?: number;
   /** Optional micronutrients per 100 g – only what is known (prepared for more). */
   micros?: Partial<Record<MicroNutrient, number>>;
 }
 
 /**
- * Optional nutrients the app can know about. The catalog knows fiber; sugar
- * and salt only come from packaged products or the user. Never estimated.
+ * Optional nutrients the app can know about (details in data/nutrients.ts).
+ * The catalog knows fiber; sugar and salt come from packaged products or the
+ * user; vitamins and minerals only from products that declare them. Never
+ * estimated – an unknown value is absent, not 0.
  */
-export type MicroNutrient = 'fiber' | 'sugar' | 'salt';
+export type BasicNutrient = 'fiber' | 'sugar' | 'salt';
+export type MicroNutrient =
+  | BasicNutrient
+  | 'vitaminA'
+  | 'vitaminC'
+  | 'vitaminD'
+  | 'vitaminE'
+  | 'vitaminK'
+  | 'vitaminB1'
+  | 'vitaminB2'
+  | 'vitaminB3'
+  | 'vitaminB6'
+  | 'vitaminB9'
+  | 'vitaminB12'
+  | 'calcium'
+  | 'magnesium'
+  | 'iron'
+  | 'potassium'
+  | 'zinc'
+  | 'phosphorus'
+  | 'sodium';
 export type Micros = Partial<Record<MicroNutrient, number>>;
 export type MacroKey = 'protein' | 'carbs' | 'fat';
 /** Unit an amount was entered in. `g`/`ml` are measured, `portion`/`piece` are counted. */
@@ -212,6 +234,8 @@ export interface LogEntry {
   fromPantry?: false;
   /** Eaten instead of this planned meal (which is then skipped) – shown in its place, remembered as a replacement. */
   replacedMealId?: string;
+  /** Real cost of the eaten amount in CHF (from a product price the user entered) – snapshot like the macros. */
+  costChf?: number;
 }
 
 /**
@@ -236,6 +260,8 @@ export interface Product {
   fetchedAt: string;
   /** Catalog food the user said this product is – enables pantry, shopping and learning. */
   foodId?: string;
+  /** What the user really paid (CHF) for `amount` (in `unit`) – optional, always preferred over estimates. */
+  price?: { chf: number; amount: number; at: string };
 }
 
 export type SetType = 'warmup' | 'working';
@@ -346,8 +372,8 @@ export type PlanPriority = 'save' | 'balanced' | 'protein' | 'health';
 /** How the user wants the week planned – budget, priority, daily rhythm. */
 export interface PlannerSettings {
   priority: PlanPriority;
-  /** Weekly food budget in EUR (estimated costs are compared against it). */
-  weeklyBudgetEur?: number;
+  /** Weekly food budget in CHF (estimated costs are compared against it). */
+  weeklyBudgetChf?: number;
   /** Preferred times "HH:MM" per meal slot. */
   mealTimes: Record<MealSlot, string>;
   /** Usual training time "HH:MM" – falls back to what LifeFit learned. */

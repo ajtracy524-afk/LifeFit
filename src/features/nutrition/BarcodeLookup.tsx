@@ -1,22 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Product } from '../../domain/types';
+import { cameraAvailable } from '../../services/barcodeScanner';
 import { lookupProduct, normalizeBarcode, productSourceName } from '../../services/productLookup';
 import { useAppState } from '../../store/store';
 import { Button } from '../../components/ui/Button';
 import { Field } from '../../components/ui/Controls';
-import { Icon } from '../../components/ui/Icon';
+import { CameraScanner } from './CameraScanner';
 import styles from './nutrition.module.css';
-
-/** The browser's built-in detector (Chrome/Edge on Android, macOS, ChromeOS …) – no library needed. */
-interface DetectorLike {
-  detect(source: CanvasImageSource): Promise<{ rawValue: string }[]>;
-}
-type DetectorCtor = new (options?: { formats?: string[] }) => DetectorLike;
-const Detector = (globalThis as { BarcodeDetector?: DetectorCtor }).BarcodeDetector;
-
-export function cameraScanSupported(): boolean {
-  return !!Detector && typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
-}
 
 type LookupState = { kind: 'idle' } | { kind: 'loading'; code: string } | { kind: 'not_found'; code: string } | { kind: 'error'; message: string; code?: string };
 
@@ -27,16 +17,18 @@ interface Props {
 }
 
 /**
- * Barcode → product. Camera scan where the browser supports it, the number
- * under the barcode always works. Not found / offline / API error never
- * block anything – the manual entry is always one tap away.
+ * Barcode → product. Camera scan on every browser with a camera (optional on
+ * desktop), the number under the barcode always works. Not found / offline /
+ * API error never block anything – the manual entry is always one tap away.
  */
 export function BarcodeLookup({ onFound, onManual }: Props) {
   const state = useAppState();
   const [code, setCode] = useState('');
   const [lookup, setLookup] = useState<LookupState>({ kind: 'idle' });
   const [camera, setCamera] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
   const alive = useRef(true);
+  const busy = useRef(false);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -44,7 +36,14 @@ export function BarcodeLookup({ onFound, onManual }: Props) {
     };
   }, []);
 
+  const typeInstead = () => {
+    setCamera(false);
+    window.setTimeout(() => box.current?.querySelector<HTMLInputElement>('input')?.focus(), 0);
+  };
+
   const search = async (input: string) => {
+    // One lookup at a time – a second scan or tap while searching is ignored.
+    if (busy.current) return;
     const barcode = normalizeBarcode(input);
     if (!barcode) {
       setLookup({ kind: 'error', message: 'Das ist keine gültige Barcode-Nummer (8 oder 12–14 Ziffern).' });
@@ -52,7 +51,9 @@ export function BarcodeLookup({ onFound, onManual }: Props) {
     }
     setCode(barcode);
     setLookup({ kind: 'loading', code: barcode });
+    busy.current = true;
     const result = await lookupProduct(barcode, state.products);
+    busy.current = false;
     if (!alive.current) return;
     if (result.status === 'found') {
       setLookup({ kind: 'idle' });
@@ -62,7 +63,7 @@ export function BarcodeLookup({ onFound, onManual }: Props) {
   };
 
   return (
-    <div className={styles.scanBox}>
+    <div className={styles.scanBox} ref={box}>
       {camera ? (
         <CameraScanner
           onDetected={(value) => {
@@ -70,10 +71,11 @@ export function BarcodeLookup({ onFound, onManual }: Props) {
             void search(value);
           }}
           onCancel={() => setCamera(false)}
+          onManualEntry={typeInstead}
         />
       ) : (
-        cameraScanSupported() && (
-          <Button variant="secondary" icon="barcode" block onClick={() => setCamera(true)}>
+        cameraAvailable() && (
+          <Button icon="barcode" block onClick={() => setCamera(true)} disabled={lookup.kind === 'loading'}>
             Mit Kamera scannen
           </Button>
         )
@@ -91,7 +93,7 @@ export function BarcodeLookup({ onFound, onManual }: Props) {
           inputMode="numeric"
           placeholder="z. B. 4012345678901"
           value={code}
-          hint={cameraScanSupported() ? undefined : 'Die Ziffern stehen unter dem Strichcode.'}
+          hint="Oder die Ziffern unter dem Strichcode eintippen."
           onChange={(e) => {
             setCode(e.target.value);
             if (lookup.kind !== 'loading') setLookup({ kind: 'idle' });
@@ -135,61 +137,6 @@ export function BarcodeLookup({ onFound, onManual }: Props) {
       <p className={styles.sourceNote}>
         Produktdaten: {productSourceName()} (offene Datenbank). Gesendet wird nur die Barcode-Nummer – deine Einträge bleiben auf diesem Gerät.
       </p>
-    </div>
-  );
-}
-
-/** Live camera preview; reports the first code found and stops the camera right away. */
-function CameraScanner({ onDetected, onCancel }: { onDetected: (code: string) => void; onCancel: () => void }) {
-  const video = useRef<HTMLVideoElement>(null);
-  const [error, setError] = useState<string | null>(null);
-  // The parent re-renders on every store change – the camera must not restart then.
-  const report = useRef(onDetected);
-  report.current = onDetected;
-
-  useEffect(() => {
-    let stream: MediaStream | undefined;
-    let timer: number | undefined;
-    let done = false;
-    const stop = () => {
-      done = true;
-      window.clearInterval(timer);
-      stream?.getTracks().forEach((t) => t.stop());
-    };
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-        if (done || !video.current) return stop();
-        video.current.srcObject = stream;
-        await video.current.play();
-        const detector = new Detector!({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-        timer = window.setInterval(async () => {
-          if (done || !video.current) return;
-          try {
-            const found = await detector.detect(video.current);
-            const value = found.map((f) => normalizeBarcode(f.rawValue)).find(Boolean);
-            // One detection = one lookup: the camera stops before anything else happens.
-            if (value && !done) {
-              stop();
-              report.current(value);
-            }
-          } catch {
-            /* frame not ready – try the next one */
-          }
-        }, 300);
-      } catch {
-        if (!done) setError('Kein Kamerazugriff. Gib die Nummer unter dem Barcode ein.');
-      }
-    })();
-    return stop;
-  }, []);
-
-  return (
-    <div className={styles.scanBox}>
-      {error ? <p className={styles.notice}>{error}</p> : <video ref={video} className={styles.video} playsInline muted aria-label="Kamerabild zum Scannen" />}
-      <Button variant="ghost" onClick={onCancel}>
-        <Icon name="close" size={16} /> Kamera schließen
-      </Button>
     </div>
   );
 }

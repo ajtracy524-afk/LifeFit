@@ -5,7 +5,7 @@ import { DAY_MODE_LABEL, DAY_MODE_ORDER, TIME_BUDGET_ORDER, TIME_BUDGETS } from 
 import { estimateMinutes, trainingWeekdays } from '../../domain/training';
 import type { DayContext, DayMode, ISODate, TimeBudget } from '../../domain/types';
 import { applyWeekChange, buildWeekPlan, dayContextFor, shoppingCost, type WeekChange } from '../../domain/week';
-import { budgetNote, formatEur } from '../../domain/explain';
+import { budgetNote, formatChfEstimate } from '../../domain/explain';
 import { learnedTrainingDays } from '../../domain/learning';
 import { weekdayShort } from '../../lib/format';
 import { applyWithUndo } from '../../lib/undo';
@@ -57,7 +57,7 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
     const result = applyWeekChange(state, { type: 'planWeek', week, trainingDays, days }, new Date());
     if (!result.ok) return { error: result.reason } as const;
     const plan = buildWeekPlan(result.state, week, t);
-    return { plan, toBuy: plan.shopping.filter((i) => i.state === 'open').length, costEur: shoppingCost(plan.shopping).totalEur } as const;
+    return { plan, toBuy: plan.shopping.filter((i) => i.state === 'open').length, costChf: shoppingCost(plan.shopping).totalChf } as const;
   }, [step, state, week, trainingDays, days, t]);
 
   const create = () => {
@@ -67,9 +67,9 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
   const program = state.training ? getProgram(state.training.programId) : undefined;
   // Personalization: suggest the days the user actually trains on (only with enough evidence).
   const learnedDays = learnedTrainingDays(state.learning.preferences).filter((d) => dates[d]! >= t);
-  const budget = state.plannerSettings.weeklyBudgetEur;
+  const budget = state.plannerSettings.weeklyBudgetChf;
   const isCurrentWeek = dates[0]! < t;
-  const note = preview && !('error' in preview) ? budgetNote(preview.costEur, budget, state.plannerSettings.priority) : undefined;
+  const note = preview && !('error' in preview) ? budgetNote(preview.costChf, budget, state.plannerSettings.priority) : undefined;
 
   return (
     <div className={styles.checkin}>
@@ -172,7 +172,7 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
               <h3 className={styles.previewTitle}>Einkauf</h3>
               <p className={styles.muted}>
                 {preview.toBuy === 0 ? 'Alles ist schon da.' : `${preview.toBuy} Artikel – Vorrat ist schon abgezogen.`}
-                {preview.costEur > 0 ? ` ${formatEur(preview.costEur)} geschätzt.` : ''}
+                {preview.costChf > 0 ? ` ${formatChfEstimate(preview.costChf)} geschätzt.` : ''}
               </p>
               {note && <p className={styles.muted}>{note}</p>}
             </>

@@ -1,5 +1,6 @@
 import { FOODS } from '../data/foods';
-import { MICRO_NUTRIENTS, roundMacros, scaleMicros } from './nutrition';
+import { SALT_PER_SODIUM } from '../data/nutrients';
+import { BASIC_NUTRIENTS, roundMacros, scaleMicros } from './nutrition';
 import type { Food, FoodUnit, LogEntry, MacroKey, Macros, Micros, Product } from './types';
 
 /**
@@ -12,7 +13,7 @@ import type { Food, FoodUnit, LogEntry, MacroKey, Macros, Micros, Product } from
 const MACRO_KEYS: MacroKey[] = ['protein', 'carbs', 'fat'];
 
 /** Fields of a log entry that describe WHAT was eaten (id, date, slot, time are added by the action). */
-export type EntryContent = Pick<LogEntry, 'name' | 'method' | 'macros' | 'micros' | 'unknown' | 'amount' | 'unit' | 'grams' | 'barcode' | 'brand' | 'foodId'>;
+export type EntryContent = Pick<LogEntry, 'name' | 'method' | 'macros' | 'micros' | 'unknown' | 'amount' | 'unit' | 'grams' | 'barcode' | 'brand' | 'foodId' | 'costChf'>;
 
 export interface ProductNutrients {
   macros: Macros;
@@ -72,8 +73,12 @@ export function productEntry(product: Product, amount: number, foodId = product.
     ...(Object.keys(n.micros).length ? { micros: n.micros } : {}),
     ...(n.unknown.length ? { unknown: n.unknown } : {}),
     ...(foodId ? { foodId } : {}),
+    ...(product.price && product.price.amount > 0 ? { costChf: roundRappen((product.price.chf / product.price.amount) * amount) } : {}),
   };
 }
+
+/** Swiss amounts are paid in 5-Rappen steps. */
+const roundRappen = (chf: number) => Math.round(chf * 20) / 20;
 
 // ---------- Manual entry ----------
 
@@ -121,7 +126,7 @@ export function manualEntry(input: ManualInput): { ok: true; entry: EntryContent
   if (per100 && amount === undefined) errors.amount = 'Für Werte pro 100 g brauchen wir die Menge.';
 
   const values: Partial<Record<MacroKey | 'fiber' | 'sugar' | 'salt', number>> = {};
-  for (const key of [...MACRO_KEYS, ...MICRO_NUTRIENTS] as const) {
+  for (const key of [...MACRO_KEYS, ...BASIC_NUTRIENTS] as const) {
     const v = parse(input[key]);
     if (v === undefined) continue;
     if (Number.isNaN(v) || v < 0 || v > 1000) errors[key] = 'Bitte prüfe den Wert.';
@@ -131,7 +136,9 @@ export function manualEntry(input: ManualInput): { ok: true; entry: EntryContent
 
   const factor = per100 ? amount! / 100 : 1;
   const unknown = MACRO_KEYS.filter((k) => values[k] === undefined);
-  const micros = scaleMicros({ fiber: values.fiber, sugar: values.sugar, salt: values.salt }, factor);
+  // Sodium follows exactly from salt (labelling definition) – a conversion, not an estimate.
+  const sodium = values.salt !== undefined ? (values.salt / SALT_PER_SODIUM) * 1000 : undefined;
+  const micros = scaleMicros({ fiber: values.fiber, sugar: values.sugar, salt: values.salt, sodium }, factor);
   const measured = input.unit === 'g' || input.unit === 'ml';
   return {
     ok: true,

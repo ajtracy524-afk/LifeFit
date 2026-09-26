@@ -181,6 +181,31 @@ describe('Ersetzen (replace a planned meal)', () => {
     expect(s.plannedMeals[0]).toMatchObject({ status: 'eaten', replacedRecipeId: 'bolognese' });
   });
 
+  it('replacement product with a price: cost and micronutrients counted once, price remembered', async () => {
+    const { store, actions } = await load({ plannedMeals: [meal('b', 'breakfast', 'skyr-bowl')] });
+    actions.markEaten('b');
+    const product = { ...PRODUCT, micros100: { calcium: 110 } };
+    actions.replaceWithProduct('b', product, 200, { id: 'r', price: { chf: 3.9, amount: 450 } });
+    actions.replaceWithProduct('b', product, 200, { id: 'r', price: { chf: 3.9, amount: 450 } });
+    const s = store.getState();
+    const { daySummary } = await import('../domain/nutrition');
+    const { weekFoodCost } = await import('../domain/week');
+    const { weekStart } = await import('../domain/dates');
+    expect(s.logEntries).toHaveLength(1);
+    expect(s.logEntries[0]!.costChf).toBe(1.75); // 3.90 CHF / 450 g × 200 g = 1.73 → 5-Rappen steps
+    expect(daySummary(s.logEntries, today).day.micros.calcium).toEqual({ value: 220, known: 1, of: 1 });
+    expect(s.products[PRODUCT.barcode]!.price).toMatchObject({ chf: 3.9, amount: 450 });
+    // The skipped planned meal is not in the budget any more – only the product's real cost.
+    expect(weekFoodCost(s, weekStart(today))).toEqual({ lowChf: 1.5, highChf: 2 });
+  });
+
+  it('logging a product again without a new price keeps using the remembered price', async () => {
+    const { store, actions } = await load();
+    actions.logProduct(today, 'snack', PRODUCT, 100, { price: { chf: 4.5, amount: 450 } });
+    actions.logProduct(today, 'snack', store.getState().products[PRODUCT.barcode]!, 100);
+    expect(store.getState().logEntries.map((e) => e.costChf)).toEqual([1, 1]);
+  });
+
   it('a skipped meal cannot be replaced twice', async () => {
     const { actions } = await load({ plannedMeals: [{ ...meal('l', 'lunch', 'bolognese'), status: 'skipped' }] });
     expect(actions.replaceWithRecipe('l', 'chili', 1, true)).toBe(false);

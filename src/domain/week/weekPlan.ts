@@ -5,7 +5,7 @@ import { resolveWorkouts, type PlannedWorkout } from '../training';
 import type { AppState, DayContext, ISODate, Macros, NutritionTarget, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { getFood } from '../../data/foods';
-import { ingredientCostRange, purchaseCost, type CostRange } from '../costs';
+import { ingredientCostRange, priceLookup, purchaseCost, type CostItem, type CostRange } from '../costs';
 import { getRecipe } from '../../data/recipes';
 import { pantryEstimate } from './pantry';
 import { applyRestock, restockRules } from './restock';
@@ -69,16 +69,16 @@ export function weekShopping(state: AppState, week: ISODate, today: ISODate, est
   // F8: basics are topped up to their minimum stock – on the same list, one position per food.
   return applyRestock(items, restockRules(state, week, today), available, purchased).map((item) => {
     const food = getFood(item.foodId);
-    return item.state === 'open' && food ? { ...item, estCostEur: purchaseCost(food, item.remainingG) } : item;
+    return item.state === 'open' && food ? { ...item, estCostChf: purchaseCost(food, item.remainingG) } : item;
   });
 }
 
 /** Estimated cost of what is still open on a week's list (plus how many items have no price). */
-export function shoppingCost(items: ShoppingListItem[]): { totalEur: number; unpriced: number } {
+export function shoppingCost(items: ShoppingListItem[]): { totalChf: number; unpriced: number } {
   const open = items.filter((i) => i.state === 'open');
   return {
-    totalEur: open.reduce((sum, i) => sum + (i.estCostEur ?? 0), 0),
-    unpriced: open.filter((i) => i.estCostEur === undefined).length,
+    totalChf: open.reduce((sum, i) => sum + (i.estCostChf ?? 0), 0),
+    unpriced: open.filter((i) => i.estCostChf === undefined).length,
   };
 }
 
@@ -113,13 +113,25 @@ export function buildWeekPlan(state: AppState, weekStartDate: ISODate, today: IS
 }
 
 /**
- * Rough food cost of a week's plan (planned and eaten meals, skipped ones
- * excluded) – for the compact budget line. Undefined without reliable prices.
+ * Rough food cost of a week – for the compact budget line on Heute and
+ * Ernährung (one calculation for both). Counts what the week really eats:
+ * planned and eaten meals (skipped ones not), plus food eaten outside the plan
+ * (a replacement is therefore counted once, instead of the skipped meal).
+ * Real product prices first, catalog estimates otherwise; undefined without
+ * reliable prices (see ingredientCostRange).
  */
 export function weekFoodCost(state: AppState, week: ISODate): CostRange | undefined {
   const days = weekDays(week);
-  const items = state.plannedMeals
-    .filter((m) => m.date >= days[0]! && m.date <= days[6]! && m.status !== 'skipped')
+  const inWeek = (d: ISODate) => d >= days[0]! && d <= days[6]!;
+  const items: CostItem[] = state.plannedMeals
+    .filter((m) => inWeek(m.date) && m.status !== 'skipped')
     .flatMap((m) => (getRecipe(m.recipeId)?.ingredients ?? []).map((i) => ({ foodId: i.foodId, grams: i.grams * m.servings })));
-  return ingredientCostRange(items);
+  for (const e of state.logEntries) {
+    if (!inWeek(e.date) || e.plannedMealId || !e.grams) continue;
+    if (e.costChf !== undefined) items.push({ grams: e.grams, exactChf: e.costChf });
+    else if (e.foodId) items.push({ foodId: e.foodId, grams: e.grams });
+    // A product without price and without catalog link: its weight counts as unpriced.
+    else items.push({ foodId: '', grams: e.grams });
+  }
+  return ingredientCostRange(items, priceLookup(state.products));
 }

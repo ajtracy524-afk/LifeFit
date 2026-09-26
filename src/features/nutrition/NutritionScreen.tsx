@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { getRecipe } from '../../data/recipes';
 import { addDays, isoWeekNumber, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
-import { daySummary, MICRO_NUTRIENTS, plannedMealMacros, sumMacros, type NutritionSummary } from '../../domain/nutrition';
+import { BASIC_NUTRIENTS, daySummary, plannedMealMacros, sumMacros, type NutritionSummary } from '../../domain/nutrition';
 import { SLOT_ORDER, slotShare } from '../../domain/planner';
 import { activeWorkouts, estimateMinutes } from '../../domain/training';
 import { DAY_MODE_LABEL, excludedSlots, TIME_BUDGETS } from '../../domain/timeBudget';
@@ -27,6 +27,7 @@ import { CoachCard } from '../today/CoachCard';
 import { TimeBudgetControl } from '../today/TimeBudgetControl';
 import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { WaterControl } from './WaterControl';
+import { MicronutrientPanel } from './MicronutrientPanel';
 import { BudgetLine } from './BudgetLine';
 import styles from './nutrition.module.css';
 
@@ -85,7 +86,7 @@ interface DayViewProps {
 function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
   const state = useAppState();
   const target = dayTargetFor(state, date);
-  const summary = daySummary(state.logEntries, date);
+  const summary = useMemo(() => daySummary(state.logEntries, date), [state.logEntries, date]);
   const totals = summary.day.macros;
   const meals = state.plannedMeals.filter((m) => m.date === date);
   const extras = state.logEntries.filter((e) => e.date === date && !e.plannedMealId);
@@ -121,6 +122,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
             <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
           </div>
           <OptionalNutrients summary={summary.day} />
+          <MicronutrientPanel summary={summary.day} />
         </Card>
       )}
 
@@ -193,7 +195,7 @@ const MICRO_LABEL = { fiber: 'Ballaststoffe', sugar: 'Zucker', salt: 'Salz' } as
 
 /** Fiber, sugar, salt – only when data exists, and marked if not every entry had it. */
 function OptionalNutrients({ summary }: { summary: NutritionSummary }) {
-  const known = MICRO_NUTRIENTS.filter((k) => summary.micros[k].known > 0);
+  const known = BASIC_NUTRIENTS.filter((k) => summary.micros[k].known > 0);
   if (!known.length) return null;
   return (
     <p className={styles.microLine}>

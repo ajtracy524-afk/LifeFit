@@ -22,7 +22,7 @@ function plannerContext(state: AppState, dates: ISODate[], today: ISODate) {
     affinity: plannerAffinity(state.learning?.preferences ?? {}, state.nutritionProfile),
     priority: state.plannerSettings?.priority ?? 'balanced',
     // The weekly budget, pro rata for the days being planned.
-    budgetEur: state.plannerSettings?.weeklyBudgetEur !== undefined ? (state.plannerSettings.weeklyBudgetEur * dates.length) / 7 : undefined,
+    budgetChf: state.plannerSettings?.weeklyBudgetChf !== undefined ? (state.plannerSettings.weeklyBudgetChf * dates.length) / 7 : undefined,
     pantryAgeDays: pantryAge(state, today),
   };
 }
@@ -159,7 +159,7 @@ function rankForSlot(
       profile: state.nutritionProfile,
       context: p.week.filter((m) => m.date !== p.date),
       pantry: ctx.pantry,
-      extras: { affinity: ctx.affinity, budgetEur: ctx.budgetEur, pantryAgeDays: ctx.pantryAgeDays },
+      extras: { affinity: ctx.affinity, budgetChf: ctx.budgetChf, pantryAgeDays: ctx.pantryAgeDays },
       priority: ctx.priority,
       exclude: p.exclude,
     },

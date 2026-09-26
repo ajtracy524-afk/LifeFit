@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getFood } from '../../data/foods';
+import { formatChf } from '../../domain/costs';
 import { productAmountOptions, productNutrients, suggestCatalogFoods } from '../../domain/foodEntry';
 import type { Macros, MacroKey, Micros, Product } from '../../domain/types';
 import { pantryEstimate } from '../../domain/week';
@@ -16,6 +17,8 @@ export interface ProductChoice {
   amount: number;
   foodId: string | null;
   fromPantry: boolean;
+  /** Entered price: CHF for `amount` (the package if its size is known, otherwise the chosen amount). */
+  price?: { chf: number; amount: number };
 }
 
 interface Props {
@@ -50,7 +53,14 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat' }:
   const validAmount = Number.isFinite(amount) && amount > 0 && amount <= 5000;
   const nutrients = validAmount ? productNutrients(product, amount) : undefined;
   const u = product.unit;
-  const choice: ProductChoice | null = validAmount && (nutrients || purpose === 'purchase') ? { id, amount, foodId, fromPantry: stock > 0 ? fromPantry : true } : null;
+  // Optional real price – for the package if its size is known, otherwise for the chosen amount.
+  const priceBase = product.packageSize ?? (validAmount ? amount : undefined);
+  const [priceText, setPriceText] = useState(product.price && product.price.amount === product.packageSize ? String(product.price.chf) : '');
+  const priceValue = parseNumber(priceText);
+  const priceValid = priceText.trim() === '' || (Number.isFinite(priceValue) && priceValue >= 0.05 && priceValue <= 1000);
+  const price = priceText.trim() && priceValid && priceBase ? { chf: Math.round(priceValue * 100) / 100, amount: priceBase } : undefined;
+  const choice: ProductChoice | null =
+    validAmount && priceValid && (nutrients || purpose === 'purchase') ? { id, amount, foodId, fromPantry: stock > 0 ? fromPantry : true, ...(price ? { price } : {}) } : null;
 
   return (
     <>
@@ -96,7 +106,7 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat' }:
         </>
       )}
       <p className={styles.sourceNote}>
-        Nährwerte pro 100 {u} laut Open Food Facts{Object.keys(product.per100).length < 4 ? ' – nicht alle Werte angegeben' : ''}. Preise liefert die Datenbank nicht.
+        Nährwerte pro 100 {u} laut Open Food Facts{Object.keys(product.per100).length < 4 ? ' – nicht alle Werte angegeben' : ''}. Preise liefert die Datenbank nicht – deinen Kaufpreis kannst du unten eintragen.
       </p>
 
       <p className={styles.fieldLabel}>{purpose === 'purchase' ? 'Welches LifeFit-Lebensmittel ist das?' : 'Entspricht in LifeFit (optional)'}</p>
@@ -116,6 +126,24 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat' }:
           ? 'Nur so kann der Planer das Produkt aus deinem Vorrat verwenden.'
           : 'Damit zählt es für Vorrat, Einkauf und deine Vorlieben. Ohne Zuordnung wird nur gezählt, was du isst.'}
       </p>
+
+      <Field
+        label={product.packageSize ? `Packungspreis (${formatGrams(product.packageSize)}) – optional` : `Preis für ${validAmount ? fmt.int(amount) : '…'} ${u} – optional`}
+        inputMode="decimal"
+        suffix="CHF"
+        placeholder="z. B. 4.95"
+        value={priceText}
+        error={priceValid ? undefined : 'Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.'}
+        hint={
+          price && validAmount && purpose === 'eat' && price.amount !== amount
+            ? `Deine Menge (${fmt.int(amount)} ${u}) ≈ ${formatChf((price.chf / price.amount) * amount)}`
+            : product.price && !priceText
+              ? `Zuletzt: ${formatChf(product.price.chf)} für ${fmt.int(product.price.amount)} ${u}`
+              : 'Fließt in dein Budget ein – ohne Angabe nutzt LifeFit nur Schätzpreise.'
+        }
+        onChange={(e) => setPriceText(e.target.value)}
+        className={styles.amountField}
+      />
 
       {purpose === 'eat' && stock > 0 && (
         <label className={styles.checkRow}>

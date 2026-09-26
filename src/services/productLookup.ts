@@ -1,3 +1,5 @@
+import { FROM_GRAMS, NUTRIENTS } from '../data/nutrients';
+import { roundMicro, VITAL_NUTRIENTS } from '../domain/nutrition';
 import type { Micros, Product } from '../domain/types';
 
 /**
@@ -115,6 +117,12 @@ export function normalizeOffProduct(barcode: string, raw: OffProduct, now: Date 
   if (fiber !== undefined) micros100.fiber = fiber;
   if (sugar !== undefined) micros100.sugar = sugar;
   if (salt !== undefined) micros100.salt = Math.round(salt * 100) / 100;
+  // Vitamins and minerals: only those the product declares (OFF keeps them in grams per 100 g).
+  for (const key of VITAL_NUTRIENTS) {
+    const info = NUTRIENTS[key];
+    const grams = info.off?.map((k) => num(n[`${k}_100g`])).find((v) => v !== undefined);
+    if (grams !== undefined) micros100[key] = roundMicro(key, grams * FROM_GRAMS[info.unit]);
+  }
 
   const quantityText = parseQuantity(raw.quantity);
   const servingText = parseQuantity(raw.serving_size);

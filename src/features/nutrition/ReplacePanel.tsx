@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { getRecipe } from '../../data/recipes';
-import { formatCostRange, recipeCostRange } from '../../domain/costs';
+import { formatCostRange, priceLookup, recipeCostRange } from '../../domain/costs';
 import { today as todayIso } from '../../domain/dates';
 import { explainMeal } from '../../domain/explain';
 import { EMPTY_MANUAL, manualFromProduct, type EntryContent, type ManualInput } from '../../domain/foodEntry';
@@ -47,6 +47,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
 
   const options = useMemo(() => mealAlternatives(state, meal, t, { limit: Number.POSITIVE_INFINITY }), [state, meal, t]);
   const history = useMemo(() => replacementHistory(state, meal), [state, meal]);
+  const price = useMemo(() => priceLookup(state.products), [state.products]);
 
   const finish = (message: string, action: () => boolean) => {
     if (withUndo(message, action)) navigator.vibrate?.(10);
@@ -77,7 +78,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
               onClick={() =>
                 choice &&
                 finish(`${product.name} statt ${getRecipe(meal.recipeId)?.title ?? 'Mahlzeit'} erfasst`, () =>
-                  replaceWithProduct(meal.id, product, choice.amount, { id: choice.id, foodId: choice.foodId, fromPantry: choice.fromPantry }),
+                  replaceWithProduct(meal.id, product, choice.amount, { id: choice.id, foodId: choice.foodId, fromPantry: choice.fromPantry, price: choice.price }),
                 )
               }
             >
@@ -123,7 +124,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
             <div>
               {shown.map((o) => {
                 const reason = explainMeal(state, { ...meal, recipeId: o.recipe.id, servings: o.servings, source: 'suggest' }, t).find(isSpecific);
-                const cost = recipeCostRange(o.recipe, o.servings);
+                const cost = recipeCostRange(o.recipe, o.servings, price);
                 return (
                   <div key={o.recipe.id} className={styles.suggestion}>
                     <span className={styles.mealEmoji} aria-hidden>

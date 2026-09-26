@@ -1,8 +1,10 @@
 import { getFood } from '../data/foods';
+import { NUTRIENTS } from '../data/nutrients';
 import { getRecipe } from '../data/recipes';
 import { newId } from '../lib/id';
 import type {
   ActivityLevel,
+  BasicNutrient,
   Food,
   FitnessGoal,
   ISODate,
@@ -18,7 +20,12 @@ import type {
   Recipe,
 } from './types';
 
-export const MICRO_NUTRIENTS: MicroNutrient[] = ['fiber', 'sugar', 'salt'];
+/** All optional nutrients (order = display order). */
+export const MICRO_NUTRIENTS = Object.keys(NUTRIENTS) as MicroNutrient[];
+/** Fiber, sugar, salt – shown in the day's short line and in the manual form. */
+export const BASIC_NUTRIENTS: BasicNutrient[] = ['fiber', 'sugar', 'salt'];
+/** Vitamins and minerals – the optional "Mikronährstoffe" list. */
+export const VITAL_NUTRIENTS = MICRO_NUTRIENTS.filter((k) => NUTRIENTS[k].group !== 'basic');
 
 export const ZERO_MACROS: Macros = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
@@ -57,7 +64,11 @@ export function scaleMicros(per100: Micros | undefined, factor: number): Micros 
   return out;
 }
 
-const roundMicro = (key: MicroNutrient, v: number) => (key === 'salt' ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10);
+/** Salt to 0.01 g, small mg/µg values to 0.01, everything else to 0.1 – never rounds a real amount down to 0. */
+export function roundMicro(key: MicroNutrient, v: number): number {
+  const precision = key === 'salt' || (NUTRIENTS[key].unit !== 'g' && Math.abs(v) < 1) ? 100 : 10;
+  return Math.round(v * precision) / precision;
+}
 
 /** Fiber of a recipe (catalog data) – sugar and salt are not known for the catalog. */
 export function recipeMicros(recipe: Recipe, servings = 1): Micros {

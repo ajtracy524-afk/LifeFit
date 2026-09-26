@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { addDays, daysBetween, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
-import { dayTotals } from '../../domain/nutrition';
+import { daySummary } from '../../domain/nutrition';
 import { SLOT_ORDER } from '../../domain/planner';
 import { goalProgress, latestWeight } from '../../domain/progress';
 import { isCompletedOn, resolveWorkouts } from '../../domain/training';
@@ -20,6 +20,7 @@ import { MacroStrip, ProgressBar, ProgressRing } from '../../components/ui/Progr
 import { Sheet } from '../../components/ui/Sheet';
 import { LogFoodSheet, type LogTarget } from '../nutrition/LogFoodSheet';
 import { WaterControl } from '../nutrition/WaterControl';
+import { MicronutrientPanel } from '../nutrition/MicronutrientPanel';
 import { BudgetLine } from '../nutrition/BudgetLine';
 import { MealSheet } from '../nutrition/MealSheet';
 import { WeightSheet } from '../progress/WeightSheet';
@@ -42,7 +43,9 @@ export function TodayScreen() {
   const [quickOpen, setQuickOpen] = useState(false);
 
   const target = dayTargetFor(state, t);
-  const totals = dayTotals(state.logEntries, t);
+  // One summary of what was eaten today – macros and micronutrients from the same entries.
+  const day = useMemo(() => daySummary(state.logEntries, t).day, [state.logEntries, t]);
+  const totals = day.macros;
   const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
   const weekHasMeals = state.plannedMeals.some((m) => m.date >= t && m.date <= addDays(start, 6));
 
@@ -150,6 +153,7 @@ export function TodayScreen() {
           </div>
           <div className={styles.macroRow}>
             <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
+            <MicronutrientPanel summary={day} />
           </div>
           <div className={styles.waterRow}>
             <WaterControl date={t} />

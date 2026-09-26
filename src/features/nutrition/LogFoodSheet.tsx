@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { FOODS, getFood } from '../../data/foods';
 import { getRecipe } from '../../data/recipes';
 import { today } from '../../domain/dates';
+import { formatCostRange, priceLookup, recipeCostRange, type PriceLookup } from '../../domain/costs';
 import { explainMeal } from '../../domain/explain';
 import { EMPTY_MANUAL, manualFromProduct, type ManualInput } from '../../domain/foodEntry';
 import { foodAllowed, foodMacros, recipeMacros } from '../../domain/nutrition';
-import type { Food, ISODate, MealSlot, PlannedMeal, Product } from '../../domain/types';
+import type { Food, ISODate, MealSlot, PlannedMeal, Product, Recipe } from '../../domain/types';
 import { dayTargetFor, pantryEstimate, slotSuggestions } from '../../domain/week';
 import { fmt, formatGrams, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { newId } from '../../lib/id';
@@ -93,7 +94,7 @@ export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
                 onClick={() =>
                   choice &&
                   done(`${product.name} erfasst`, () =>
-                    logProduct(target.date, activeSlot, product, choice.amount, { id: choice.id, foodId: choice.foodId, fromPantry: choice.fromPantry }),
+                    logProduct(target.date, activeSlot, product, choice.amount, { id: choice.id, foodId: choice.foodId, fromPantry: choice.fromPantry, price: choice.price }),
                   )
                 }
               >
@@ -144,6 +145,7 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
   const t = today();
   const planned = state.plannedMeals.find((m) => m.date === date && m.slot === slot && m.status === 'planned');
   const { options, open } = useMemo(() => slotSuggestions(state, date, slot, t, 3, planned ? [planned.recipeId] : []), [state, date, slot, t, planned]);
+  const price = useMemo(() => priceLookup(state.products), [state.products]);
   const plannedRecipe = planned ? getRecipe(planned.recipeId) : undefined;
 
   return (
@@ -185,7 +187,7 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
                 <span className={styles.mealText}>
                   <span className={styles.mealTitle}>{o.recipe.title}</span>
                   <span className={styles.mealMeta}>
-                    {fmt.kcal(o.macros.kcal)} · {fmt.g(o.macros.protein)} Protein · {o.recipe.prepMin} min
+                    {[fmt.kcal(o.macros.kcal), `${fmt.int(o.macros.protein)} g Protein`, `${o.recipe.prepMin} min`, costText(o.recipe, o.servings, price)].filter(Boolean).join(' · ')}
                   </span>
                   {reasons.map((r) => (
                     <span key={r} className={styles.reason}>
@@ -204,6 +206,12 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
     </>
   );
 }
+
+/** "ca. 2–3 CHF" – only with reliable prices, otherwise nothing. */
+const costText = (recipe: Recipe, servings: number, price: PriceLookup) => {
+  const r = recipeCostRange(recipe, servings, price);
+  return r ? formatCostRange(r) : undefined;
+};
 
 const suggestionMeal = (date: ISODate, slot: MealSlot, recipeId: string, servings: number): PlannedMeal => ({ id: 'suggestion', date, slot, recipeId, servings, status: 'planned', source: 'suggest' });
 

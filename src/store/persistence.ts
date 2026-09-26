@@ -99,10 +99,10 @@ export function loadState(): LoadResult {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     // Migrated state is only written on the next change – loading never writes.
-    if (parsed.schemaVersion === 1) return { state: migrateV1(parsed) };
+    if (parsed.schemaVersion === 1) return { state: toChf(migrateV1(parsed)) };
     if (parsed.schemaVersion !== 2) throw new Error('Unknown schema version');
     // Merge onto defaults so newly added fields always exist.
-    return { state: { ...emptyState(), ...parsed } as AppState };
+    return { state: toChf({ ...emptyState(), ...parsed } as AppState) };
   } catch {
     // Never silently discard user data: keep a copy for recovery.
     try {
@@ -112,6 +112,18 @@ export function loadState(): LoadResult {
     }
     return { state: emptyState(), notice: 'recovered' };
   }
+}
+
+/**
+ * LifeFit is Swiss-only: the weekly budget is CHF. Older data stored it as
+ * `weeklyBudgetEur` – the number is taken over as it is (the user typed it),
+ * never converted. Loading only; storage is updated on the next change.
+ */
+export function toChf(state: AppState): AppState {
+  const settings = state.plannerSettings as AppState['plannerSettings'] & { weeklyBudgetEur?: number };
+  if (!settings || settings.weeklyBudgetEur === undefined) return state;
+  const { weeklyBudgetEur, ...rest } = settings;
+  return { ...state, plannerSettings: { ...rest, weeklyBudgetChf: rest.weeklyBudgetChf ?? weeklyBudgetEur } };
 }
 
 /** Returns false if the data could not be written (quota, private mode …). */

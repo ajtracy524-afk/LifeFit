@@ -65,8 +65,8 @@ describe('replacement history ("Zuletzt als Ersatz")', () => {
 describe('cost ranges – rough, never invented', () => {
   it('a recipe with priced ingredients gets a rounded range', () => {
     const r = recipeCostRange(getRecipe('chili')!, 1)!;
-    expect(r.lowEur).toBeLessThan(r.highEur);
-    expect(formatCostRange(r)).toMatch(/^ca\. [\d,]+–[\d,]+ €$/);
+    expect(r.lowChf).toBeLessThan(r.highChf);
+    expect(formatCostRange(r)).toMatch(/^ca\. [\d.]+–[\d.]+ CHF$/);
   });
 
   it(`below ${MIN_PRICED_SHARE * 100} % priced weight no number is shown`, () => {
@@ -80,12 +80,12 @@ describe('cost ranges – rough, never invented', () => {
     const base = { ...emptyState(), plannedMeals: [meal('a', 'chili'), meal('b', 'chili', { date: '2026-09-22', status: 'eaten' })] };
     const both = weekFoodCost(base, MON)!;
     const one = weekFoodCost({ ...base, plannedMeals: [base.plannedMeals[0]!, { ...base.plannedMeals[1]!, status: 'skipped' }] }, MON)!;
-    expect(both.highEur).toBeGreaterThan(one.highEur);
+    expect(both.highChf).toBeGreaterThan(one.highChf);
     expect(weekFoodCost({ ...emptyState() }, MON)).toBeUndefined();
   });
 
   it('small amounts read honestly', () => {
-    expect(formatCostRange({ lowEur: 0.5, highEur: 1 })).toBe('unter 1 €');
-    expect(formatCostRange({ lowEur: 2, highEur: 3 })).toBe('ca. 2–3 €');
+    expect(formatCostRange({ lowChf: 0.5, highChf: 1 })).toBe('unter 1 CHF');
+    expect(formatCostRange({ lowChf: 2, highChf: 3 })).toBe('ca. 2–3 CHF');
   });
 });

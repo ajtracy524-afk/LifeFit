@@ -30,7 +30,7 @@ const learned = (n: number, type: 'meal_eaten' | 'meal_skipped', recipeId: strin
   return affinityIndex(p);
 };
 const weekCost = (p: PlannedMeal[], pantry: Record<string, number> = {}) =>
-  scoreWeek(dates.map((d) => ({ date: d, target, fixed: p.filter((m) => m.date === d), remainingKcal: 0, slots: [], picks: [], timeBudget: 'normal' as const })), pantry).costEur;
+  scoreWeek(dates.map((d) => ({ date: d, target, fixed: p.filter((m) => m.date === d), remainingKcal: 0, slots: [], picks: [], timeBudget: 'normal' as const })), pantry).costChf;
 const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 describe('personalization in the planner', () => {
@@ -82,8 +82,8 @@ describe('hard rules beat anything learned', () => {
 
 describe('budget and estimated costs', () => {
   it('costs come from whole packages, not recipe grams', () => {
-    // 180 g chicken → one 400 g pack at ~11 €/kg.
-    expect(purchaseCost(getFood('chicken')!, 180)).toBeCloseTo(4.4);
+    // 180 g chicken → one 400 g pack at ~28 CHF/kg (Swiss estimate).
+    expect(purchaseCost(getFood('chicken')!, 180)).toBeCloseTo(11.2);
     // No price known → unknown, not zero.
     expect(purchaseCost(getFood('whey')!, 30)).toBeUndefined();
   });
@@ -102,9 +102,9 @@ describe('budget and estimated costs', () => {
 
   it('under budget nothing changes; over budget the planner gets as close as it can', () => {
     const shape = (p: PlannedMeal[]) => p.map((m) => [m.date, m.slot, m.recipeId, m.servings]);
-    expect(all({ budgetEur: 1000 }).map(shape)).toEqual(all().map(shape));
+    expect(all({ budgetChf: 1000 }).map(shape)).toEqual(all().map(shape));
     const free = avg(all().map((p) => weekCost(p)));
-    const tight = all({ budgetEur: 80 });
+    const tight = all({ budgetChf: 80 });
     expect(avg(tight.map((p) => weekCost(p)))).toBeLessThan(free);
     // Meals are not destroyed to save money: calories still fit.
     for (const p of tight) for (const d of dates) expect(Math.abs(sumMacros(p.filter((m) => m.date === d).map(plannedMealMacros)).kcal - 2800) / 2800).toBeLessThan(0.1);
@@ -163,7 +163,7 @@ describe('everything together through the central planner', () => {
     const s = state({
       learning: { preferences: prefs },
       pantry: { rice: { foodId: 'rice', quantityG: 1000, updatedAt: '2026-09-15T08:00:00Z' } },
-      plannerSettings: { priority: 'balanced', weeklyBudgetEur: 90, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:30' }, trainingTime: '18:00' },
+      plannerSettings: { priority: 'balanced', weeklyBudgetChf: 90, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:30' }, trainingTime: '18:00' },
       dayContexts: { '2026-09-24': { timeBudget: 'low', mode: 'normal' } },
     });
     const meals = planMeals(s, { dates, today: '2026-09-21', seed: 'all' });

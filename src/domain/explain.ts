@@ -4,6 +4,7 @@ import { MEAL_STYLES } from '../data/tastes';
 import { weekdayLong, weekdayShort } from '../lib/format';
 import { addDays, weekStart, weekdayIndex } from './dates';
 import { affinityIndex, learnedTrainingDays, learnedTrainingHour, LEARNING, preferenceOf, prefKey } from './learning';
+import { formatChf } from './costs';
 import { plannedMealMacros } from './nutrition';
 import { matchingTastes, recipeStyle } from './preferences';
 import { effectivePrepMin } from './planner';
@@ -106,9 +107,9 @@ export function explainDay(state: AppState, date: ISODate, today: ISODate): stri
   return reasons;
 }
 
-/** Small helper for the UI: "ca. 12,40 €". */
-export function formatEur(eur: number): string {
-  return `ca. ${eur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+/** An estimate for the UI: "ca. 12.40 CHF". */
+export function formatChfEstimate(chf: number): string {
+  return `ca. ${formatChf(chf)}`;
 }
 
 /**
@@ -116,12 +117,12 @@ export function formatEur(eur: number): string {
  * recipes, the calorie/protein targets and variety allow – say so instead of
  * pretending the budget was met.
  */
-export function budgetNote(costEur: number, budgetEur: number | undefined, priority: PlanPriority): string | undefined {
-  if (budgetEur === undefined || costEur <= 0) return undefined;
-  if (costEur <= budgetEur) return `Passt in dein Budget von ${budgetEur} €.`;
+export function budgetNote(costChf: number, budgetChf: number | undefined, priority: PlanPriority): string | undefined {
+  if (budgetChf === undefined || costChf <= 0) return undefined;
+  if (costChf <= budgetChf) return `Passt in dein Budget von ${budgetChf} CHF.`;
   return priority === 'save'
-    ? `Über deinem Budget von ${budgetEur} € – günstige Rezepte sind schon bevorzugt, Kalorien und Protein haben Vorrang.`
-    : `Über deinem Budget von ${budgetEur} € – mit dem Schwerpunkt „Sparen“ (Profil) wird die Woche günstiger.`;
+    ? `Über deinem Budget von ${budgetChf} CHF – günstige Rezepte sind schon bevorzugt, Kalorien und Protein haben Vorrang.`
+    : `Über deinem Budget von ${budgetChf} CHF – mit dem Schwerpunkt „Sparen“ (Profil) wird die Woche günstiger.`;
 }
 
 /**
