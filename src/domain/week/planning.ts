@@ -108,28 +108,63 @@ export function slotSuggestions(state: AppState, date: ISODate, slot: MealSlot, 
   // Fill what is left of the day, within sensible bounds of a normal portion for this slot.
   const kcal = Math.min(slotKcal * 1.5, Math.max(slotKcal * 0.5, dayTarget.kcal - fixedKcal));
 
-  const ctx = plannerContext(state, [date], today);
-  const options = rankMealOptions(
-    {
-      date,
-      slot,
-      target: dayTarget,
-      fixed,
-      kcal,
-      timeBudget: effectiveTimeBudget(dayContextFor(state, date)),
-      postWorkoutSlot: postWorkoutSlot(state, date),
-      profile,
-      context: week.filter((m) => m.date !== date),
-      pantry: ctx.pantry,
-      extras: { affinity: ctx.affinity, budgetEur: ctx.budgetEur, pantryAgeDays: ctx.pantryAgeDays },
-      priority: ctx.priority,
-      exclude,
-    },
-    limit,
-  );
+  const options = rankForSlot(state, { date, slot, today, fixed, kcal, target: dayTarget, week, exclude, limit });
   const openKcal = Math.max(0, dayTarget.kcal - fixedKcal);
   const openProtein = Math.max(0, target.protein - extra.protein - fixed.reduce((s, m) => s + plannedMealMacros(m).protein, 0));
   return { options, open: { kcal: openKcal, protein: openProtein, carbs: 0, fat: 0 } };
+}
+
+/**
+ * Alternatives for ONE planned meal, filling exactly its calories – ranked by
+ * the planner's week score under the day's current time budget. The rest of
+ * the day and week is fixed context. With `includeCurrent` the meal's own
+ * recipe is ranked too (to compare old vs. new with the same measure).
+ */
+export function mealAlternatives(state: AppState, meal: PlannedMeal, today: ISODate, opts: { limit?: number; includeCurrent?: boolean } = {}): MealOption[] {
+  const target = dayTargetFor(state, meal.date);
+  if (!target || !state.nutritionProfile) return [];
+  const week = weekMeals(state, meal.date).filter((m) => m.id !== meal.id);
+  const fixed = week.filter((m) => m.date === meal.date);
+  // Like the week planner: a recipe already on this day is not offered a second time.
+  const taken = fixed.map((m) => m.recipeId).filter((id) => id !== meal.recipeId);
+  const kcal = plannedMealMacros(meal).kcal;
+  return rankForSlot(state, {
+    date: meal.date,
+    slot: meal.slot,
+    today,
+    fixed,
+    kcal,
+    target,
+    week,
+    exclude: opts.includeCurrent ? taken : [...taken, meal.recipeId],
+    limit: opts.limit ?? 3,
+  });
+}
+
+/** The shared core: planner context once, then the planner's own ranking. */
+function rankForSlot(
+  state: AppState,
+  p: { date: ISODate; slot: MealSlot; today: ISODate; fixed: PlannedMeal[]; kcal: number; target: Macros; week: PlannedMeal[]; exclude: string[]; limit: number },
+): MealOption[] {
+  const ctx = plannerContext(state, [p.date], p.today);
+  return rankMealOptions(
+    {
+      date: p.date,
+      slot: p.slot,
+      target: p.target,
+      fixed: p.fixed,
+      kcal: p.kcal,
+      timeBudget: effectiveTimeBudget(dayContextFor(state, p.date)),
+      postWorkoutSlot: postWorkoutSlot(state, p.date),
+      profile: state.nutritionProfile,
+      context: p.week.filter((m) => m.date !== p.date),
+      pantry: ctx.pantry,
+      extras: { affinity: ctx.affinity, budgetEur: ctx.budgetEur, pantryAgeDays: ctx.pantryAgeDays },
+      priority: ctx.priority,
+      exclude: p.exclude,
+    },
+    p.limit,
+  );
 }
 
 /** Non-skipped meals of the week containing `date` – context for foods, variety and leftovers. */

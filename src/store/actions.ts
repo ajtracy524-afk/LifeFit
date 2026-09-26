@@ -181,6 +181,55 @@ export function logProduct(date: ISODate, slot: MealSlot, product: Product, amou
   return logEntry(date, slot, content, { ...opts, id });
 }
 
+/**
+ * "Ersetzen" with something that is not a recipe (barcode product, manual
+ * entry, a remembered replacement): in ONE state change the planned meal
+ * becomes skipped, its own log entry (if it was eaten) is removed and the new
+ * entry is logged with `replacedMealId`. So the day balance counts only the
+ * replacement – never both. Returns false if nothing changed.
+ */
+export function replaceWithEntry(mealId: string, content: EntryContent, opts: LogOptions = {}): boolean {
+  const s = getState();
+  const meal = s.plannedMeals.find((m) => m.id === mealId);
+  const id = opts.id ?? newId();
+  if (!meal || meal.status === 'skipped' || s.logEntries.some((e) => e.id === id)) return false;
+  update((d) => {
+    const m = d.plannedMeals.find((x) => x.id === mealId)!;
+    const nowIso = new Date().toISOString();
+    const timeBudget = budgetOn(d, m.date);
+    if (m.status === 'eaten') recordEvent(d, { type: 'meal_uneaten', recipeId: m.recipeId, slot: m.slot, timeBudget }, nowIso);
+    recordEvent(d, { type: 'meal_skipped', recipeId: m.recipeId, slot: m.slot, timeBudget }, nowIso);
+    m.status = 'skipped';
+    d.logEntries = d.logEntries.filter((e) => e.plannedMealId !== mealId);
+    const entry: LogEntry = { id, date: m.date, slot: m.slot, loggedAt: nowIso, ...content, replacedMealId: mealId, ...(opts.fromPantry === false ? { fromPantry: false } : {}) };
+    d.logEntries.push(entry);
+    if (entry.foodId && getFood(entry.foodId)) recordEvent(d, { type: 'food_logged', foodId: entry.foodId }, nowIso);
+  });
+  return true;
+}
+
+export function replaceWithProduct(mealId: string, product: Product, amount: number, opts: LogOptions & { foodId?: string | null } = {}): boolean {
+  const foodId = opts.foodId === null ? undefined : (opts.foodId ?? product.foodId);
+  const content = productEntry(product, amount, foodId);
+  if (!content) return false;
+  const done = replaceWithEntry(mealId, content, opts);
+  if (done) saveProduct({ ...product, foodId });
+  return done;
+}
+
+/**
+ * "Ersetzen" with a recipe: the planned meal is exchanged through the cascade
+ * (learned as a swap, remembered as replacement). `eat`: it was/is eaten now –
+ * marked eaten; an already eaten meal keeps ONE log entry (synced).
+ */
+export function replaceWithRecipe(mealId: string, recipeId: string, servings: number, eat: boolean): boolean {
+  const meal = getState().plannedMeals.find((m) => m.id === mealId);
+  if (!meal || meal.status === 'skipped') return false;
+  if (!applyChange({ type: 'replaceMeal', mealId, recipeId, servings }).ok) return false;
+  if (eat) markEaten(mealId);
+  return true;
+}
+
 /** Remembers a looked-up product locally (no network next time). Keeps an existing catalog link unless one is given. */
 export function saveProduct(product: Product): void {
   update((s) => {

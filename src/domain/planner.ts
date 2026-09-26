@@ -60,6 +60,12 @@ export const PLANNER_WEIGHTS = {
   /** F5: per 10 min of preparation beyond the day's time budget. */
   timeOver: 0.4,
   /**
+   * Bonus per elaborate dish (≥ ELABORATE_PREP_MIN) on a day with much time.
+   * Deliberately below a full preference, pantry or budget hit – it only
+   * decides between otherwise similar meals.
+   */
+  elaborate: 0.05,
+  /**
    * F2: perishable pantry stock left unused by the week (per food, as a share
    * of the stock). Makes the planner prefer plans that use what is at home –
    * a preference, not an obligation.
@@ -227,9 +233,16 @@ function dayNumber(iso: ISODate): number {
   return n;
 }
 
-/** Cost of preparation beyond the day's budget (0 if it fits). */
+/** Preparation from which a dish counts as "aufwendig" for a day with much time. */
+export const ELABORATE_PREP_MIN = 25;
+
+/**
+ * Time term of a meal: preparation beyond the day's budget costs score; on a
+ * day with much time an elaborate dish gets a small bonus (negative cost).
+ */
 function timeCost(prepMin: number, budget: TimeBudget, W: PlannerWeights): number {
-  return (W.timeOver * Math.max(0, prepMin - TIME_BUDGETS[budget].maxPrepMin)) / 10;
+  const over = (W.timeOver * Math.max(0, prepMin - TIME_BUDGETS[budget].maxPrepMin)) / 10;
+  return budget === 'high' && prepMin >= ELABORATE_PREP_MIN ? over - W.elaborate : over;
 }
 
 const fiberCache = new Map<string, number>();

@@ -1,7 +1,7 @@
 import { learnedTrainingHour } from './learning';
 import { SLOT_ORDER } from './planner';
 import { activeWorkouts, type PlannedWorkout } from './training';
-import type { AppState, ISODate, MealSlot, PlannedMeal } from './types';
+import type { AppState, ISODate, LogEntry, MealSlot, PlannedMeal } from './types';
 import { weekStart } from './dates';
 
 /**
@@ -50,20 +50,25 @@ export function preWorkoutSlot(state: AppState, date: ISODate): MealSlot | undef
 
 export type TimelineItem =
   | { kind: 'meal'; time: string; meal: PlannedMeal; role?: 'pre' | 'post' }
+  /** A planned meal the user replaced ("Ersetzen" with a product or manual entry) – shown in its place. */
+  | { kind: 'replaced'; time: string; meal: PlannedMeal; entries: LogEntry[] }
   | { kind: 'training'; time: string; session: PlannedWorkout };
 
-/** "Dein Plan" for a day: meals and training in time order. */
+/** "Dein Plan" for a day: meals (or what replaced them) and training in time order. */
 export function dayTimeline(state: AppState, date: ISODate): TimelineItem[] {
   const pre = preWorkoutSlot(state, date);
   const post = postWorkoutSlot(state, date);
-  const items: TimelineItem[] = state.plannedMeals
-    .filter((m) => m.date === date && m.status !== 'skipped')
-    .map((meal) => ({
-      kind: 'meal' as const,
-      time: state.plannerSettings.mealTimes[meal.slot],
-      meal,
-      role: meal.slot === post ? ('post' as const) : meal.slot === pre ? ('pre' as const) : undefined,
-    }));
+  const items: TimelineItem[] = [];
+  for (const meal of state.plannedMeals) {
+    if (meal.date !== date) continue;
+    const time = state.plannerSettings.mealTimes[meal.slot];
+    if (meal.status !== 'skipped') {
+      items.push({ kind: 'meal', time, meal, role: meal.slot === post ? 'post' : meal.slot === pre ? 'pre' : undefined });
+      continue;
+    }
+    const entries = state.logEntries.filter((e) => e.replacedMealId === meal.id);
+    if (entries.length) items.push({ kind: 'replaced', time, meal, entries });
+  }
   const session = sessionOn(state, date);
   if (session) items.push({ kind: 'training', time: trainingTimeFor(state).time, session });
   return items.sort((a, b) => minutesOf(a.time) - minutesOf(b.time));

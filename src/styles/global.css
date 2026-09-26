@@ -13,6 +13,7 @@
   --on-accent: #ffffff;
   --carbs: #c8a24a;
   --fat: #8e9bb3;
+  --water: #3b82c4;
   --danger: #b4412f;
   --danger-soft: #f7e6e2;
   --warning-soft: #fbf1dc;
@@ -46,6 +47,7 @@
     --on-accent: #07140e;
     --carbs: #d6b35e;
     --fat: #9eabc4;
+    --water: #6aa9e0;
     --danger: #ef7b66;
     --danger-soft: #3a1f1a;
     --warning-soft: #3a3120;

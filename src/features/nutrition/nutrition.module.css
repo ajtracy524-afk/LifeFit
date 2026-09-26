@@ -805,62 +805,66 @@
 .water {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .waterHead {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.waterIcon {
-  color: #3b82c4;
-  display: inline-flex;
+  gap: 10px;
 }
 
 .waterValue {
   margin-left: auto;
-  font-size: 15px;
+  font-size: 14px;
+  color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
 
 .waterValue strong {
   font-size: 17px;
+  color: var(--text);
 }
 
-.waterButtons {
+.glasses {
   display: grid;
-  grid-template-columns: auto repeat(4, 1fr);
-  gap: 6px;
+  gap: 2px;
 }
 
-.waterBtn,
-.waterMinus {
-  min-height: 40px;
-  border-radius: 12px;
+.glass {
+  min-width: 0;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+}
+
+.glass:hover {
   background: var(--surface-2);
+}
+
+.glassAdd {
+  flex: none;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
   font-weight: 650;
   font-size: 14px;
-  color: var(--text);
-  padding: 0 8px;
 }
 
-.waterBtn:hover,
-.waterMinus:hover {
+.glassAdd:hover {
   background: var(--accent-soft);
 }
 
-.waterMinus {
+.waterLeft {
+  margin: 0;
+  font-size: 13px;
   color: var(--text-2);
 }
 
-.waterMinus:disabled {
-  opacity: 0.4;
-}
-
 .waterGoalLink {
-  align-self: flex-start;
   font-size: 13px;
   color: var(--accent);
   font-weight: 600;
@@ -874,4 +878,20 @@
 
 .amountField {
   margin-top: 10px;
+}
+
+.budgetLine {
+  display: block;
+  font-size: 13px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.budgetOver {
+  color: var(--danger);
+}
+
+.budgetWeek {
+  text-align: center;
+  margin: -4px 0 4px;
 }

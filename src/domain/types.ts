@@ -176,6 +176,8 @@ export interface PlannedMeal {
   source: 'user' | 'suggest' | 'swap';
   /** Set when the user chose the servings – automatic rebalancing leaves the meal alone. */
   servingsLocked?: boolean;
+  /** The recipe the user replaced with this one ("Pasta → Chicken Bowl") – feeds quick replacement suggestions. */
+  replacedRecipeId?: string;
 }
 
 export interface LogEntry {
@@ -208,6 +210,8 @@ export interface LogEntry {
   brand?: string;
   /** false = eaten, but not taken from the pantry (the estimate stays untouched). */
   fromPantry?: false;
+  /** Eaten instead of this planned meal (which is then skipped) – shown in its place, remembered as a replacement. */
+  replacedMealId?: string;
 }
 
 /**

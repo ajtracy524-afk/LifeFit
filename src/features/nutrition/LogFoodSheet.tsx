@@ -4,8 +4,7 @@ import { getRecipe } from '../../data/recipes';
 import { today } from '../../domain/dates';
 import { explainMeal } from '../../domain/explain';
 import { EMPTY_MANUAL, manualFromProduct, type ManualInput } from '../../domain/foodEntry';
-import { foodAllowed, foodMacros, recipeAllowed, recipeMacros } from '../../domain/nutrition';
-import { recipesForSlot, servingsForSlot } from '../../domain/planner';
+import { foodAllowed, foodMacros, recipeMacros } from '../../domain/nutrition';
 import type { Food, ISODate, MealSlot, PlannedMeal, Product } from '../../domain/types';
 import { dayTargetFor, pantryEstimate, slotSuggestions } from '../../domain/week';
 import { fmt, formatGrams, relativeDay, SLOT_LABEL } from '../../lib/format';
@@ -26,8 +25,6 @@ import styles from './nutrition.module.css';
 export interface LogTarget {
   date: ISODate;
   slot: MealSlot;
-  /** "Anders gegessen": the planned meal that was not eaten (already marked skipped). */
-  replacing?: string;
 }
 
 interface LogFoodSheetProps {
@@ -35,13 +32,13 @@ interface LogFoodSheetProps {
   onClose: () => void;
 }
 
-type Mode = 'suggest' | 'search' | 'recipe' | 'barcode' | 'manual';
+type Mode = 'suggest' | 'search' | 'barcode' | 'manual';
 type Step = { kind: 'food'; food: Food } | { kind: 'product'; product: Product } | { kind: 'manual'; initial: ManualInput } | null;
 
 /**
  * "Lebensmittel hinzufügen" – one sheet for everything eaten:
  *   Vorschlag (planner, one tap) · Suchen (catalog + scanned products) ·
- *   Barcode · Manuell – and after "Anders gegessen" also Gericht.
+ *   Barcode · Manuell. (Replacing a planned meal lives in MealSheet → Ersetzen.)
  * Every path ends in the same log (store/actions), nothing is tracked twice.
  */
 export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
@@ -60,21 +57,12 @@ export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
   if (!target) return <Sheet open={false} onClose={close} title="" children={null} />;
 
   const activeSlot = slot ?? target.slot;
-  const replaced = target.replacing ? state.plannedMeals.find((m) => m.id === target.replacing) : undefined;
-  const replacedTitle = replaced ? getRecipe(replaced.recipeId)?.title : undefined;
-  const modes: { value: Mode; label: string }[] = target.replacing
-    ? [
-        { value: 'search', label: 'Suchen' },
-        { value: 'recipe', label: 'Gericht' },
-        { value: 'barcode', label: 'Barcode' },
-        { value: 'manual', label: 'Manuell' },
-      ]
-    : [
-        { value: 'suggest', label: 'Vorschlag' },
-        { value: 'search', label: 'Suchen' },
-        { value: 'barcode', label: 'Barcode' },
-        { value: 'manual', label: 'Manuell' },
-      ];
+  const modes: { value: Mode; label: string }[] = [
+    { value: 'suggest', label: 'Vorschlag' },
+    { value: 'search', label: 'Suchen' },
+    { value: 'barcode', label: 'Barcode' },
+    { value: 'manual', label: 'Manuell' },
+  ];
   const activeMode = mode ?? modes[0]!.value;
   const subtitle = `${SLOT_LABEL[activeSlot]} · ${relativeDay(target.date)}`;
   const done = (message: string, action: () => boolean | void) => {
@@ -129,14 +117,12 @@ export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
   return (
     <Sheet open onClose={close} title="Lebensmittel hinzufügen" subtitle={relativeDay(target.date)}>
       <div className={styles.logHeader}>
-        {replacedTitle && <p className={styles.hubNote}>Statt „{replacedTitle}“ – was hast du gegessen? LifeFit lernt daraus, ganz vorsichtig.</p>}
         <Segmented label="Mahlzeit" value={activeSlot} onChange={setSlot} options={slots.map((s) => ({ value: s, label: SLOT_LABEL[s].replace('essen', '') }))} />
         <Segmented label="Erfassungsart" value={activeMode} onChange={setMode} options={modes} />
       </div>
 
       {activeMode === 'suggest' && <SuggestPanel date={target.date} slot={activeSlot} onDone={done} />}
       {activeMode === 'search' && <SearchPanel onFood={(food) => setStep({ kind: 'food', food })} onProduct={(product) => setStep({ kind: 'product', product })} onManual={(name) => setStep({ kind: 'manual', initial: { ...EMPTY_MANUAL, name } })} />}
-      {activeMode === 'recipe' && <RecipePanel date={target.date} slot={activeSlot} onDone={done} />}
       {activeMode === 'barcode' && (
         <BarcodeLookup onFound={(product) => setStep({ kind: 'product', product })} onManual={(barcode) => setStep({ kind: 'manual', initial: { ...EMPTY_MANUAL, barcode } })} />
       )}
@@ -314,45 +300,6 @@ function SearchPanel({ onFood, onProduct, onManual }: { onFood: (f: Food) => voi
         </>
       )}
     </>
-  );
-}
-
-/** "Anders gegessen → Gericht": a known recipe, eaten instead. */
-function RecipePanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; onDone: Done }) {
-  const state = useAppState();
-  const target = dayTargetFor(state, date);
-  const slots = state.nutritionProfile?.slots ?? ['breakfast', 'lunch', 'dinner'];
-  const recipes = useMemo(() => {
-    const eatenCount = new Map<string, number>();
-    for (const m of state.plannedMeals) if (m.status === 'eaten') eatenCount.set(m.recipeId, (eatenCount.get(m.recipeId) ?? 0) + 1);
-    return recipesForSlot(slot, state.nutritionProfile)
-      .filter((r) => recipeAllowed(r, state.nutritionProfile))
-      .sort((a, b) => (eatenCount.get(b.id) ?? 0) - (eatenCount.get(a.id) ?? 0));
-  }, [state.plannedMeals, state.nutritionProfile, slot]);
-
-  return (
-    <ul className={styles.optionList}>
-      {recipes.map((r) => {
-        const servings = target ? servingsForSlot(r, slot, target, slots) : 1;
-        const m = recipeMacros(r, servings);
-        return (
-          <li key={r.id} className={styles.suggestion}>
-            <span className={styles.mealEmoji} aria-hidden>
-              {r.emoji}
-            </span>
-            <span className={styles.mealText}>
-              <span className={styles.mealTitle}>{r.title}</span>
-              <span className={styles.mealMeta}>
-                {fmt.servings(servings)} · {fmt.kcal(m.kcal)} · {fmt.g(m.protein)} Protein
-              </span>
-            </span>
-            <Button size="sm" variant="secondary" onClick={() => onDone(`${r.title} erfasst`, () => eatSuggestion(date, slot, r.id, servings))}>
-              Gegessen
-            </Button>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 

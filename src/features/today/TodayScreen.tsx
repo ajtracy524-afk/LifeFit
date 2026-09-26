@@ -16,10 +16,11 @@ import { Screen } from '../../components/Screen';
 import { Button } from '../../components/ui/Button';
 import { Card, LinkCard } from '../../components/ui/Card';
 import { Icon } from '../../components/ui/Icon';
-import { MacroRow, ProgressBar, ProgressRing } from '../../components/ui/Progress';
+import { MacroStrip, ProgressBar, ProgressRing } from '../../components/ui/Progress';
 import { Sheet } from '../../components/ui/Sheet';
 import { LogFoodSheet, type LogTarget } from '../nutrition/LogFoodSheet';
 import { WaterControl } from '../nutrition/WaterControl';
+import { BudgetLine } from '../nutrition/BudgetLine';
 import { MealSheet } from '../nutrition/MealSheet';
 import { WeightSheet } from '../progress/WeightSheet';
 import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
@@ -39,7 +40,6 @@ export function TodayScreen() {
   const [logTarget, setLogTarget] = useState<LogTarget | null>(null);
   const [weightOpen, setWeightOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
-  const [showMacros, setShowMacros] = useState(false);
 
   const target = dayTargetFor(state, t);
   const totals = dayTotals(state.logEntries, t);
@@ -87,9 +87,15 @@ export function TodayScreen() {
       eyebrow={formatDateLong(t)}
       title={`${greeting()}${state.profile?.name ? `, ${state.profile.name}` : ''}`}
       actions={
-        <a href={href('profile')} className={styles.avatar} aria-label="Profil & Einstellungen">
-          {state.profile?.name?.[0]?.toUpperCase() ?? <Icon name="user" size={20} />}
-        </a>
+        <>
+          {/* In the header, not floating: it can never cover content (water, timeline) at any width. */}
+          <button type="button" className={styles.quickAdd} onClick={() => setQuickOpen(true)} aria-label="Schnell erfassen">
+            <Icon name="plus" size={22} strokeWidth={2.2} />
+          </button>
+          <a href={href('profile')} className={styles.avatar} aria-label="Profil & Einstellungen">
+            {state.profile?.name?.[0]?.toUpperCase() ?? <Icon name="user" size={20} />}
+          </a>
+        </>
       }
     >
       {/* Week strip */}
@@ -139,18 +145,12 @@ export function TodayScreen() {
               <p className={styles.targetKcal}>
                 <strong>{fmt.int(totals.kcal)}</strong> / {fmt.kcal(target.kcal)}
               </p>
-              <MacroRow label="Protein" value={totals.protein} target={target.protein} />
-              <button type="button" className={styles.macroToggle} onClick={() => setShowMacros(!showMacros)} aria-expanded={showMacros}>
-                Makros <Icon name={showMacros ? 'chevronDown' : 'chevronRight'} size={14} />
-              </button>
+              <p className={styles.muted}>heute gegessen</p>
             </div>
           </div>
-          {showMacros && (
-            <div className={styles.moreMacros}>
-              <MacroRow label="Kohlenhydrate" value={totals.carbs} target={target.carbs} color="var(--carbs)" />
-              <MacroRow label="Fett" value={totals.fat} target={target.fat} color="var(--fat)" />
-            </div>
-          )}
+          <div className={styles.macroRow}>
+            <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
+          </div>
           <div className={styles.waterRow}>
             <WaterControl date={t} />
           </div>
@@ -191,6 +191,7 @@ export function TodayScreen() {
               <span className={styles.muted}>{neededSoon > 0 ? `${neededSoon} davon für heute oder morgen` : 'Für diese Woche'}</span>
             </>
           )}
+          <BudgetLine week={start} />
         </LinkCard>
       )}
 
@@ -213,10 +214,6 @@ export function TodayScreen() {
           )}
         </Card>
       )}
-
-      <button type="button" className={styles.fab} onClick={() => setQuickOpen(true)} aria-label="Schnell erfassen">
-        <Icon name="plus" size={26} strokeWidth={2.2} />
-      </button>
 
       <Sheet open={quickOpen} onClose={() => setQuickOpen(false)} title="Schnell erfassen">
         <div className={styles.quickGrid}>
@@ -264,7 +261,7 @@ export function TodayScreen() {
         }}
       />
       <WorkoutPlanSheet session={planOpen ? (todaysSession ?? null) : null} week={week} today={t} onClose={() => setPlanOpen(false)} />
-      <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} onLogInstead={(m) => setLogTarget({ date: m.date, slot: m.slot, replacing: m.id })} />
+      <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} />
       <LogFoodSheet target={logTarget} onClose={() => setLogTarget(null)} />
       <WeightSheet open={weightOpen} onClose={() => setWeightOpen(false)} />
     </Screen>

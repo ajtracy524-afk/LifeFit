@@ -84,3 +84,32 @@ export function MacroRow({ label, value, target, unit = 'g', color }: MacroRowPr
     </div>
   );
 }
+
+interface MacroStripProps {
+  protein: number;
+  carbs: number;
+  fat: number;
+  target: { protein: number; carbs: number; fat: number };
+}
+
+/** Protein · Kohlenhydrate · Fett side by side: value / target and a thin bar. No accordion. */
+export function MacroStrip({ protein, carbs, fat, target }: MacroStripProps) {
+  const items = [
+    { label: 'Protein', value: protein, max: target.protein, color: 'var(--accent)' },
+    { label: 'Kohlenhydrate', value: carbs, max: target.carbs, color: 'var(--carbs)' },
+    { label: 'Fett', value: fat, max: target.fat, color: 'var(--fat)' },
+  ];
+  return (
+    <div className={styles.macroStrip} role="group" aria-label="Makros">
+      {items.map((m) => (
+        <div key={m.label} className={styles.macroCol}>
+          <span className={styles.macroColLabel}>{m.label}</span>
+          <span className={styles.macroColValue}>
+            <strong>{Math.round(m.value)}</strong> / {Math.round(m.max)} g
+          </span>
+          <ProgressBar value={m.value} max={m.max} color={m.color} height={5} label={m.label} />
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -3,39 +3,36 @@ import { getFood } from '../../data/foods';
 import { getRecipe } from '../../data/recipes';
 import { today } from '../../domain/dates';
 import { explainMeal } from '../../domain/explain';
-import { swapOptions } from '../../domain/planner';
-import type { PlannedMeal } from '../../domain/types';
 import { fmt, relativeDay, SLOT_LABEL } from '../../lib/format';
-import { navigate } from '../../lib/router';
-import { showToast } from '../../lib/toast';
 import { applyWithUndo, withUndo } from '../../lib/undo';
-import { markEaten, removePlannedMeal, skipMeal, swapMeal, unmarkEaten, updateServings } from '../../store/actions';
+import { markEaten, removePlannedMeal, unmarkEaten, updateServings } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Button } from '../../components/ui/Button';
 import { Chip } from '../../components/ui/Controls';
-import { EmptyState } from '../../components/ui/Feedback';
 import { Sheet } from '../../components/ui/Sheet';
 import { RecipeDetail } from './RecipeDetail';
+import { ReplacePanel } from './ReplacePanel';
 import styles from './nutrition.module.css';
 
 interface MealSheetProps {
   mealId: string | null;
   onClose: () => void;
-  /** Called after "Anders gegessen" so the caller can open food logging. */
-  onLogInstead?: (meal: PlannedMeal) => void;
 }
 
-/** Details of a planned meal: portion size, eaten, swap, remove. */
-export function MealSheet({ mealId, onClose, onLogInstead }: MealSheetProps) {
+/**
+ * Details of a planned meal: eaten, "Ersetzen" (suggestions, barcode,
+ * manual – also what "Anders gegessen" means), portion size, remove.
+ */
+export function MealSheet({ mealId, onClose }: MealSheetProps) {
   const state = useAppState();
   const meal = state.plannedMeals.find((m) => m.id === mealId);
   const [disliking, setDisliking] = useState(false);
-  const [swapping, setSwapping] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const recipe = meal ? getRecipe(meal.recipeId) : undefined;
   const open = !!meal && !!recipe;
 
   const close = () => {
-    setSwapping(false);
+    setReplacing(false);
     setDisliking(false);
     onClose();
   };
@@ -43,49 +40,13 @@ export function MealSheet({ mealId, onClose, onLogInstead }: MealSheetProps) {
   if (!open) return <Sheet open={false} onClose={close} title="" children={null} />;
 
   const eaten = meal.status === 'eaten';
+  const skipped = meal.status === 'skipped';
+  const replacement = skipped ? state.logEntries.filter((e) => e.replacedMealId === meal.id) : [];
 
-  if (swapping) {
-    const options = swapOptions(meal, state.nutritionProfile);
+  if (replacing && !skipped) {
     return (
-      <Sheet open onClose={close} title="Mahlzeit tauschen" subtitle={`Ähnliche Kalorien wie ${recipe.title}`}>
-        {options.length === 0 ? (
-          <EmptyState compact emoji="🔍" title="Keine passende Alternative" text="Für diese Mahlzeit gibt es mit deinen Filtern keine ähnlichen Rezepte." />
-        ) : (
-          <ul className={styles.optionList}>
-            {options.map((o) => (
-              <li key={o.recipe.id}>
-                <button
-                  type="button"
-                  className={styles.optionRow}
-                  onClick={() => {
-                    swapMeal(meal.id, o.recipe.id, o.servings);
-                    showToast(`Getauscht gegen ${o.recipe.title} – Einkaufsliste aktualisiert`, {
-                      action: { label: 'Liste', onClick: () => navigate('shopping') },
-                    });
-                    close();
-                  }}
-                >
-                  <span className={styles.mealEmoji} aria-hidden>
-                    {o.recipe.emoji}
-                  </span>
-                  <span className={styles.mealText}>
-                    <span className={styles.mealTitle}>{o.recipe.title}</span>
-                    <span className={styles.mealMeta}>
-                      {fmt.kcal(o.macros.kcal)} · {o.recipe.prepMin} min
-                    </span>
-                  </span>
-                  <span className={Math.round(o.proteinDelta) >= 0 ? styles.deltaUp : styles.delta}>
-                    {Math.round(o.proteinDelta) > 0 ? '+' : Math.round(o.proteinDelta) < 0 ? '−' : '±'}
-                    {fmt.int(Math.abs(Math.round(o.proteinDelta)))} g P
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <Button variant="ghost" block onClick={() => setSwapping(false)}>
-          Zurück
-        </Button>
+      <Sheet open onClose={close} title={`${recipe.title} ersetzen`} subtitle={`${SLOT_LABEL[meal.slot]} · ${relativeDay(meal.date)}`}>
+        <ReplacePanel meal={meal} onDone={close} onBack={() => setReplacing(false)} />
       </Sheet>
     );
   }
@@ -95,43 +56,45 @@ export function MealSheet({ mealId, onClose, onLogInstead }: MealSheetProps) {
       open
       onClose={close}
       title={recipe.title}
-      subtitle={`${SLOT_LABEL[meal.slot]} · ${relativeDay(meal.date)}`}
+      subtitle={`${SLOT_LABEL[meal.slot]} · ${relativeDay(meal.date)}${eaten ? ' · gegessen' : skipped ? ' · ersetzt' : ''}`}
       footer={
-        <>
-          <Button variant="secondary" icon="swap" onClick={() => setSwapping(true)}>
-            Tauschen
-          </Button>
-          {eaten ? (
-            <Button variant="secondary" block onClick={() => unmarkEaten(meal.id)}>
-              Doch nicht gegessen
+        skipped ? undefined : (
+          <>
+            <Button variant="secondary" icon="swap" onClick={() => setReplacing(true)}>
+              Ersetzen
             </Button>
-          ) : (
-            <Button
-              block
-              icon="check"
-              onClick={() => {
-                withUndo(`${recipe.title} erfasst`, () => markEaten(meal.id));
-                close();
-              }}
-            >
-              Gegessen
-            </Button>
-          )}
-        </>
+            {eaten ? (
+              <Button variant="secondary" block onClick={() => withUndo('Markierung entfernt', () => unmarkEaten(meal.id))}>
+                Doch nicht gegessen
+              </Button>
+            ) : (
+              <Button
+                block
+                icon="check"
+                onClick={() => {
+                  withUndo(`${recipe.title} erfasst`, () => markEaten(meal.id));
+                  close();
+                }}
+              >
+                Gegessen
+              </Button>
+            )}
+          </>
+        )
       }
     >
-      {!eaten && <WhyThisMeal reasons={explainMeal(state, meal, today())} />}
+      {skipped && (
+        <p className={styles.hubNote}>
+          {replacement.length
+            ? `Ersetzt durch ${replacement.map((e) => `${e.name} (${fmt.kcal(e.macros.kcal)})`).join(', ')}.`
+            : 'Anders gegessen – nicht in deiner Tagesbilanz.'}
+        </p>
+      )}
+      {!eaten && !skipped && <WhyThisMeal reasons={explainMeal(state, meal, today())} />}
       <RecipeDetail recipe={recipe} servings={meal.servings} onServingsChange={(v) => updateServings(meal.id, v)} />
       <div className={styles.sheetLinks}>
-        {!eaten && onLogInstead && (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              skipMeal(meal.id);
-              close();
-              onLogInstead(meal);
-            }}
-          >
+        {!eaten && !skipped && (
+          <Button variant="ghost" onClick={() => setReplacing(true)}>
             Anders gegessen
           </Button>
         )}
@@ -145,7 +108,7 @@ export function MealSheet({ mealId, onClose, onLogInstead }: MealSheetProps) {
         >
           Aus Plan entfernen
         </Button>
-        {!eaten && !disliking && (
+        {!eaten && !skipped && !disliking && (
           <Button variant="ghost" onClick={() => setDisliking(true)}>
             Mag ich nicht …
           </Button>

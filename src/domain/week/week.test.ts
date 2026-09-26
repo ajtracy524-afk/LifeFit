@@ -425,10 +425,13 @@ describe('F5 · time budget – cascade', () => {
     expect(r.summary.replaced).toHaveLength(0);
   });
 
-  it('back to "Normal": no meals exchanged, training full again', () => {
+  it('back to "Normal": the quick meals are re-evaluated (exchanged only if clearly better), training full again', () => {
     const low = ok(applyWeekChange(state({ plannedMeals: thuMeals() }), { type: 'setDayContext', date: THU, context: { timeBudget: 'low' } }, NOW)).state;
     const r = ok(applyWeekChange(low, { type: 'setDayContext', date: THU, context: { timeBudget: 'normal' } }, NOW));
-    expect(r.state.plannedMeals.map((m) => m.recipeId)).toEqual(low.plannedMeals.map((m) => m.recipeId));
+    // Same ids, same calories – only what is cooked may change, and only for a clear gain.
+    expect(r.state.plannedMeals.map((m) => m.id)).toEqual(low.plannedMeals.map((m) => m.id));
+    expect(Math.abs(kcal(r.state, THU) - kcal(low, THU)) / kcal(low, THU)).toBeLessThan(0.1);
+    expect(r.summary.details.some((d) => /Gerichte? angepasst|passen bereits|(bleibt|bleiben) geplant/.test(d))).toBe(true);
     expect(r.state.dayContexts).toEqual({});
     expect(r.summary.details.some((d) => d.startsWith('Training: ') && !d.includes('(kurz)'))).toBe(true);
   });

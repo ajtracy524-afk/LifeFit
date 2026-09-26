@@ -54,7 +54,7 @@ export function NextActionCard({ action, onPlanWeek, onStart, onOpenMeal }: Prop
             Gegessen
           </Button>
           <Button variant="secondary" icon="swap" onClick={() => onOpenMeal(action.meal.id)}>
-            Details & Tauschen
+            Details & Ersetzen
           </Button>
         </Shell>
       );

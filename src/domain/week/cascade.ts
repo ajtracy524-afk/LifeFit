@@ -7,11 +7,12 @@ import { logFromMeal, plannedMealMacros, recipeMacros, roundServings, sumMacros 
 import { effectivePrepMin, SLOT_ORDER, slotShare } from '../planner';
 import { DAY_MODE_LABEL, effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
 import { activeWorkouts, estimateMinutes, resolveWorkouts, trainingWeekdays } from '../training';
-import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, Recipe, ShoppingWeekState } from '../types';
+import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, Recipe, ShoppingWeekState, TimeBudget } from '../types';
 import { closeCompletedDays, dayTargetFor } from './dayTargets';
+import { minutesOf } from '../schedule';
 import { recordEvent } from '../learning';
 import { addToPantry, purchaseAmount, setPantryQuantity } from './pantry';
-import { planMeals, weekMeals } from './planning';
+import { mealAlternatives, planMeals, weekMeals } from './planning';
 import { DEFAULT_DAY_CONTEXT, dayContextFor, weekShopping } from './weekPlan';
 
 /**
@@ -66,7 +67,8 @@ export type CascadeResult = { ok: true; state: AppState; summary: ChangeSummary 
 
 type Replacement = { from: string; to: string };
 type Mutation =
-  | { ok: true; title: string; trainingChanged?: boolean; replaced?: Replacement[]; notes?: string[] }
+  /** `replacedInNotes`: the notes already describe the replacements (no generic line). */
+  | { ok: true; title: string; trainingChanged?: boolean; replaced?: Replacement[]; notes?: string[]; replacedInNotes?: boolean }
   | { ok: false; reason: string };
 
 const fail = (reason: string): Mutation => ({ ok: false, reason });
@@ -96,7 +98,7 @@ export function applyWeekChange(state: AppState, change: WeekChange, now: Date =
   const training = diffTraining(state, next, week);
 
   const details: string[] = [...(result.notes ?? [])];
-  if (result.replaced?.length) {
+  if (result.replaced?.length && !result.replacedInNotes) {
     const r = result.replaced;
     details.push(`${r.length} ${r.length === 1 ? 'Mahlzeit' : 'Mahlzeiten'} ersetzt: ${r.map((x) => `${x.from} → ${x.to}`).join(', ')}`);
   }
@@ -160,9 +162,10 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
       storeDayContext(s, change.date, merged);
       // Training follows automatically (resolveWorkouts reads the context); meals are adapted here.
       const notes = applyModeToMeals(s, change.date, before, merged, today);
-      const replaced = effectiveTimeBudget(merged) !== effectiveTimeBudget(before) ? replanForTimeBudget(s, change.date, today) : [];
+      const retimed = effectiveTimeBudget(merged) !== effectiveTimeBudget(before) ? retimeDay(s, change.date, today, nowIso, effectiveTimeBudget(before)) : undefined;
+      if (retimed) notes.push(...retimed.notes);
       const label = merged.mode !== before.mode ? DAY_MODE_LABEL[merged.mode] : TIME_BUDGETS[merged.timeBudget].label;
-      return { ok: true, title: `${weekdayLong(weekdayIndex(change.date))}: ${label}`, replaced, notes };
+      return { ok: true, title: `${weekdayLong(weekdayIndex(change.date))}: ${label}`, replaced: retimed?.replaced ?? [], notes, replacedInNotes: true };
     }
 
     case 'planWeek':
@@ -202,6 +205,7 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
       if (change.learn !== false && meal.recipeId !== recipe.id) {
         const timeBudget = effectiveTimeBudget(dayContextFor(s, meal.date));
         recordEvent(s, { type: 'meal_swapped', fromRecipeId: meal.recipeId, toRecipeId: recipe.id, slot: meal.slot, timeBudget }, nowIso);
+        meal.replacedRecipeId = meal.recipeId;
       }
       meal.recipeId = recipe.id;
       meal.servings = servings;
@@ -378,13 +382,77 @@ function planWeek(s: AppState, change: Extract<WeekChange, { type: 'planWeek' }>
 // ---------- Recalculation ----------
 
 /**
- * F5: meals of `date` that no longer fit the day's time budget are re-planned.
+ * Minimum improvement of the planner's week score for an automatic exchange
+ * after the time budget changed. Below it the meal stays – the plan does not
+ * jump back and forth for marginal differences. (For scale: 10 min beyond the
+ * budget cost 0.4, the "viel Zeit" bonus is 0.05.)
  */
-function replanForTimeBudget(s: AppState, date: ISODate, today: ISODate): Replacement[] {
-  const budget = effectiveTimeBudget(dayContextFor(s, date));
-  const cooked = new Map<string, ISODate[]>();
-  for (const m of weekMeals(s, date)) cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]);
-  return replanMealsOn(s, date, today, `${date}:${budget}`, (recipe) => effectivePrepMin(recipe, date, cooked) > TIME_BUDGETS[budget].maxPrepMin);
+export const RETIME_MIN_GAIN = 0.03;
+
+/**
+ * F5, both directions: after the time budget of a day changed, every planner
+ * meal of that day is re-evaluated with the planner's own score under the new
+ * budget (time, protein, variety, pantry, budget, preferences, training). A
+ * meal is exchanged only if the best alternative is better by at least
+ * RETIME_MIN_GAIN. Never touched: eaten or skipped meals, meals the user
+ * chose or sized, and today's meals whose time has passed. The replacement
+ * keeps the meal's calories and id (servings scaled).
+ */
+/**
+ * All feedback of a time-budget change in one place. Kept meals are explained
+ * as a decision ("no clearly better alternative"), never as something missed.
+ */
+export const RETIME_TEXT = {
+  adapted: (r: Replacement[]) => `${r.length} ${r.length === 1 ? 'Gericht' : 'Gerichte'} angepasst: ${r.map((x) => `${x.from} → ${x.to}`).join(', ')}`,
+  /** Less time, nothing to change: everything already fits. */
+  fits: 'Alle geplanten Gerichte passen bereits zu deiner verfügbaren Zeit.',
+  /** More time, nothing clearly better: the (quick) meals stay – on purpose. */
+  kept: (count: number, quick: boolean) =>
+    `${count === 1 ? `Dein ${quick ? 'schnelles ' : ''}Gericht bleibt` : `Deine ${quick ? 'schnellen ' : ''}Gerichte bleiben`} geplant – aktuell gibt es keine deutlich passendere Alternative.`,
+  own: (count: number) => `${count} selbst gewählte${count === 1 ? 's Gericht blieb' : ' Gerichte blieben'} unverändert`,
+};
+
+const BUDGET_RANK: Record<TimeBudget, number> = { low: 0, normal: 1, high: 2 };
+
+function retimeDay(s: AppState, date: ISODate, today: ISODate, nowIso: string, previous: TimeBudget): { replaced: Replacement[]; notes: string[] } {
+  const now = new Date(nowIso);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const planned = s.plannedMeals
+    .filter((m) => m.date === date && m.status === 'planned')
+    .sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot));
+  const own = planned.filter((m) => m.source !== 'suggest' || m.servingsLocked);
+  const isPast = (m: PlannedMeal) => date === today && minutesOf(s.plannerSettings.mealTimes[m.slot]) <= nowMin;
+  const candidates = planned.filter((m) => !own.includes(m) && !isPast(m));
+
+  const maxPrep = TIME_BUDGETS[effectiveTimeBudget(dayContextFor(s, date))].maxPrepMin;
+  const replaced: Replacement[] = [];
+  for (const meal of candidates) {
+    // Meal-prep leftovers of the previous days count as quick (same rule as the planner).
+    const cooked = new Map<string, ISODate[]>();
+    for (const m of weekMeals(s, date)) if (m.id !== meal.id) cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]);
+    const fits = (r: Recipe) => effectivePrepMin(r, date, cooked) <= maxPrep;
+    const options = mealAlternatives(s, meal, today, { includeCurrent: true, limit: Number.POSITIVE_INFINITY });
+    // The time budget is the reason for this re-evaluation: only meals that fit it are offered (if any exist).
+    const fitting = options.filter((o) => fits(o.recipe));
+    const best = (fitting.length ? fitting : options)[0];
+    if (!best || best.recipe.id === meal.recipeId) continue;
+    const current = options.find((o) => o.recipe.id === meal.recipeId);
+    const currentFits = !!current && fits(current.recipe);
+    // A meal that does not fit the time goes (if something fits); otherwise only a clearly better one replaces it.
+    // A recipe that is no longer allowed (e.g. disliked) has no score – always exchanged.
+    if (current && (currentFits || !fitting.length) && current.score - best.score < RETIME_MIN_GAIN) continue;
+    replaced.push({ from: getRecipe(meal.recipeId)?.title ?? '', to: best.recipe.title });
+    meal.recipeId = best.recipe.id;
+    meal.servings = best.servings;
+  }
+
+  const notes: string[] = [];
+  const moreTime = BUDGET_RANK[effectiveTimeBudget(dayContextFor(s, date))] > BUDGET_RANK[previous];
+  if (replaced.length) notes.push(RETIME_TEXT.adapted(replaced));
+  else if (candidates.length && moreTime) notes.push(RETIME_TEXT.kept(candidates.length, candidates.every((m) => (getRecipe(m.recipeId)?.prepMin ?? 99) <= TIME_BUDGETS.low.maxPrepMin)));
+  else if (candidates.length) notes.push(RETIME_TEXT.fits);
+  if (own.length) notes.push(RETIME_TEXT.own(own.length));
+  return { replaced, notes };
 }
 
 /**

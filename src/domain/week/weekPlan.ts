@@ -5,7 +5,8 @@ import { resolveWorkouts, type PlannedWorkout } from '../training';
 import type { AppState, DayContext, ISODate, Macros, NutritionTarget, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { getFood } from '../../data/foods';
-import { purchaseCost } from '../costs';
+import { ingredientCostRange, purchaseCost, type CostRange } from '../costs';
+import { getRecipe } from '../../data/recipes';
 import { pantryEstimate } from './pantry';
 import { applyRestock, restockRules } from './restock';
 
@@ -109,4 +110,16 @@ export function buildWeekPlan(state: AppState, weekStartDate: ISODate, today: IS
   });
 
   return { weekStart: weekStartDate, days, workouts, shopping: weekShopping(state, weekStartDate, today, estimate), pantry: estimate };
+}
+
+/**
+ * Rough food cost of a week's plan (planned and eaten meals, skipped ones
+ * excluded) – for the compact budget line. Undefined without reliable prices.
+ */
+export function weekFoodCost(state: AppState, week: ISODate): CostRange | undefined {
+  const days = weekDays(week);
+  const items = state.plannedMeals
+    .filter((m) => m.date >= days[0]! && m.date <= days[6]! && m.status !== 'skipped')
+    .flatMap((m) => (getRecipe(m.recipeId)?.ingredients ?? []).map((i) => ({ foodId: i.foodId, grams: i.grams * m.servings })));
+  return ingredientCostRange(items);
 }

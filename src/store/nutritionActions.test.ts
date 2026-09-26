@@ -142,6 +142,52 @@ describe('planned meal → eaten, "Anders gegessen", suggestions', () => {
   });
 });
 
+describe('Ersetzen (replace a planned meal)', () => {
+  it('with a manual entry: meal skipped, ONE entry with replacedMealId, learning is small', async () => {
+    const { store, actions } = await load({ plannedMeals: [meal('l', 'lunch', 'bolognese')] });
+    const { manualEntry, EMPTY_MANUAL } = await import('../domain/foodEntry');
+    const r = manualEntry({ ...EMPTY_MANUAL, name: 'Döner', kcal: '700' });
+    if (!r.ok) throw new Error('invalid');
+    expect(actions.replaceWithEntry('l', r.entry, { id: 'x' })).toBe(true);
+    expect(actions.replaceWithEntry('l', r.entry, { id: 'x' })).toBe(false);
+    const s = store.getState();
+    expect(s.plannedMeals[0]!.status).toBe('skipped');
+    expect(s.logEntries).toHaveLength(1);
+    expect(s.logEntries[0]).toMatchObject({ name: 'Döner', slot: 'lunch', date: today, replacedMealId: 'l' });
+    expect(s.learning.preferences['recipe:bolognese']).toMatchObject({ pos: 0, neg: 1 });
+  });
+
+  it('an already eaten meal: its own entry is removed – the day never counts both', async () => {
+    const { store, actions } = await load({ plannedMeals: [meal('b', 'breakfast', 'skyr-bowl')] });
+    actions.markEaten('b');
+    const { daySummary } = await import('../domain/nutrition');
+    actions.replaceWithProduct('b', PRODUCT, 200, { id: 'p' });
+    const s = store.getState();
+    expect(s.logEntries).toHaveLength(1);
+    expect(s.logEntries[0]).toMatchObject({ method: 'barcode', replacedMealId: 'b' });
+    expect(daySummary(s.logEntries, today).day.macros.kcal).toBe(160);
+    // Eaten, then replaced: the eaten evidence is taken back, the skip counts once.
+    expect(s.learning.preferences['recipe:skyr-bowl']).toMatchObject({ pos: 0, neg: 1 });
+    expect(s.products[PRODUCT.barcode]).toBeDefined();
+  });
+
+  it('with a recipe while eaten: one synced entry with the new dish', async () => {
+    const { store, actions } = await load({ plannedMeals: [meal('l', 'lunch', 'bolognese')] });
+    actions.markEaten('l');
+    actions.replaceWithRecipe('l', 'chicken-rice-bowl', 1, true);
+    const s = store.getState();
+    expect(s.logEntries).toHaveLength(1);
+    expect(s.logEntries[0]).toMatchObject({ plannedMealId: 'l', recipeId: 'chicken-rice-bowl' });
+    expect(s.plannedMeals[0]).toMatchObject({ status: 'eaten', replacedRecipeId: 'bolognese' });
+  });
+
+  it('a skipped meal cannot be replaced twice', async () => {
+    const { actions } = await load({ plannedMeals: [{ ...meal('l', 'lunch', 'bolognese'), status: 'skipped' }] });
+    expect(actions.replaceWithRecipe('l', 'chili', 1, true)).toBe(false);
+    expect(actions.replaceWithProduct('l', PRODUCT, 100)).toBe(false);
+  });
+});
+
 describe('water', () => {
   it('+250 and +500 on one day, goal stored in the profile, all survives a reload', async () => {
     const { store, actions } = await load();

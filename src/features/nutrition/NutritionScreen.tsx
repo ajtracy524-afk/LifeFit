@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { getRecipe } from '../../data/recipes';
 import { addDays, isoWeekNumber, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
 import { daySummary, MICRO_NUTRIENTS, plannedMealMacros, sumMacros, type NutritionSummary } from '../../domain/nutrition';
 import { SLOT_ORDER, slotShare } from '../../domain/planner';
@@ -17,7 +18,7 @@ import { Card, LinkCard } from '../../components/ui/Card';
 import { Segmented } from '../../components/ui/Controls';
 import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
-import { MacroRow } from '../../components/ui/Progress';
+import { MacroStrip } from '../../components/ui/Progress';
 import { LogFoodSheet, type LogTarget } from './LogFoodSheet';
 import { MealRow } from './MealRow';
 import { MealSheet } from './MealSheet';
@@ -26,6 +27,7 @@ import { CoachCard } from '../today/CoachCard';
 import { TimeBudgetControl } from '../today/TimeBudgetControl';
 import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { WaterControl } from './WaterControl';
+import { BudgetLine } from './BudgetLine';
 import styles from './nutrition.module.css';
 
 type View = 'day' | 'week';
@@ -62,7 +64,7 @@ export function NutritionScreen() {
         <WeekView start={weekStart(date)} onOpenMeal={setOpenMeal} onPick={setPicker} />
       )}
 
-      <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} onLogInstead={(m) => setLogTarget({ date: m.date, slot: m.slot, replacing: m.id })} />
+      <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} />
       <RecipePicker target={picker} onClose={() => setPicker(null)} />
       <LogFoodSheet target={logTarget} onClose={() => setLogTarget(null)} />
     </Screen>
@@ -116,9 +118,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
             </span>
           </div>
           <div className={styles.macroStack}>
-            <MacroRow label="Protein" value={totals.protein} target={target.protein} />
-            <MacroRow label="Kohlenhydrate" value={totals.carbs} target={target.carbs} color="var(--carbs)" />
-            <MacroRow label="Fett" value={totals.fat} target={target.fat} color="var(--fat)" />
+            <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
           </div>
           <OptionalNutrients summary={summary.day} />
         </Card>
@@ -170,7 +170,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
               <MealRow key={m.id} meal={m} onOpen={() => onOpenMeal(m.id)} checkable={!isFuture} />
             ))}
             {slotExtras.map((e) => (
-              <LogRow key={e.id} entry={e} />
+              <LogRow key={e.id} entry={e} replaces={e.replacedMealId ? getRecipe(meals.find((m) => m.id === e.replacedMealId)?.recipeId ?? '')?.title : undefined} />
             ))}
             {!isFuture && (
               <button type="button" className={styles.addFood} onClick={() => onLog({ date, slot })}>
@@ -213,7 +213,8 @@ function OptionalNutrients({ summary }: { summary: NutritionSummary }) {
 const SOURCE_LABEL: Partial<Record<LogEntry['method'], string>> = { barcode: 'Barcode', manual: 'Manuell', quick: 'Manuell', food: 'Lebensmittel' };
 const UNIT_LABEL = { g: 'g', ml: 'ml', portion: 'Portion', piece: 'Stück' } as const;
 
-function LogRow({ entry }: { entry: LogEntry }) {
+/** One logged food. `replaces`: the planned dish it was eaten instead of (shown like on Heute). */
+function LogRow({ entry, replaces }: { entry: LogEntry; replaces?: string }) {
   const unknown = new Set(entry.unknown ?? []);
   const amount = entry.amount !== undefined && entry.unit ? `${fmt.dec(entry.amount)} ${UNIT_LABEL[entry.unit]}` : entry.grams ? fmt.g(entry.grams) : undefined;
   return (
@@ -223,6 +224,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
           {entry.method === 'barcode' && <Icon name="barcode" size={12} />}
           {SOURCE_LABEL[entry.method]}
           {entry.brand ? ` · ${entry.brand}` : ''}
+          {replaces ? ` · statt ${replaces}` : ''}
         </span>
         <span className={styles.mealTitle}>{entry.name}</span>
         <span className={styles.mealMeta}>
@@ -287,6 +289,7 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
         </div>
         <IconButton icon="chevronRight" label="Nächste Woche" onClick={() => go(addDays(start, 7))} />
       </div>
+      <BudgetLine week={start} label={start === thisWeek ? 'Diese Woche' : start === addDays(thisWeek, 7) ? 'Nächste Woche' : `KW ${isoWeekNumber(start)}`} className={styles.budgetWeek} />
 
       {!isPastWeek && openSlots === 0 && (
         <Button variant="ghost" size="sm" icon="calendar" className={styles.planWeek} onClick={() => setPlanning(true)}>

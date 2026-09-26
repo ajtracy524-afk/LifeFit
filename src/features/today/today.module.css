@@ -169,25 +169,6 @@
   color: var(--text);
 }
 
-.macroToggle {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--text-2);
-}
-
-.moreMacros {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
 .mealsCard {
   padding-bottom: 6px;
 }
@@ -289,23 +270,18 @@
 }
 
 /* ---------- FAB & quick actions ---------- */
-.fab {
-  position: fixed;
-  right: max(16px, calc(50% - 280px + 16px));
-  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 16px);
-  z-index: 30;
-  width: 56px;
-  height: 56px;
-  border-radius: 18px;
+.quickAdd {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
   background: var(--accent);
   color: var(--on-accent);
   display: grid;
   place-items: center;
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 40%, transparent);
   transition: transform 0.12s ease;
 }
 
-.fab:active {
+.quickAdd:active {
   transform: scale(0.94);
 }
 
@@ -527,4 +503,50 @@
   border-top: 1px solid var(--border);
   margin-top: 14px;
   padding-top: 14px;
+}
+
+/* Eaten vs. coming – still one timeline. */
+.timelineDone .timelineTitle,
+.timelineDone .muted {
+  color: var(--text-2);
+}
+
+.timelineDone .timelineTitle {
+  font-weight: 550;
+}
+
+.timelineDone .time {
+  color: var(--text-3);
+}
+
+.doneMark {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.timelineNext {
+  position: relative;
+}
+
+.timelineNext .timelineLabel {
+  color: var(--accent);
+}
+
+.timelineNext .timelineTitle {
+  font-weight: 700;
+}
+
+.timelineNext .mealIcon {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.macroRow {
+  margin-top: 16px;
 }

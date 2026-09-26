@@ -55,6 +55,13 @@ function button(label: string): HTMLButtonElement {
   return found;
 }
 
+/** Exact button label inside the open sheet (the page may have similar labels). */
+async function clickInDialog(label: string) {
+  const found = [...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === label);
+  if (!found) throw new Error(`Dialog button "${label}" not found`);
+  await act(async () => found.click());
+}
+
 async function click(label: string) {
   await act(async () => button(label).click());
 }
@@ -337,7 +344,7 @@ describe('move / skip a workout (end to end)', () => {
     expect(minutes()).toBeLessThanOrEqual(30);
     expect(minutes()).toBeLessThan(full);
     expect(text()).toMatch(/Montag: Wenig Zeit/);
-    expect(text()).toMatch(/ersetzt/);
+    expect(text()).toMatch(/2 Gerichte angepasst: /);
     expect(text()).toMatch(/Training: .*\(kurz\)/);
 
     await click('Rückgängig');
@@ -719,13 +726,210 @@ describe('food tracking (end to end)', () => {
     expect(store.getState().plannedMeals[0]!.status).toBe('eaten');
   });
 
-  it('Heute: water +500 ml in one tap, −250 corrects, goal from the profile', async () => {
+  it('Heute: water – tap a bottle, see goal · drunk · left, tap the last one to take it back', async () => {
     localStorage.setItem(KEY, JSON.stringify({ ...completeState(), nutritionProfile: { ...completeState().nutritionProfile, waterGoalMl: 2500 } }));
     window.history.replaceState(null, '', '/#/today');
     const store = await startApp();
-    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="500 ml Wasser hinzufügen"]')!.click());
+    const water = () => container.querySelector('[aria-label^="Wasser: 250 ml pro Glas"]')!;
+    // 2.5 L goal → 10 glasses of 250 ml.
+    expect(water().querySelectorAll('button[aria-label^="Wasser auf"]')).toHaveLength(10);
+    expect(text()).toMatch(/Noch 2,5 L/);
+    // Tapping the 2nd glass fills up to it: +500 ml in one tap.
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Wasser auf 0,5 L"]')!.click());
+    expect(store.getState().water['2026-09-21']).toBe(500);
     expect(text()).toMatch(/0,5 L\s*\/ 2,5 L/);
+    expect(text()).toMatch(/Noch 2 L/);
+    // The last full glass takes 250 ml back; "+250" adds one.
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml weniger"]')!.click());
     expect(store.getState().water['2026-09-21']).toBe(250);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
+    expect(store.getState().water['2026-09-21']).toBe(500);
+    // Same control, same data on "Ernährung".
+    await act(async () => window.location.assign('#/nutrition'));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(text()).toMatch(/0,5 L\s*\/ 2,5 L/);
+  });
+
+  it('Heute: water without a goal shows a neutral scale and asks for a goal – nothing invented', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    expect(container.querySelectorAll('button[aria-label^="Wasser auf"]')).toHaveLength(8);
+    expect(text()).toContain('Tagesziel festlegen');
+    expect(text()).not.toMatch(/Noch \d/);
+  });
+});
+
+describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 12, 45)); // Tuesday 12:45 – lunch is due, dinner later
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const TUE = '2026-09-22';
+  const day = () => [
+    { id: 'b', date: TUE, slot: 'breakfast', recipeId: 'overnight-oats', servings: 1, status: 'eaten', source: 'suggest' },
+    { id: 'l', date: TUE, slot: 'lunch', recipeId: 'bolognese', servings: 1, status: 'planned', source: 'suggest' },
+    { id: 'd', date: TUE, slot: 'dinner', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' },
+  ];
+  const withLog = () => {
+    const s = completeState();
+    return { ...s, plannedMeals: day(), logEntries: [{ id: 'e-b', date: TUE, slot: 'breakfast', loggedAt: `${TUE}T07:40:00Z`, name: 'Protein Overnight Oats', plannedMealId: 'b', recipeId: 'overnight-oats', servings: 1, method: 'plan', macros: { kcal: 545, protein: 41, carbs: 70, fat: 10 } }] };
+  };
+  const timelineItem = (title: string) => [...container.querySelectorAll<HTMLButtonElement>('ol button')].find((b) => b.textContent?.includes(title))!;
+  const ringKcal = () => Number(container.querySelector('[role="img"]')!.getAttribute('aria-label')!.match(/^([\d.]+) von/)![1]!.replace('.', ''));
+
+  it('eaten meals step back with a check, the next open meal is highlighted', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withLog()));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    expect(timelineItem('Protein Overnight Oats').dataset.state).toBe('eaten');
+    expect(timelineItem('Protein Overnight Oats').textContent).toMatch(/gegessen/);
+    expect(timelineItem('Vollkorn-Pasta Bolognese').dataset.state).toBe('next');
+    expect(timelineItem('Vollkorn-Pasta Bolognese').textContent).toMatch(/als Nächstes/);
+    expect(timelineItem('Chili con Carne').dataset.state).toBe('planned');
+  });
+
+  it('tap a meal → Ersetzen → Vorschlag → one tap: logged instead, balance updated at once, one entry only', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withLog()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const before = ringKcal();
+    await act(async () => timelineItem('Vollkorn-Pasta Bolognese').click());
+    await clickInDialog('Ersetzen');
+    expect(text()).toContain('Passend zu deinem Plan');
+    // Lunch is due → the suggestion is logged as eaten with one tap.
+    const eat = container.querySelector<HTMLButtonElement>('dialog[open] button[aria-label$=" gegessen"]')!;
+    const chosen = eat.getAttribute('aria-label')!.replace(/ gegessen$/, '');
+    await act(async () => eat.click());
+
+    const s = store.getState();
+    const lunch = s.plannedMeals.find((m) => m.id === 'l')!;
+    expect(lunch.recipeId).not.toBe('bolognese');
+    expect(lunch.status).toBe('eaten');
+    expect(lunch.replacedRecipeId).toBe('bolognese');
+    expect(s.logEntries.filter((e) => e.date === TUE && e.slot === 'lunch')).toHaveLength(1);
+    const { daySummary } = await import('./domain/nutrition');
+    const summary = daySummary(s.logEntries, TUE).day.macros.kcal;
+    expect(ringKcal()).toBe(Math.round(summary));
+    expect(ringKcal()).toBeGreaterThan(before);
+    expect(timelineItem(chosen).dataset.state).toBe('eaten');
+  });
+
+  it('a later meal: the suggestion changes only the plan ("Übernehmen"), nothing is logged', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withLog()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    await act(async () => timelineItem('Chili con Carne').click());
+    await clickInDialog('Ersetzen');
+    await act(async () => container.querySelector<HTMLButtonElement>('dialog[open] button[aria-label$=" übernehmen"]')!.click());
+    const s = store.getState();
+    expect(s.plannedMeals.find((m) => m.id === 'd')).toMatchObject({ status: 'planned', replacedRecipeId: 'chili' });
+    expect(s.logEntries).toHaveLength(1);
+  });
+
+  it('Ersetzen → Manuell: the old meal no longer counts, the entry does – undo restores everything', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withLog()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const before = store.getState();
+    // Replace the already eaten breakfast: its log entry must go, not stay twice.
+    await act(async () => timelineItem('Protein Overnight Oats').click());
+    await clickInDialog('Ersetzen');
+    await click('Manuell');
+    await type('Name', 'Käsebrötchen');
+    await type('Kalorien', '380');
+    await type('Protein', '15');
+    await click('Hinzufügen');
+
+    const s = store.getState();
+    expect(s.plannedMeals.find((m) => m.id === 'b')!.status).toBe('skipped');
+    const breakfast = s.logEntries.filter((e) => e.slot === 'breakfast');
+    expect(breakfast).toHaveLength(1);
+    expect(breakfast[0]).toMatchObject({ name: 'Käsebrötchen', replacedMealId: 'b', macros: { kcal: 380, protein: 15 } });
+    expect(ringKcal()).toBe(380);
+    // Shown in place of the replaced meal.
+    expect(timelineItem('Käsebrötchen').textContent).toMatch(/statt Protein Overnight Oats/);
+
+    await click('Rückgängig');
+    expect(store.getState()).toBe(before);
+  });
+
+  it('remembered replacements come back as quick options', async () => {
+    const s = withLog();
+    s.plannedMeals.push({ id: 'old', date: '2026-09-15', slot: 'lunch', recipeId: 'chicken-rice-bowl', servings: 1, status: 'eaten', source: 'swap', replacedRecipeId: 'bolognese' } as never);
+    localStorage.setItem(KEY, JSON.stringify(s));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    await act(async () => timelineItem('Vollkorn-Pasta Bolognese').click());
+    await clickInDialog('Ersetzen');
+    const dialog = container.querySelector('dialog[open]')!.textContent!;
+    expect(dialog).toMatch(/Zuletzt als Ersatz\s*🍗?\s*Chicken-Reis-Bowl/);
+    expect(dialog).toMatch(/1× als Ersatz/);
+  });
+
+  it('quick add sits in the header (in the layout, not floating over water or timeline) and keeps its sheet', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withLog()));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const quick = container.querySelector<HTMLButtonElement>('header button[aria-label="Schnell erfassen"]');
+    expect(quick).not.toBeNull();
+    // Exactly one quick-add button – no second floating copy anywhere.
+    expect(container.querySelectorAll('button[aria-label="Schnell erfassen"]')).toHaveLength(1);
+    await act(async () => quick!.click());
+    const sheet = container.querySelector('dialog[open]')!.textContent!;
+    expect(sheet).toMatch(/Schnell erfassen[\s\S]*Essen[\s\S]*Gewicht[\s\S]*Training[\s\S]*Einkauf/);
+  });
+
+  it('water beyond the goal: all bottles full, "erreicht" with the extra amount', async () => {
+    const s = withLog();
+    localStorage.setItem(KEY, JSON.stringify({ ...s, nutritionProfile: { ...s.nutritionProfile, waterGoalMl: 1000 }, water: { [TUE]: 1500 } }));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    expect(container.querySelectorAll('button[aria-label^="Wasser auf"], button[aria-label="250 ml weniger"]')).toHaveLength(4);
+    expect(text()).toMatch(/Tagesziel erreicht ✓ · 0,5 L darüber/);
+  });
+
+  it('Ernährung: a replacement shows "statt …" like on Heute, the replaced meal is marked', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withLog()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('main button')].find((b) => b.textContent?.includes('Vollkorn-Pasta Bolognese'))!.click());
+    await clickInDialog('Ersetzen');
+    await click('Manuell');
+    await type('Name', 'Salat vom Buffet');
+    await type('Kalorien', '420');
+    await click('Hinzufügen');
+    expect(store.getState().plannedMeals.find((m) => m.id === 'l')!.status).toBe('skipped');
+    expect(text()).toMatch(/statt Vollkorn-Pasta Bolognese[\s\S]*Salat vom Buffet/);
+    expect(text()).toContain('Anders gegessen');
+    // Balance of the day: breakfast + replacement, nothing counted twice.
+    expect(text()).toMatch(/965\s*\/\s*[\d.]+ kcal/);
+  });
+
+  it('macros are one compact row – no accordion', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withLog()));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const macros = container.querySelector('[role="group"][aria-label="Makros"]')!;
+    expect(macros.textContent).toMatch(/Protein\s*41 \/ \d+ g/);
+    expect(macros.textContent).toMatch(/Kohlenhydrate\s*70 \/ \d+ g/);
+    expect(macros.textContent).toMatch(/Fett\s*10 \/ \d+ g/);
+    expect(container.querySelector('[aria-expanded]')?.textContent ?? '').not.toMatch(/Makros/);
+  });
+
+  it('budget line: an estimated range against the budget, only with reliable prices', async () => {
+    const s = { ...withLog(), plannerSettings: { priority: 'balanced', weeklyBudgetEur: 55, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' } } };
+    localStorage.setItem(KEY, JSON.stringify(s));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    expect(text()).toMatch(/Diese Woche ca\. [\d,]+–[\d,]+ € von 55 €/);
   });
 });
