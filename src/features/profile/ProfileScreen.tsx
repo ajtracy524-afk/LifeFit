@@ -4,17 +4,23 @@ import { today, weekStart } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
 import { currentWeight } from '../../domain/progress';
 import { slotsFor } from '../../domain/planner';
-import type { ActivityLevel, Allergen, DietType, GoalType, Macros } from '../../domain/types';
-import { fmt, weekdayShort } from '../../lib/format';
+import type { ActivityLevel, Allergen, DietType, GoalType, Macros, PlanPriority } from '../../domain/types';
+import { getFood } from '../../data/foods';
+import { learnedInsights } from '../../domain/explain';
+import { trainingTimeFor } from '../../domain/schedule';
+import { fmt, SLOT_LABEL, weekdayShort } from '../../lib/format';
+import { applyWithUndo, withUndo } from '../../lib/undo';
 import { navigate, useRoute } from '../../lib/router';
 import { showToast } from '../../lib/toast';
 import {
   exportData,
   removeFuturePlannedMeals,
+  resetLearning,
   setTargets,
   suggestMealsForWeek,
   updateGoal,
   updateNutritionProfile,
+  updatePlannerSettings,
   updateProfile,
   updateTraining,
 } from '../../store/actions';
@@ -27,7 +33,15 @@ import { Icon, type IconName } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
 import styles from './profile.module.css';
 
-type Panel = 'goal' | 'nutrition' | 'training' | 'body' | 'reset' | null;
+type Panel = 'goal' | 'nutrition' | 'training' | 'body' | 'budget' | 'schedule' | 'reset' | null;
+
+const PRIORITY_LABEL: Record<PlanPriority, string> = { save: 'Sparen', balanced: 'Ausgewogen', protein: 'Protein', health: 'Gesundheit' };
+const PRIORITY_HINT: Record<PlanPriority, string> = {
+  save: 'Günstigere Wochen, Kalorien und Protein bleiben erfüllt.',
+  balanced: 'Ernährung, Kosten und deine Vorlieben gleich gewichtet.',
+  protein: 'Mehr Protein, besonders nach dem Training.',
+  health: 'Mehr Ballaststoffe (Gemüse, Hülsenfrüchte, Vollkorn).',
+};
 
 const GOAL_LABEL: Record<GoalType, string> = { muscle_gain: 'Muskelaufbau', fat_loss: 'Fett verlieren', maintain: 'Fit bleiben' };
 const DIET_LABEL: Record<DietType, string> = { omnivore: 'Alles', vegetarian: 'Vegetarisch', vegan: 'Vegan' };
@@ -48,6 +62,8 @@ export function ProfileScreen() {
   if (!profile || !goal || !nutritionProfile || !training) return null;
   const target = [...state.targets].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
   const program = getProgram(training.programId);
+  const insights = learnedInsights(state);
+  const disliked = (nutritionProfile.dislikedFoods ?? []).map((id) => getFood(id)).filter((f): f is NonNullable<typeof f> => !!f);
 
   const download = () => {
     try {
@@ -86,7 +102,51 @@ export function ProfileScreen() {
           />
           <Row icon="dumbbell" label="Training" value={`${program?.name ?? '–'} · ${training.weekdays.map(weekdayShort).join(', ')}`} onClick={() => setPanel('training')} />
           <Row icon="user" label="Körperdaten" value={`${profile.age} Jahre · ${profile.heightCm} cm`} onClick={() => setPanel('body')} />
+          <Row
+            icon="cart"
+            label="Budget & Schwerpunkt"
+            value={`${PRIORITY_LABEL[state.plannerSettings.priority]}${state.plannerSettings.weeklyBudgetEur ? ` · ${state.plannerSettings.weeklyBudgetEur} € pro Woche` : ' · kein Budget'}`}
+            onClick={() => setPanel('budget')}
+          />
+          <Row
+            icon="clock"
+            label="Tagesablauf"
+            value={`Frühstück ${state.plannerSettings.mealTimes.breakfast} · Training ${trainingTimeFor(state).time}`}
+            onClick={() => setPanel('schedule')}
+          />
         </Card>
+      </Section>
+
+      <Section title="Was LifeFit gelernt hat">
+        <Card>
+          {insights.length > 0 ? (
+            <ul className={styles.insights}>
+              {insights.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.muted}>Noch nichts. LifeFit lernt aus dem, was du isst, tauschst, überspringst und trainierst – langsam und nur aus echtem Verhalten.</p>
+          )}
+          {disliked.length > 0 && (
+            <div className={styles.dislikes}>
+              <p className={styles.muted}>Wird nie eingeplant (von dir festgelegt):</p>
+              <div className={styles.chips}>
+                {disliked.map((f) => (
+                  <Chip key={f.id} selected onClick={() => applyWithUndo({ type: 'setDislike', foodId: f.id, disliked: false })}>
+                    {f.name}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+          )}
+          {Object.keys(state.learning.preferences).length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => withUndo('Gelerntes zurückgesetzt', resetLearning)}>
+              Gelerntes zurücksetzen
+            </Button>
+          )}
+        </Card>
+        <p className={styles.note}>Alles Gelernte bleibt auf diesem Gerät. Keine KI, keine Übertragung – nur gezähltes Verhalten.</p>
       </Section>
 
       <Section title="Daten & Datenschutz">
@@ -103,8 +163,80 @@ export function ProfileScreen() {
       <NutritionSheet open={panel === 'nutrition'} onClose={close} />
       <TrainingSheet open={panel === 'training'} onClose={close} />
       <BodySheet open={panel === 'body'} onClose={close} />
+      <BudgetSheet open={panel === 'budget'} onClose={close} />
+      <ScheduleSheet open={panel === 'schedule'} onClose={close} />
       <ResetSheet open={panel === 'reset'} onClose={close} />
     </Screen>
+  );
+}
+
+function BudgetSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const state = useAppState();
+  const [budget, setBudget] = useState(state.plannerSettings.weeklyBudgetEur ? String(state.plannerSettings.weeklyBudgetEur) : '');
+  const [priority, setPriority] = useState<PlanPriority>(state.plannerSettings.priority);
+  const value = parseNumber(budget);
+  const valid = budget.trim() === '' || (Number.isFinite(value) && value >= 10 && value <= 1000);
+  const save = () => {
+    updatePlannerSettings({ priority, weeklyBudgetEur: budget.trim() === '' ? undefined : Math.round(value) });
+    showToast('Gespeichert – gilt für die nächste Planung');
+    onClose();
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="Budget & Schwerpunkt" subtitle="Kosten sind Schätzungen, keine Supermarktpreise.">
+      <SheetForm>
+        <Field
+          label="Wochenbudget für Lebensmittel"
+          inputMode="numeric"
+          suffix="€"
+          placeholder="kein Budget"
+          value={budget}
+          error={valid ? undefined : 'Bitte einen Betrag zwischen 10 und 1000 € angeben.'}
+          onChange={(e) => setBudget(e.target.value)}
+        />
+        <Segmented<PlanPriority>
+          label="Schwerpunkt"
+          value={priority}
+          onChange={setPriority}
+          options={(['save', 'balanced', 'protein', 'health'] as PlanPriority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p] }))}
+        />
+        <p className={styles.muted}>{PRIORITY_HINT[priority]}</p>
+        <Button block disabled={!valid} onClick={save}>
+          Speichern
+        </Button>
+      </SheetForm>
+    </Sheet>
+  );
+}
+
+function ScheduleSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const state = useAppState();
+  const slots = state.nutritionProfile?.slots ?? [];
+  const [times, setTimes] = useState(state.plannerSettings.mealTimes);
+  const training = trainingTimeFor(state);
+  const [trainingTime, setTrainingTime] = useState(state.plannerSettings.trainingTime ?? '');
+  const save = () => {
+    updatePlannerSettings({ mealTimes: times, trainingTime: trainingTime || undefined });
+    showToast('Tagesablauf gespeichert');
+    onClose();
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="Tagesablauf" subtitle="Für „Dein Plan“ und die Mahlzeit nach dem Training.">
+      <SheetForm>
+        {slots.map((slot) => (
+          <Field key={slot} label={SLOT_LABEL[slot]} type="time" value={times[slot]} onChange={(e) => setTimes({ ...times, [slot]: e.target.value || times[slot] })} />
+        ))}
+        <Field
+          label="Training"
+          type="time"
+          value={trainingTime}
+          hint={training.source === 'learned' && !trainingTime ? `Gelernt: meist ${training.time}` : training.source === 'default' && !trainingTime ? `Ohne Angabe: ${training.time}` : undefined}
+          onChange={(e) => setTrainingTime(e.target.value)}
+        />
+        <Button block onClick={save}>
+          Speichern
+        </Button>
+      </SheetForm>
+    </Sheet>
   );
 }
 

@@ -4,7 +4,9 @@ import { isoWeekNumber, today as todayISO, weekDays, weekdayIndex } from '../../
 import { DAY_MODE_LABEL, DAY_MODE_ORDER, TIME_BUDGET_ORDER, TIME_BUDGETS } from '../../domain/timeBudget';
 import { estimateMinutes, trainingWeekdays } from '../../domain/training';
 import type { DayContext, DayMode, ISODate, TimeBudget } from '../../domain/types';
-import { applyWeekChange, buildWeekPlan, dayContextFor, type WeekChange } from '../../domain/week';
+import { applyWeekChange, buildWeekPlan, dayContextFor, shoppingCost, type WeekChange } from '../../domain/week';
+import { formatEur } from '../../domain/explain';
+import { learnedTrainingDays } from '../../domain/learning';
 import { weekdayShort } from '../../lib/format';
 import { applyWithUndo } from '../../lib/undo';
 import { useAppState } from '../../store/store';
@@ -55,7 +57,7 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
     const result = applyWeekChange(state, { type: 'planWeek', week, trainingDays, days }, new Date());
     if (!result.ok) return { error: result.reason } as const;
     const plan = buildWeekPlan(result.state, week, t);
-    return { plan, toBuy: plan.shopping.filter((i) => i.state === 'open').length } as const;
+    return { plan, toBuy: plan.shopping.filter((i) => i.state === 'open').length, costEur: shoppingCost(plan.shopping).totalEur } as const;
   }, [step, state, week, trainingDays, days, t]);
 
   const create = () => {
@@ -63,6 +65,9 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
   };
 
   const program = state.training ? getProgram(state.training.programId) : undefined;
+  // Personalization: suggest the days the user actually trains on (only with enough evidence).
+  const learnedDays = learnedTrainingDays(state.learning.preferences).filter((d) => dates[d]! >= t);
+  const budget = state.plannerSettings.weeklyBudgetEur;
   const isCurrentWeek = dates[0]! < t;
 
   return (
@@ -79,6 +84,11 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
         <section className={styles.section}>
           <h3 className={styles.question}>An welchen Tagen kannst du trainieren?</h3>
           <WeekdayPicker value={trainingDays} onChange={setTrainingDays} />
+          {learnedDays.length > 0 && learnedDays.join() !== [...trainingDays].sort().join() && (
+            <button type="button" className={styles.suggest} onClick={() => setTrainingDays(learnedDays)}>
+              Meistens trainierst du {learnedDays.map((d) => weekdayShort(d)).join(', ')} – übernehmen
+            </button>
+          )}
           <p className={styles.muted}>
             {program ? `${program.name} · ` : ''}
             {trainingDays.length} {trainingDays.length === 1 ? 'Tag' : 'Tage'}
@@ -159,7 +169,10 @@ function CheckIn({ week, onDone }: { week: ISODate; onDone: (week: ISODate) => v
                   })}
               </ul>
               <h3 className={styles.previewTitle}>Einkauf</h3>
-              <p className={styles.muted}>{preview.toBuy === 0 ? 'Alles ist schon da.' : `${preview.toBuy} Artikel – Vorrat ist schon abgezogen.`}</p>
+              <p className={styles.muted}>
+                {preview.toBuy === 0 ? 'Alles ist schon da.' : `${preview.toBuy} Artikel – Vorrat ist schon abgezogen.`}
+                {preview.costEur > 0 ? ` ${formatEur(preview.costEur)} geschätzt${budget !== undefined ? ` (Budget ${budget} €)` : ''}.` : ''}
+              </p>
             </>
           )}
         </section>

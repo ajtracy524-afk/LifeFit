@@ -1,7 +1,6 @@
 import { getFood } from '../data/foods';
 import { RECIPES, getRecipe } from '../data/recipes';
 import { newId } from '../lib/id';
-import { daysBetween } from './dates';
 import { LEFTOVER_DAYS, LEFTOVER_PREP_MIN, MEAL_PREP_TAG, TIME_BUDGETS } from './timeBudget';
 import { recipeAllowed, recipeMacros, roundServings, plannedMealMacros, sumMacros } from './nutrition';
 import { purchaseCost } from './costs';
@@ -202,13 +201,30 @@ function markCooked(cooked: Cooked, recipeId: string, date: ISODate) {
  */
 export function effectivePrepMin(recipe: Recipe, date: ISODate, cooked: Cooked): number {
   if (recipe.tags.includes(MEAL_PREP_TAG)) {
+    const today = dayNumber(date);
     const leftover = (cooked.get(recipe.id) ?? []).some((d) => {
-      const age = daysBetween(d, date);
+      const age = today - dayNumber(d);
       return age >= 1 && age <= LEFTOVER_DAYS;
     });
     if (leftover) return Math.min(recipe.prepMin, LEFTOVER_PREP_MIN);
   }
   return recipe.prepMin;
+}
+
+/**
+ * Day number of an ISO date, cached: the week score runs hundreds of times per
+ * plan and only ever sees a handful of dates – creating Date objects for each
+ * comparison was the planner's biggest cost.
+ */
+const dayNumbers = new Map<ISODate, number>();
+function dayNumber(iso: ISODate): number {
+  let n = dayNumbers.get(iso);
+  if (n === undefined) {
+    const [y, m, d] = iso.split('-').map(Number);
+    n = Math.round(Date.UTC(y!, m! - 1, d!) / 86_400_000);
+    dayNumbers.set(iso, n);
+  }
+  return n;
 }
 
 /** Cost of preparation beyond the day's budget (0 if it fits). */

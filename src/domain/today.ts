@@ -3,6 +3,7 @@ import { SLOT_ORDER } from './planner';
 import { activeWorkouts, type PlannedWorkout } from './training';
 import type { AppState, ISODate, MealSlot, PlannedMeal } from './types';
 import { weekShopping } from './week';
+import { minutesOf } from './schedule';
 
 /**
  * F-"Heute": exactly ONE next action for the day – derived from the plan, never
@@ -18,8 +19,12 @@ export type NextAction =
   | { kind: 'shopping'; count: number }
   | { kind: 'done' };
 
-/** A meal counts as due from this hour on. */
-export const SLOT_DUE_HOUR: Record<MealSlot, number> = { breakfast: 6, snack: 10, lunch: 11, dinner: 17 };
+/** A meal counts as due 30 min before its planned time (see plannerSettings.mealTimes). */
+export const DUE_BEFORE_MIN = 30;
+
+function isDue(state: AppState, slot: MealSlot, hour: number): boolean {
+  return hour * 60 >= minutesOf(state.plannerSettings.mealTimes[slot]) - DUE_BEFORE_MIN;
+}
 
 export function nextAction(state: AppState, date: ISODate, hour: number): NextAction {
   const running = state.workouts.find((w) => w.status === 'in_progress');
@@ -33,7 +38,7 @@ export function nextAction(state: AppState, date: ISODate, hour: number): NextAc
   const openToday = state.plannedMeals
     .filter((m) => m.date === date && m.status === 'planned')
     .sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot));
-  const due = openToday.find((m) => hour >= SLOT_DUE_HOUR[m.slot]);
+  const due = openToday.find((m) => isDue(state, m.slot, hour));
   if (due) return { kind: 'log_meal', meal: due, due: true };
 
   const session = activeWorkouts(state.training, state.workoutOverrides, state.workouts, ws, state.dayContexts).find(

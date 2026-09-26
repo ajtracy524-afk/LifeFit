@@ -3,29 +3,28 @@ import { addDays, daysBetween, today, weekDays, weekStart, weekdayIndex } from '
 import { dayTotals } from '../../domain/nutrition';
 import { SLOT_ORDER } from '../../domain/planner';
 import { goalProgress, latestWeight } from '../../domain/progress';
-import { isCompletedOn, nextScheduled, resolveWorkouts } from '../../domain/training';
+import { isCompletedOn, resolveWorkouts } from '../../domain/training';
 import { nextAction } from '../../domain/today';
 import { dayTargetFor, weekShopping } from '../../domain/week';
 import type { MealSlot, WorkoutTemplate } from '../../domain/types';
-import { fmt, formatDateLong, greeting, relativeDay, weekdayShort } from '../../lib/format';
+import { fmt, formatDateLong, greeting, weekdayShort } from '../../lib/format';
 import { href, navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
 import { startWorkoutFrom } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen } from '../../components/Screen';
 import { Button } from '../../components/ui/Button';
-import { Card, CardHeader, LinkCard } from '../../components/ui/Card';
+import { Card, LinkCard } from '../../components/ui/Card';
 import { Icon } from '../../components/ui/Icon';
 import { MacroRow, ProgressBar, ProgressRing } from '../../components/ui/Progress';
 import { Sheet } from '../../components/ui/Sheet';
 import { LogFoodSheet, type LogTarget } from '../nutrition/LogFoodSheet';
-import { MealRow } from '../nutrition/MealRow';
 import { MealSheet } from '../nutrition/MealSheet';
 import { WeightSheet } from '../progress/WeightSheet';
-import { estimateMinutes } from '../training/trainingUtils';
 import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
 import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { CoachCard } from './CoachCard';
+import { DayPlanCard } from './DayPlanCard';
 import { NextActionCard } from './NextActionCard';
 import { TimeBudgetControl } from './TimeBudgetControl';
 import styles from './today.module.css';
@@ -44,9 +43,6 @@ export function TodayScreen() {
   const target = dayTargetFor(state, t);
   const totals = dayTotals(state.logEntries, t);
   const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
-  const meals = state.plannedMeals.filter((m) => m.date === t).sort((a, b) => SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot));
-  const nextMeal = meals.find((m) => m.status === 'planned');
-  const extrasKcal = state.logEntries.filter((e) => e.date === t && !e.plannedMealId).reduce((s, e) => s + e.macros.kcal, 0);
   const weekHasMeals = state.plannedMeals.some((m) => m.date >= t && m.date <= addDays(start, 6));
 
   const week = useMemo(() => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, state.dayContexts, start]);
@@ -54,9 +50,7 @@ export function TodayScreen() {
   const [planOpen, setPlanOpen] = useState(false);
   const [planningWeek, setPlanningWeek] = useState<string | null>(null);
   const todaysSession = schedule.find((s) => s.date === t);
-  const doneToday = isCompletedOn(state.workouts, t);
   const running = state.workouts.find((w) => w.status === 'in_progress');
-  const upcoming = nextScheduled(state.training, state.workouts, addDays(t, 1), start, state.workoutOverrides, state.dayContexts);
 
   const shopping = useMemo(() => weekShopping(state, start, t), [state, start, t]);
   const shopState = state.shopping[start];
@@ -168,87 +162,18 @@ export function TodayScreen() {
       {/* Only safety notices belong on "Heute" – training hints live in Training, plan suggestions in Ernährung. */}
       <CoachCard domains={['safety']} />
 
-      {/* Meals */}
+      {/* The day as a timeline – meals and training in time order */}
       {weekHasMeals && (
-        <Card padded={false} className={styles.mealsCard}>
-          <div className={styles.cardPad}>
-            <CardHeader title="Mahlzeiten" meta={meals.length ? `${meals.filter((m) => m.status === 'eaten').length} / ${meals.length}` : undefined} />
-          </div>
-          {meals.length === 0 ? (
-            <p className={styles.emptyLine}>Heute ist nichts geplant.</p>
-          ) : (
-            meals.map((m) => (
-              <div key={m.id}>
-                <MealRow meal={m} label={slotLabel(m.slot)} highlight={m.id === nextMeal?.id} onOpen={() => setOpenMeal(m.id)} />
-              </div>
-            ))
-          )}
-          <div className={styles.mealsFooter}>
-            {extrasKcal > 0 && <span className={styles.muted}>+ {fmt.kcal(extrasKcal)} zusätzlich erfasst</span>}
-            <Button variant="ghost" size="sm" icon="plus" onClick={() => setLogTarget({ date: t, slot: logSlot() })}>
-              Essen erfassen
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {/* Training */}
-      {state.training && (
-        <Card>
-          {doneToday ? (
-            <div className={styles.trainingRow}>
-              <span className={styles.doneBadge}>
-                <Icon name="check" size={18} strokeWidth={2.6} />
-              </span>
-              <div className={styles.flex}>
-                <strong>{doneToday.name} erledigt</strong>
-                <p className={styles.muted}>
-                  {fmt.int(doneToday.volumeKg ?? 0)} kg Volumen
-                  {doneToday.records?.length ? ` · ${doneToday.records.length} ${doneToday.records.length === 1 ? 'neuer Rekord' : 'neue Rekorde'} 🏆` : ''}
-                </p>
-              </div>
-              <a href={href('workout', { id: doneToday.id })} className={styles.link}>
-                Details
-              </a>
-            </div>
-          ) : todaysSession ? (
-            <>
-              <p className={styles.eyebrow}>Heutiges Training</p>
-              <div className={styles.trainingRow}>
-                <div className={styles.flex}>
-                  <strong className={styles.trainingTitle}>{todaysSession.template.name}</strong>
-                  <p className={styles.muted}>
-                    {todaysSession.template.exercises.length} Übungen · ~{estimateMinutes(todaysSession.template)} min
-                  </p>
-                </div>
-                {/* The start button lives in the next-action card when training is next. */}
-                {!running && action.kind !== 'start_training' && (
-                  <Button variant="secondary" icon="play" onClick={() => begin(todaysSession.template)}>
-                    Starten
-                  </Button>
-                )}
-              </div>
-              {!running && (
-                <button type="button" className={styles.planLink} onClick={() => setPlanOpen(true)}>
-                  Heute nicht? Verschieben oder ausfallen lassen
-                </button>
-              )}
-            </>
-          ) : (
-            <div className={styles.trainingRow}>
-              <span className={styles.restBadge}>🌿</span>
-              <div className={styles.flex}>
-                <strong>Ruhetag</strong>
-                <p className={styles.muted}>
-                  {upcoming ? `Als Nächstes: ${upcoming.template.name}, ${relativeDay(upcoming.date)}` : 'Muskeln wachsen in der Pause.'}
-                </p>
-              </div>
-              <a href={href('training')} className={styles.link}>
-                Plan
-              </a>
-            </div>
-          )}
-        </Card>
+        <DayPlanCard
+          date={t}
+          weekStartDate={start}
+          startInNextAction={action.kind === 'start_training'}
+          running={!!running}
+          onOpenMeal={setOpenMeal}
+          onStart={begin}
+          onMoveTraining={() => setPlanOpen(true)}
+          onLogFood={() => setLogTarget({ date: t, slot: logSlot() })}
+        />
       )}
 
       {/* Shopping */}
@@ -340,10 +265,6 @@ export function TodayScreen() {
       <WeightSheet open={weightOpen} onClose={() => setWeightOpen(false)} />
     </Screen>
   );
-}
-
-function slotLabel(slot: MealSlot): string {
-  return { breakfast: 'Frühstück', snack: 'Snack', lunch: 'Mittag', dinner: 'Abend' }[slot];
 }
 
 function QuickAction({ icon, label, onClick }: { icon: 'food' | 'scale' | 'dumbbell' | 'cart'; label: string; onClick: () => void }) {

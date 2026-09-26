@@ -521,3 +521,39 @@
 .planWeek {
   align-self: flex-end;
 }
+
+/* ---------- Why this meal / dislike ---------- */
+.why {
+  margin-bottom: 12px;
+}
+
+.whyToggle {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-weight: 650;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.whyList {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.dislike {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.dislikeChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

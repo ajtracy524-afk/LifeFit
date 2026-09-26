@@ -77,6 +77,8 @@ export interface ShoppingListItem extends ShoppingItem {
   restockMinG?: number;
   /** F8: part of `remainingG` that only refills the stock (not needed by the plan). */
   restockG?: number;
+  /** Estimated price of what is still to buy (whole packages); undefined = no price known. */
+  estCostEur?: number;
 }
 
 /**

@@ -130,3 +130,21 @@
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
+
+/* ---------- Was LifeFit gelernt hat ---------- */
+.insights {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.dislikes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 6px;
+}

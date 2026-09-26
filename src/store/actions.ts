@@ -374,6 +374,21 @@ export function removeFuturePlannedMeals(from: ISODate = today()): void {
   });
 }
 
+// ---------- Planner settings & personalization ----------
+
+export function updatePlannerSettings(patch: Partial<AppState['plannerSettings']>): void {
+  update((s) => {
+    s.plannerSettings = { ...s.plannerSettings, ...patch };
+  });
+}
+
+/** Forget everything learned (the user decides – transparency means control). */
+export function resetLearning(): void {
+  update((s) => {
+    s.learning = { preferences: {} };
+  });
+}
+
 // ---------- Day close ----------
 
 /**

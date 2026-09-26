@@ -4,6 +4,8 @@ import { applyStock, buildShoppingList, shoppingRange, type ShoppingListItem } f
 import { resolveWorkouts, type PlannedWorkout } from '../training';
 import type { AppState, DayContext, ISODate, Macros, NutritionTarget, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
+import { getFood } from '../../data/foods';
+import { purchaseCost } from '../costs';
 import { pantryEstimate } from './pantry';
 import { applyRestock, restockRules } from './restock';
 
@@ -64,7 +66,19 @@ export function weekShopping(state: AppState, week: ISODate, today: ISODate, est
   const purchased = state.shopping[week]?.purchased ?? {};
   const items = applyStock(buildShoppingList(state.plannedMeals, from, to), available, purchased);
   // F8: basics are topped up to their minimum stock – on the same list, one position per food.
-  return applyRestock(items, restockRules(state, week, today), available, purchased);
+  return applyRestock(items, restockRules(state, week, today), available, purchased).map((item) => {
+    const food = getFood(item.foodId);
+    return item.state === 'open' && food ? { ...item, estCostEur: purchaseCost(food, item.remainingG) } : item;
+  });
+}
+
+/** Estimated cost of what is still open on a week's list (plus how many items have no price). */
+export function shoppingCost(items: ShoppingListItem[]): { totalEur: number; unpriced: number } {
+  const open = items.filter((i) => i.state === 'open');
+  return {
+    totalEur: open.reduce((sum, i) => sum + (i.estCostEur ?? 0), 0),
+    unpriced: open.filter((i) => i.estCostEur === undefined).length,
+  };
 }
 
 /** Open generated + open manual items – the number on the Einkauf tab. */

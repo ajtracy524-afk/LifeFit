@@ -195,6 +195,10 @@ describe('F5 · time budget in the planner', () => {
     expect(effectivePrepMin(chili, dates[1]!, cooked)).toBe(5); // cooked yesterday
     expect(effectivePrepMin(chili, dates[4]!, cooked)).toBe(chili.prepMin); // too old
     expect(effectivePrepMin(getRecipe('oven-salmon')!, dates[1]!, new Map([['oven-salmon', [dates[0]!]]]))).toBe(35); // no meal-prep dish
+    // Day arithmetic across month and year ends (cached day numbers, no Date per call).
+    expect(effectivePrepMin(chili, '2026-10-01', new Map([['chili', ['2026-09-30']]]))).toBe(5);
+    expect(effectivePrepMin(chili, '2027-01-01', new Map([['chili', ['2026-12-31']]]))).toBe(5);
+    expect(effectivePrepMin(chili, '2026-09-30', new Map([['chili', ['2026-09-30']]]))).toBe(chili.prepMin); // same day: not a leftover
   });
 
   it('keeps calories and protein on low days', () => {

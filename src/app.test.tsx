@@ -304,7 +304,8 @@ describe('move / skip a workout (end to end)', () => {
     localStorage.setItem(KEY, JSON.stringify(withMeals()));
     window.history.replaceState(null, '', '/#/today');
     const store = await startApp();
-    expect(text()).toContain('Heutiges Training');
+    // Monday's session is part of "Dein Plan".
+    expect(text()).toMatch(/Dein Plan[\s\S]*Ganzkörper/);
 
     await click('Heute nicht?');
     await click('Di 22.');
@@ -498,6 +499,52 @@ describe('Heute is focused (next action)', () => {
     expect(store.getState().plannedMeals.find((m) => m.id === 'm0')!.status).toBe('eaten');
     // Monday is a training day → training is next.
     expect(card()).toMatch(/Training starten/);
+  });
+});
+
+describe('personal plan on Heute', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 8, 0)); // Monday 08:00, training day
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const day = () =>
+    ['breakfast', 'lunch', 'dinner'].map((slot, i) => ({
+      id: `m${i}`, date: '2026-09-21', slot, recipeId: ['overnight-oats', 'chicken-wraps', 'chicken-rice-bowl'][i], servings: 1, status: 'planned', source: 'suggest',
+    }));
+
+  it('"Dein Plan" shows the day in time order with training and explains itself', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: day() }));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const plan = text().slice(text().indexOf('Dein Plan'));
+    expect(plan).toMatch(/07:30[\s\S]*12:30[\s\S]*18:00[\s\S]*Ganzkörper[\s\S]*19:00[\s\S]*nach dem Training/);
+    await click('Warum dieser Plan?');
+    expect(text()).toMatch(/Training um 18:00/);
+  });
+
+  it('"Mag ich nicht …" never plans the food again and replaces the meal (undo-able)', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: day() }));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.includes('Chicken Wraps') || b.textContent?.includes('Hähnchen-Wraps'))!.click());
+    expect(container.querySelector('dialog[open]')?.textContent).toMatch(/Warum dieses Gericht\?/);
+    const before = store.getState();
+    await click('Mag ich nicht');
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent === 'Hähnchenbrust')!.click());
+    const after = store.getState();
+    expect(after.nutritionProfile!.dislikedFoods).toEqual(['chicken']);
+    expect(after.plannedMeals.some((m) => m.recipeId === 'chicken-wraps' || m.recipeId === 'chicken-rice-bowl')).toBe(false);
+    expect(text()).toMatch(/Hähnchenbrust wird nicht mehr eingeplant/);
+    await click('Rückgängig');
+    expect(store.getState()).toBe(before);
   });
 });
 
