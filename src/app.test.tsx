@@ -997,6 +997,36 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     expect(text()).toMatch(/Diese Woche ca\. [\d.]+–[\d.]+ CHF von 55 CHF/);
     expect(text()).not.toMatch(/€/);
   });
+
+  it('next-action card: a meal long past its time is "Noch offen", not "Jetzt"', async () => {
+    vi.setSystemTime(new Date(2026, 8, 22, 18, 0)); // 18:00 – breakfast (07:30) never logged
+    const s = withLog();
+    s.plannedMeals = s.plannedMeals.map((m) => (m.id === 'b' ? { ...m, status: 'planned' } : m));
+    s.logEntries = [];
+    localStorage.setItem(KEY, JSON.stringify(s));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const card = container.querySelector('[aria-label="Nächste Aktion"]')!.textContent!;
+    expect(card).toMatch(/Noch offen · 07:30/);
+    expect(card).toMatch(/Frühstück: Protein Overnight Oats/);
+    expect(card).not.toMatch(/Jetzt/);
+  });
+
+  it('Heute budget: eaten so far and what is left – and being over budget is said in words', async () => {
+    const settings = (budget: number) => ({ priority: 'balanced', weeklyBudgetChf: budget, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' } });
+    localStorage.setItem(KEY, JSON.stringify({ ...withLog(), plannerSettings: settings(55) }));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    // Breakfast (overnight oats) is eaten → a "bisher" value; the rest of the budget is free.
+    expect(text()).toMatch(/bisher gegessen ca\. [\d.]+–[\d.]+ CHF · frei ca\. [\d.]+–[\d.]+ CHF/);
+
+    await act(async () => root?.unmount());
+    root = undefined;
+    localStorage.setItem(KEY, JSON.stringify({ ...withLog(), plannerSettings: settings(10) }));
+    await startApp();
+    expect(text()).toMatch(/von 10 CHF – über Budget/);
+    expect(text()).toMatch(/ca\. [\d.]+–[\d.]+ CHF über Budget/);
+  });
 });
 
 describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () => {

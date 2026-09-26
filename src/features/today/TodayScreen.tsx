@@ -200,7 +200,7 @@ export function TodayScreen() {
               <span className={styles.muted}>{neededSoon > 0 ? `${neededSoon} davon für heute oder morgen` : 'Für diese Woche'}</span>
             </>
           )}
-          <BudgetLine week={start} />
+          <BudgetLine week={start} progressUntil={t} />
         </LinkCard>
       )}
 

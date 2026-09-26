@@ -137,6 +137,29 @@ describe('weekly budget (one calculation for Heute and Ernährung)', () => {
   });
 });
 
+describe('eaten so far ("bisher gegessen")', () => {
+  it('counts only eaten meals and entries up to the given day – planned and later ones not', () => {
+    const s = state({
+      plannedMeals: [
+        meal('a', 'chili', { status: 'eaten' }),
+        meal('b', 'bolognese'), // planned, not eaten
+        meal('c', 'chili', { date: '2026-09-23', status: 'eaten' }), // after the day
+      ],
+      logEntries: [entry({ costChf: 2.5, grams: 100 }), entry({ date: '2026-09-23', costChf: 9, grams: 100 })],
+    });
+    const eaten = weekFoodCost(s, MON, { eatenUntil: MON })!;
+    const onlyChili = weekFoodCost(state({ plannedMeals: [meal('a', 'chili', { status: 'eaten' })] }), MON)!;
+    expect(eaten.lowChf).toBeGreaterThanOrEqual(onlyChili.lowChf + 2);
+    expect(eaten.highChf).toBeLessThanOrEqual(onlyChili.highChf + 3);
+    // The full week is more than what was eaten so far.
+    expect(weekFoodCost(s, MON)!.highChf).toBeGreaterThan(eaten.highChf);
+  });
+
+  it('nothing eaten yet → no "bisher" number', () => {
+    expect(weekFoodCost(state({ plannedMeals: [meal('a', 'chili')] }), MON, { eatenUntil: MON })).toBeUndefined();
+  });
+});
+
 describe('manual prices', () => {
   it('an optional price becomes the real cost of exactly this entry; empty stays "no price"', () => {
     const withPrice = manualEntry({ ...EMPTY_MANUAL, name: 'Pizza', amount: '1', unit: 'portion', kcal: '900', price: '18.50' });

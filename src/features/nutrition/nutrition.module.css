@@ -1021,3 +1021,8 @@
   font-size: 14px;
   color: var(--text-2);
 }
+
+.budgetDetail {
+  display: block;
+  color: var(--text-3);
+}

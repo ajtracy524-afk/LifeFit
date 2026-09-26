@@ -120,11 +120,13 @@ export function buildWeekPlan(state: AppState, weekStartDate: ISODate, today: IS
  * Real product prices first, catalog estimates otherwise; undefined without
  * reliable prices (see ingredientCostRange).
  */
-export function weekFoodCost(state: AppState, week: ISODate): CostRange | undefined {
+export function weekFoodCost(state: AppState, week: ISODate, opts: { eatenUntil?: ISODate } = {}): CostRange | undefined {
   const days = weekDays(week);
-  const inWeek = (d: ISODate) => d >= days[0]! && d <= days[6]!;
+  // eatenUntil: only what was really eaten up to that day ("bisher") – same prices, same 80 % rule.
+  const last = opts.eatenUntil && opts.eatenUntil < days[6]! ? opts.eatenUntil : days[6]!;
+  const inWeek = (d: ISODate) => d >= days[0]! && d <= last;
   const items: CostItem[] = state.plannedMeals
-    .filter((m) => inWeek(m.date) && m.status !== 'skipped')
+    .filter((m) => inWeek(m.date) && (opts.eatenUntil ? m.status === 'eaten' : m.status !== 'skipped'))
     .flatMap((m) => (getRecipe(m.recipeId)?.ingredients ?? []).map((i) => ({ foodId: i.foodId, grams: i.grams * m.servings })));
   for (const e of state.logEntries) {
     if (!inWeek(e.date) || e.plannedMealId) continue;
