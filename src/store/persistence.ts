@@ -23,6 +23,15 @@ export function emptyState(): AppState {
     workoutOverrides: {},
     pantry: {},
     closedDayTargets: {},
+    learning: { preferences: {} },
+    plannerSettings: defaultPlannerSettings(),
+  };
+}
+
+export function defaultPlannerSettings(): AppState['plannerSettings'] {
+  return {
+    priority: 'balanced',
+    mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' },
   };
 }
 

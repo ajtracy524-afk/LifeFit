@@ -46,7 +46,14 @@ export interface Food {
   vegan: boolean;
   vegetarian: boolean;
   allergens: Allergen[];
+  /** Estimated price per kg in EUR – an estimate, never shown as exact. Missing = unknown. */
+  estPricePerKg?: number;
+  /** Optional micronutrients per 100 g – only what is known (prepared for more). */
+  micros?: Partial<Record<MicroNutrient, number>>;
 }
+
+/** Micronutrients the app can know about (per 100 g). Only fiber is filled so far. */
+export type MicroNutrient = 'fiber';
 
 export interface RecipeIngredient {
   foodId: string;
@@ -121,6 +128,8 @@ export interface NutritionProfile {
   diet: DietType;
   excluded: Allergen[];
   slots: MealSlot[];
+  /** Explicit "mag ich nicht" – a hard filter right after allergens, stronger than anything learned. */
+  dislikedFoods?: string[];
 }
 
 /** Versioned: the target valid for a day is the latest with validFrom <= day. */
@@ -264,6 +273,26 @@ export interface CoachState {
   dismissed: Record<string, ISODate>;
 }
 
+/** Evidence behind one learned preference (see domain/learning.ts). */
+export interface PreferenceStat {
+  pos: number;
+  neg: number;
+  updatedAt: string;
+}
+
+export type PlanPriority = 'save' | 'balanced' | 'protein' | 'health';
+
+/** How the user wants the week planned – budget, priority, daily rhythm. */
+export interface PlannerSettings {
+  priority: PlanPriority;
+  /** Weekly food budget in EUR (estimated costs are compared against it). */
+  weeklyBudgetEur?: number;
+  /** Preferred times "HH:MM" per meal slot. */
+  mealTimes: Record<MealSlot, string>;
+  /** Usual training time "HH:MM" – falls back to what LifeFit learned. */
+  trainingTime?: string;
+}
+
 export interface AppState {
   schemaVersion: 2;
   profile: Profile | null;
@@ -289,4 +318,7 @@ export interface AppState {
    * for past days, carbs follow from kcal. The lived week is never rewritten.
    */
   closedDayTargets: Record<ISODate, number>;
+  /** Personalization layer – learned from real behaviour, stored locally only. */
+  learning: { preferences: Record<string, PreferenceStat> };
+  plannerSettings: PlannerSettings;
 }

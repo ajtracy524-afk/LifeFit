@@ -1,4 +1,6 @@
-import { weekDays, weekStart } from '../dates';
+import { daysBetween, weekDays, weekStart } from '../dates';
+import { affinityIndex } from '../learning';
+import { postWorkoutSlot } from '../schedule';
 import { seededRandom, slotShare, suggestWeek } from '../planner';
 import type { AppState, ISODate, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
@@ -42,6 +44,13 @@ export function planMeals(
     pantry: availablePantry(state, maxDate(weekStart(first), today), today),
     timeBudgetFor: (d) => effectiveTimeBudget(dayContextFor(state, d)),
     excludedSlotsFor: (d) => excludedSlots(dayContextFor(state, d)),
+    // Personalization layer, pre-aggregated once for the whole run.
+    affinity: affinityIndex(state.learning?.preferences ?? {}),
+    priority: state.plannerSettings?.priority ?? 'balanced',
+    // The weekly budget, pro rata for the days being planned.
+    budgetEur: state.plannerSettings?.weeklyBudgetEur !== undefined ? (state.plannerSettings.weeklyBudgetEur * dates.length) / 7 : undefined,
+    postWorkoutSlotFor: (d) => postWorkoutSlot(state, d),
+    pantryAgeDays: pantryAge(state, today),
     random: seededRandom(opts.seed),
   });
 }
@@ -66,3 +75,8 @@ export function fillWeek(draft: AppState, week: ISODate, today: ISODate): Planne
 }
 
 const maxDate = (a: ISODate, b: ISODate) => (a > b ? a : b);
+
+/** Days since each pantry amount was last set (its only known "age"). */
+function pantryAge(state: AppState, today: ISODate): Record<string, number> {
+  return Object.fromEntries(Object.values(state.pantry).map((p) => [p.foodId, Math.max(0, daysBetween(p.updatedAt.slice(0, 10), today))]));
+}

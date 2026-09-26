@@ -7,8 +7,9 @@ import { logFromMeal, plannedMealMacros, recipeMacros, roundServings, sumMacros 
 import { effectivePrepMin, SLOT_ORDER, slotShare } from '../planner';
 import { DAY_MODE_LABEL, effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
 import { activeWorkouts, estimateMinutes, resolveWorkouts, trainingWeekdays } from '../training';
-import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, ShoppingWeekState } from '../types';
+import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, Recipe, ShoppingWeekState } from '../types';
 import { closeCompletedDays, dayTargetFor } from './dayTargets';
+import { recordEvent } from '../learning';
 import { addToPantry, purchaseAmount, setPantryQuantity } from './pantry';
 import { planMeals, weekMeals } from './planning';
 import { DEFAULT_DAY_CONTEXT, dayContextFor, weekShopping } from './weekPlan';
@@ -29,7 +30,8 @@ export type WeekChange =
   | { type: 'restoreWorkout'; slotId: PlanSlotId }
   | { type: 'setDayContext'; date: ISODate; context: Partial<DayContext> }
   | { type: 'addMeal'; date: ISODate; slot: MealSlot; recipeId: string; servings: number; id?: string }
-  | { type: 'replaceMeal'; mealId: string; recipeId: string; servings?: number }
+  /** `learn: false` for replacements the user did not choose themselves (accepted suggestions). */
+  | { type: 'replaceMeal'; mealId: string; recipeId: string; servings?: number; learn?: boolean }
   | { type: 'removeMeal'; mealId: string }
   | { type: 'setServings'; mealId: string; servings: number }
   | { type: 'purchase'; week: ISODate; foodId: string; grams?: number }
@@ -39,6 +41,8 @@ export type WeekChange =
   | { type: 'setPantry'; foodId: string; quantityG: number | null }
   /** F8: do not restock this basic this week ("Hab ich noch genug"). */
   | { type: 'skipRestock'; week: ISODate; foodId: string }
+  /** Explicit "mag ich nicht" (hard filter) – future planner meals with it are re-planned. */
+  | { type: 'setDislike'; foodId: string; disliked: boolean }
   /**
    * F1 weekly check-in: training days and day contexts of one week, then the
    * week is (re)planned from today on. One change → one undo.
@@ -126,6 +130,7 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
 
       if (change.toDate === session.originalDate) delete s.workoutOverrides[change.slotId];
       else s.workoutOverrides[change.slotId] = { slotId: change.slotId, status: 'moved', date: change.toDate };
+      recordEvent(s, { type: 'workout_moved', from: session.date, to: change.toDate }, nowIso);
       return { ok: true, title: `${session.template.name} auf ${weekdayLong(weekdayIndex(change.toDate))} verschoben`, trainingChanged: true };
     }
 
@@ -135,6 +140,7 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
       if (session.completedWorkoutId) return fail('Die Einheit ist schon erledigt.');
       if (session.status === 'skipped') return fail('Die Einheit fällt bereits aus.');
       s.workoutOverrides[change.slotId] = { slotId: change.slotId, status: 'skipped' };
+      recordEvent(s, { type: 'workout_skipped', date: session.date }, nowIso);
       return { ok: true, title: `${session.template.name} fällt diese Woche aus`, trainingChanged: true };
     }
 
@@ -185,6 +191,10 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
       if (!meal || !recipe) return fail('Mahlzeit nicht gefunden.');
       // Same calories as before unless servings are given.
       const servings = change.servings ?? roundServings(plannedMealMacros(meal).kcal / (recipeMacros(recipe).kcal || 1));
+      if (change.learn !== false && meal.recipeId !== recipe.id) {
+        const timeBudget = effectiveTimeBudget(dayContextFor(s, meal.date));
+        recordEvent(s, { type: 'meal_swapped', fromRecipeId: meal.recipeId, toRecipeId: recipe.id, slot: meal.slot, timeBudget }, nowIso);
+      }
       meal.recipeId = recipe.id;
       meal.servings = servings;
       meal.source = 'swap';
@@ -240,6 +250,21 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
     case 'notAtHome': {
       setPantryQuantity(s, change.foodId, null, nowIso);
       return { ok: true, title: `${getFood(change.foodId)?.name ?? 'Artikel'} wieder auf der Liste` };
+    }
+
+    case 'setDislike': {
+      const food = getFood(change.foodId);
+      if (!food || !s.nutritionProfile) return fail('Lebensmittel nicht gefunden.');
+      const current = new Set(s.nutritionProfile.dislikedFoods ?? []);
+      if (change.disliked) current.add(food.id);
+      else current.delete(food.id);
+      s.nutritionProfile = { ...s.nutritionProfile, dislikedFoods: [...current] };
+      const replaced: Replacement[] = [];
+      if (change.disliked) {
+        const dates = [...new Set(s.plannedMeals.filter((m) => m.date >= today && m.status === 'planned').map((m) => m.date))].sort();
+        for (const date of dates) replaced.push(...replanMealsOn(s, date, today, `${date}:no-${food.id}`, (r) => r.ingredients.some((i) => i.foodId === food.id)));
+      }
+      return { ok: true, title: change.disliked ? `${food.name} wird nicht mehr eingeplant` : `${food.name} wieder erlaubt`, replaced };
     }
 
     case 'skipRestock': {
@@ -345,42 +370,46 @@ function planWeek(s: AppState, change: Extract<WeekChange, { type: 'planWeek' }>
 // ---------- Recalculation ----------
 
 /**
- * F5: meals of `date` that no longer fit the day's time budget are re-planned
- * through the week planner (same scoring: nutrition, variety, ingredient
- * overlap, pantry, time). Only planner suggestions are exchanged – meals the
- * user picked, sized or already ate stay. Calories of the day stay the same
- * because the new picks fill exactly the space of the old ones.
+ * F5: meals of `date` that no longer fit the day's time budget are re-planned.
  */
 function replanForTimeBudget(s: AppState, date: ISODate, today: ISODate): Replacement[] {
-  if (date < today || !dayTargetFor(s, date) || !s.nutritionProfile) return [];
   const budget = effectiveTimeBudget(dayContextFor(s, date));
-  const week = weekMeals(s, date);
   const cooked = new Map<string, ISODate[]>();
-  for (const m of week) cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]);
+  for (const m of weekMeals(s, date)) cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]);
+  return replanMealsOn(s, date, today, `${date}:${budget}`, (recipe) => effectivePrepMin(recipe, date, cooked) > TIME_BUDGETS[budget].maxPrepMin);
+}
 
-  const tooLong = week.filter((m) => {
+/**
+ * Re-plans the planner's own meals of one open day that match `replace`,
+ * through the week planner (same scoring: nutrition, variety, overlap, pantry,
+ * time, budget, preferences). Meals the user picked, sized or ate stay. The
+ * new picks fill exactly the calorie space of the old ones – the day total
+ * does not change, only what is cooked.
+ */
+function replanMealsOn(s: AppState, date: ISODate, today: ISODate, seed: string, replace: (recipe: Recipe) => boolean): Replacement[] {
+  if (date < today || !dayTargetFor(s, date) || !s.nutritionProfile) return [];
+  const week = weekMeals(s, date);
+  const affected = week.filter((m) => {
     if (m.date !== date || m.status !== 'planned' || m.source !== 'suggest' || m.servingsLocked) return false;
     const recipe = getRecipe(m.recipeId);
-    return !!recipe && effectivePrepMin(recipe, date, cooked) > TIME_BUDGETS[budget].maxPrepMin;
+    return !!recipe && replace(recipe);
   });
-  if (tooLong.length === 0) return [];
+  if (affected.length === 0) return [];
 
-  const ids = new Set(tooLong.map((m) => m.id));
-  // The new picks take exactly the calorie space of the replaced meals – the
-  // day total does not change, only what is cooked.
+  const ids = new Set(affected.map((m) => m.id));
   const others = week.filter((m) => m.date === date && !ids.has(m.id));
-  const dayKcal = sumMacros([...others, ...tooLong].map(plannedMealMacros)).kcal;
+  const dayKcal = sumMacros([...others, ...affected].map(plannedMealMacros)).kcal;
   const picks = planMeals(s, {
     dates: [date],
     today,
-    seed: `${date}:${budget}`,
-    slots: SLOT_ORDER.filter((slot) => tooLong.some((m) => m.slot === slot)),
+    seed,
+    slots: SLOT_ORDER.filter((slot) => affected.some((m) => m.slot === slot)),
     existing: week.filter((m) => !ids.has(m.id)),
     targetKcalFor: () => dayKcal,
   });
 
   s.plannedMeals = [...s.plannedMeals.filter((m) => !ids.has(m.id)), ...picks];
-  return tooLong
+  return affected
     .map((old) => ({ from: getRecipe(old.recipeId)!.title, to: getRecipe(picks.find((p) => p.slot === old.slot)?.recipeId ?? '')?.title ?? '' }))
     .filter((r) => r.to && r.to !== r.from);
 }
@@ -485,6 +514,7 @@ function weekOf(state: AppState, change: WeekChange, today: ISODate): ISODate {
     case 'skipRestock':
       return change.week;
     case 'setPantry':
+    case 'setDislike':
       return weekStart(today);
   }
 }

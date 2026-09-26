@@ -7,7 +7,9 @@ import { findTemplate } from '../data/exercises';
 import { addDays, today, weekStart } from '../domain/dates';
 import { calculateTargets, foodMacros, logFromMeal, roundMacros } from '../domain/nutrition';
 import { activeWorkouts, createWorkout, detectRecords, workoutVolume } from '../domain/training';
-import { applyWeekChange, closeCompletedDays, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
+import { applyWeekChange, closeCompletedDays, dayContextFor, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
+import { recordEvent } from '../domain/learning';
+import { effectiveTimeBudget } from '../domain/timeBudget';
 import { currentWeight } from '../domain/progress';
 import { newId } from '../lib/id';
 import type {
@@ -89,12 +91,17 @@ export function markEaten(mealId: string): void {
     if (!meal || meal.status === 'eaten') return;
     meal.status = 'eaten';
     s.logEntries.push(logFromMeal(meal));
+    // Actually eating it is the strongest positive signal.
+    recordEvent(s, { type: 'meal_eaten', recipeId: meal.recipeId, slot: meal.slot, timeBudget: budgetOn(s, meal.date) }, new Date().toISOString());
   });
 }
 
 export function unmarkEaten(mealId: string): void {
   update((s) => {
     const meal = s.plannedMeals.find((m) => m.id === mealId);
+    if (meal?.status === 'eaten') {
+      recordEvent(s, { type: 'meal_uneaten', recipeId: meal.recipeId, slot: meal.slot, timeBudget: budgetOn(s, meal.date) }, new Date().toISOString());
+    }
     if (meal) meal.status = 'planned';
     s.logEntries = s.logEntries.filter((e) => e.plannedMealId !== mealId);
   });
@@ -104,10 +111,15 @@ export function unmarkEaten(mealId: string): void {
 export function skipMeal(mealId: string): void {
   update((s) => {
     const meal = s.plannedMeals.find((m) => m.id === mealId);
-    if (meal) meal.status = 'skipped';
+    if (meal && meal.status !== 'skipped') {
+      recordEvent(s, { type: 'meal_skipped', recipeId: meal.recipeId, slot: meal.slot, timeBudget: budgetOn(s, meal.date) }, new Date().toISOString());
+      meal.status = 'skipped';
+    }
     s.logEntries = s.logEntries.filter((e) => e.plannedMealId !== mealId);
   });
 }
+
+const budgetOn = (s: AppState, date: ISODate) => effectiveTimeBudget(dayContextFor(s, date));
 
 // ---------- Free logging ----------
 
@@ -238,6 +250,7 @@ export function finishWorkout(workoutId: string): void {
       .filter((ex) => ex.sets.length > 0);
     w.status = 'completed';
     w.endedAt = new Date().toISOString();
+    recordEvent(s, { type: 'workout_completed', date: w.date, hour: new Date(w.startedAt).getHours() }, w.endedAt);
     w.volumeKg = Math.round(workoutVolume(w));
     w.records = detectRecords(w, s.workouts);
   });
@@ -401,7 +414,8 @@ export function applyEngineAction(action: EngineAction): boolean {
       logFood(action.date, action.slot, action.foodId, action.grams);
       return true;
     case 'swap_meal':
-      swapMeal(action.mealId, action.recipeId, action.servings);
+      // Accepting a suggestion is not a taste signal against the old meal.
+      applyChange({ type: 'replaceMeal', mealId: action.mealId, recipeId: action.recipeId, servings: action.servings, learn: false });
       return true;
     case 'start_workout':
       startWorkoutFrom(action.template);

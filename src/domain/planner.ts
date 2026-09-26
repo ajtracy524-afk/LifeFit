@@ -4,7 +4,8 @@ import { newId } from '../lib/id';
 import { daysBetween } from './dates';
 import { LEFTOVER_DAYS, LEFTOVER_PREP_MIN, MEAL_PREP_TAG, TIME_BUDGETS } from './timeBudget';
 import { recipeAllowed, recipeMacros, roundServings, plannedMealMacros, sumMacros } from './nutrition';
-import type { ISODate, Macros, MealSlot, NutritionProfile, PlannedMeal, Recipe, TimeBudget } from './types';
+import { purchaseCost } from './costs';
+import type { ISODate, Macros, MealSlot, NutritionProfile, PlanPriority, PlannedMeal, Recipe, TimeBudget } from './types';
 
 export const SLOT_ORDER: MealSlot[] = ['breakfast', 'snack', 'lunch', 'dinner'];
 
@@ -65,9 +66,43 @@ export const PLANNER_WEIGHTS = {
    * a preference, not an obligation.
    */
   pantryUnused: 0.12,
+  /**
+   * Personalization: per meal, × −affinity (−1 … +1) from learned behaviour.
+   * Small on purpose – it breaks ties and nudges, it never beats nutrition,
+   * time or the hard filters.
+   */
+  preference: 0.12,
+  /** Estimated purchase cost, per 10 € (only foods with a price estimate). */
+  cost: 0.05,
+  /** Estimated cost above the (pro-rata) budget, per 10 €. */
+  budgetOver: 0.6,
+  /** Fiber shortfall per day as a share of the day's fiber orientation value. */
+  fiberGap: 0.05,
+  /** Protein shortfall of the meal after training (share of POST_WORKOUT_PROTEIN_G). */
+  postWorkoutProtein: 0.15,
 };
 
 export type PlannerWeights = typeof PLANNER_WEIGHTS;
+
+/** General orientation values for planning – no medical targets. */
+export const FIBER_PER_1000_KCAL_G = 14;
+export const POST_WORKOUT_PROTEIN_G = 35;
+
+/**
+ * Plan priorities only shift weights – it is always the same planner.
+ * save: cost and budget count more · protein: protein counts more ·
+ * health: fiber (as available nutrient-quality signal) counts more.
+ */
+export const PRIORITY_WEIGHTS: Record<PlanPriority, Partial<PlannerWeights>> = {
+  save: { cost: 0.6, budgetOver: 1.5 },
+  balanced: {},
+  protein: { proteinGap: 1.6, postWorkoutProtein: 0.35, cost: 0.03 },
+  health: { fiberGap: 0.6 },
+};
+
+export function weightsFor(priority: PlanPriority = 'balanced', overrides: Partial<PlannerWeights> = {}): PlannerWeights {
+  return { ...PLANNER_WEIGHTS, ...PRIORITY_WEIGHTS[priority], ...overrides };
+}
 
 /** Leftovers of these categories spoil – opened packages count as waste. */
 const PERISHABLE = new Set(['produce', 'meat_fish', 'dairy']);
@@ -86,6 +121,15 @@ interface SuggestInput {
   timeBudgetFor?: (date: ISODate) => TimeBudget;
   /** F1: slots a day does not plan (e.g. dinner when eating out). */
   excludedSlotsFor?: (date: ISODate) => MealSlot[];
+  /** Personalization: learned affinity −1 … +1 per recipe and day budget (pre-aggregated). */
+  affinity?: (recipeId: string, budget: TimeBudget) => number;
+  /** Budget in EUR for the purchases of the planned days (already pro rata). */
+  budgetEur?: number;
+  priority?: PlanPriority;
+  /** Meal slot right after training on a training day (gets protein priority). */
+  postWorkoutSlotFor?: (date: ISODate) => MealSlot | undefined;
+  /** Age of pantry stock in days – older stock is used up first. */
+  pantryAgeDays?: Record<string, number>;
   random?: () => number;
   weights?: Partial<PlannerWeights>;
 }
@@ -101,6 +145,14 @@ export interface PlanningDay {
   slots: MealSlot[];
   picks: Recipe[];
   timeBudget: TimeBudget;
+  postWorkoutSlot?: MealSlot;
+}
+
+/** Everything besides the days that the week score needs (all optional). */
+export interface ScoreExtras {
+  affinity?: (recipeId: string, budget: TimeBudget) => number;
+  budgetEur?: number;
+  pantryAgeDays?: Record<string, number>;
 }
 
 export interface WeekScore {
@@ -113,6 +165,14 @@ export interface WeekScore {
   time: number;
   /** Perishable pantry stock the week does not use (F2). */
   pantryUnused: number;
+  /** Personal preference term (negative = liked meals). */
+  preference: number;
+  /** Cost and budget term. */
+  cost: number;
+  /** Estimated purchase cost of the week in EUR (priced foods only). */
+  costEur: number;
+  /** Fiber and post-workout protein term. */
+  quality: number;
   /** Foods that have to be bought for the week. */
   foodsToBuy: string[];
 }
@@ -156,6 +216,18 @@ function timeCost(prepMin: number, budget: TimeBudget, W: PlannerWeights): numbe
   return (W.timeOver * Math.max(0, prepMin - TIME_BUDGETS[budget].maxPrepMin)) / 10;
 }
 
+const fiberCache = new Map<string, number>();
+/** Fiber of one serving in g. */
+export function recipeFiber(r: Recipe | undefined): number {
+  if (!r) return 0;
+  let f = fiberCache.get(r.id);
+  if (f === undefined) {
+    f = r.ingredients.reduce((sum, i) => sum + ((getFood(i.foodId)?.micros?.fiber ?? 0) * i.grams) / 100, 0);
+    fiberCache.set(r.id, f);
+  }
+  return f;
+}
+
 function dayFactor(day: PlanningDay): number {
   const kcal = day.picks.reduce((s, r) => s + baseMacros(r).kcal, 0);
   return day.remainingKcal / (kcal || 1);
@@ -172,9 +244,12 @@ export function scoreWeek(
   pantry: Record<string, number> = {},
   weights: Partial<PlannerWeights> = {},
   context: PlannedMeal[] = [],
+  extras: ScoreExtras = {},
 ): WeekScore {
   const W = { ...PLANNER_WEIGHTS, ...weights };
   let nutrition = 0;
+  let preference = 0;
+  let quality = 0;
   const uses = new Map<string, number>();
   const need = new Map<string, number>();
   const addNeed = (r: Recipe, servings: number) => {
@@ -202,6 +277,14 @@ export function scoreWeek(
     nutrition += W.proteinGap * (Math.max(0, day.target.protein - protein) / day.target.protein);
     if (day.picks.length) nutrition += W.extremeServing * Math.abs(Math.log(factor));
 
+    if (extras.affinity) for (const r of day.picks) preference -= W.preference * extras.affinity(r.id, day.timeBudget);
+
+    const fiber = day.fixed.reduce((s, m) => s + recipeFiber(getRecipe(m.recipeId)) * m.servings, 0) + day.picks.reduce((s, r) => s + recipeFiber(r), 0) * factor;
+    const fiberTarget = (day.target.kcal / 1000) * FIBER_PER_1000_KCAL_G;
+    quality += W.fiberGap * (Math.max(0, fiberTarget - fiber) / fiberTarget);
+    const post = day.postWorkoutSlot ? day.picks[day.slots.indexOf(day.postWorkoutSlot)] : undefined;
+    if (post) quality += W.postWorkoutProtein * (Math.max(0, POST_WORKOUT_PROTEIN_G - baseMacros(post).protein * factor) / POST_WORKOUT_PROTEIN_G);
+
     for (const m of day.fixed) {
       uses.set(m.recipeId, (uses.get(m.recipeId) ?? 0) + 1);
       const r = getRecipe(m.recipeId);
@@ -226,11 +309,14 @@ export function scoreWeek(
 
   const foodsToBuy: string[] = [];
   let waste = 0;
+  let costEur = 0;
   for (const [foodId, grams] of need) {
     const toBuy = grams - (pantry[foodId] ?? 0);
     if (toBuy <= 0.5) continue;
     foodsToBuy.push(foodId);
     const food = getFood(foodId);
+    // Cost of what is actually bought (whole packages), pantry already deducted.
+    if (food) costEur += purchaseCost(food, toBuy) ?? 0;
     if (food?.packageG && PERISHABLE.has(food.category)) {
       const packs = Math.ceil(toBuy / food.packageG);
       waste += (packs * food.packageG - toBuy) / food.packageG;
@@ -242,18 +328,25 @@ export function scoreWeek(
   let unused = 0;
   for (const [foodId, stock] of Object.entries(pantry)) {
     if (stock <= 0 || !PERISHABLE.has(getFood(foodId)?.category ?? '')) continue;
-    unused += Math.max(0, stock - (need.get(foodId) ?? 0)) / stock;
+    // Older stock should be used first (no expiry data – only its age is known).
+    const age = extras.pantryAgeDays?.[foodId] ?? 0;
+    unused += (Math.max(0, stock - (need.get(foodId) ?? 0)) / stock) * (1 + Math.min(1, age / 7));
   }
   const pantryUnused = W.pantryUnused * unused;
+  const cost = (W.cost * costEur) / 10 + (extras.budgetEur !== undefined ? (W.budgetOver * Math.max(0, costEur - extras.budgetEur)) / 10 : 0);
 
   return {
-    total: nutrition + variety + newFoods + packageWaste + time + pantryUnused,
+    total: nutrition + variety + newFoods + packageWaste + time + pantryUnused + preference + cost + quality,
     nutrition,
     variety,
     newFoods,
     packageWaste,
     time,
     pantryUnused,
+    preference,
+    cost,
+    costEur,
+    quality,
     foodsToBuy,
   };
 }
@@ -281,10 +374,17 @@ export function suggestWeek({
   pantry = {},
   timeBudgetFor = () => 'normal',
   excludedSlotsFor = () => [],
+  affinity,
+  budgetEur,
+  priority = 'balanced',
+  postWorkoutSlotFor = () => undefined,
+  pantryAgeDays,
   random = Math.random,
-  weights = {},
+  weights: overrides = {},
 }: SuggestInput): PlannedMeal[] {
-  const W = { ...PLANNER_WEIGHTS, ...weights };
+  const W = weightsFor(priority, overrides);
+  const weights = W;
+  const extras: ScoreExtras = { affinity, budgetEur, pantryAgeDays };
   const usage = new Map<string, number>();
   for (const m of existing) usage.set(m.recipeId, (usage.get(m.recipeId) ?? 0) + 1);
 
@@ -303,6 +403,7 @@ export function suggestWeek({
   for (const date of dates) {
     const target = targetFor?.(date) ?? baseTarget;
     const timeBudget = timeBudgetFor(date);
+    const postWorkoutSlot = postWorkoutSlotFor(date);
     const fixed = existing.filter((m) => m.date === date && m.status !== 'skipped');
     // Slots without any matching recipe (strict diet combinations) stay empty
     // instead of blocking the whole day.
@@ -348,7 +449,11 @@ export function suggestWeek({
       const extremeServing = Math.abs(Math.log(factor)) * W.extremeServing;
       const unseen = new Set(picks.flatMap((r) => r.ingredients.map((i) => i.foodId)).filter((f) => !weekFoods.has(f)));
       const time = picks.reduce((sum, r) => sum + timeCost(effectivePrepMin(r, date, cooked), timeBudget, W), 0);
-      const score = proteinGap + repeatPenalty + extremeServing + unseen.size * W.newFood + time;
+      const liked = affinity ? picks.reduce((sum, r) => sum - W.preference * affinity(r.id, timeBudget), 0) : 0;
+      const postIndex = postWorkoutSlot ? emptySlots.indexOf(postWorkoutSlot) : -1;
+      const post = postIndex >= 0 ? picks[postIndex] : undefined;
+      const postGap = post ? (W.postWorkoutProtein * Math.max(0, POST_WORKOUT_PROTEIN_G - baseMacros(post).protein * factor)) / POST_WORKOUT_PROTEIN_G : 0;
+      const score = proteinGap + repeatPenalty + extremeServing + unseen.size * W.newFood + time + liked + postGap;
 
       if (!best || score < best.score) best = { picks, score };
     }
@@ -359,11 +464,11 @@ export function suggestWeek({
       r.ingredients.forEach((i) => weekFoods.add(i.foodId));
       markCooked(cooked, r.id, date);
     }
-    days.push({ date, target, fixed, remainingKcal, slots: emptySlots, picks: best.picks, timeBudget });
+    days.push({ date, target, fixed, remainingKcal, slots: emptySlots, picks: best.picks, timeBudget, postWorkoutSlot });
   }
 
   // ---- Phase 2: improve the week as a whole ----
-  let current = scoreWeek(days, pantry, weights, context).total;
+  let current = scoreWeek(days, pantry, weights, context, extras).total;
   for (let pass = 0; pass < 3; pass++) {
     let improved = false;
     for (const day of days) {
@@ -374,7 +479,7 @@ export function suggestWeek({
         for (const alt of recipesForSlot(slot, profile)) {
           if (alt.id === original.id || taken.has(alt.id)) continue;
           day.picks[i] = alt;
-          const score = scoreWeek(days, pantry, weights, context).total;
+          const score = scoreWeek(days, pantry, weights, context, extras).total;
           if (score < current - 1e-9) {
             current = score;
             bestRecipe = alt;

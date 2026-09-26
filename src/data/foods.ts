@@ -94,6 +94,31 @@ const RAW: FoodInput[] = [
   ['orange', 'Orange', 'produce', 47, 0.9, 9, 0.1, 'vegan', [], { pieceG: 150, pieceLabel: 'Stück' }],
 ];
 
+/**
+ * ESTIMATED supermarket prices in EUR per kg (Germany, discounter to mid-range).
+ * Estimates only – the UI always says "geschätzt". Foods whose price varies too
+ * much (whey, protein bars) have none and are treated as neutral by the planner.
+ */
+const EST_PRICE_PER_KG: Record<string, number> = {
+  broccoli: 3.0, 'bell-pepper': 4.0, zucchini: 2.5, tomato: 3.0, cucumber: 2.0, onion: 1.5, potato: 1.2,
+  'sweet-potato': 3.0, banana: 1.5, apple: 2.5, avocado: 8.0, lettuce: 10.0, orange: 2.5,
+  oats: 1.8, rice: 2.5, pasta: 3.0, couscous: 3.5, quinoa: 8.0, bread: 4.0, wrap: 5.5, 'rice-cakes': 12.0, toast: 3.0,
+  chicken: 11.0, 'beef-mince': 11.0, salmon: 25.0,
+  egg: 5.0, milk: 1.1, skyr: 3.3, quark: 2.6, cottage: 6.0, feta: 11.0, mozzarella: 8.0, tofu: 9.0, gouda: 10.0, 'greek-yogurt': 5.0,
+  tuna: 12.0, kidney: 3.2, chickpeas: 3.4, corn: 5.7, 'canned-tomato': 2.0, lentils: 4.0,
+  berries: 5.0, spinach: 3.5, edamame: 8.0,
+  'olive-oil': 12.0, 'peanut-butter': 9.0, almonds: 15.0, honey: 10.0, 'soy-sauce': 13.0,
+};
+
+/** Dietary fiber in g per 100 g (standard food tables). */
+const FIBER_PER_100G: Record<string, number> = {
+  broccoli: 2.6, 'bell-pepper': 2.1, zucchini: 1.0, tomato: 1.2, cucumber: 0.5, onion: 1.7, potato: 2.2,
+  'sweet-potato': 3.0, banana: 2.6, apple: 2.4, avocado: 6.7, lettuce: 1.6, orange: 2.4,
+  oats: 10.0, rice: 1.3, pasta: 7.0, couscous: 5.0, quinoa: 7.0, bread: 7.0, wrap: 3.0, 'rice-cakes': 3.0, toast: 6.0,
+  tofu: 1.0, kidney: 6.4, chickpeas: 7.6, corn: 2.4, 'canned-tomato': 1.2, lentils: 11.0,
+  berries: 4.0, spinach: 2.2, edamame: 5.2, 'peanut-butter': 6.0, almonds: 12.5, 'soy-sauce': 0.8,
+};
+
 export const FOODS: Food[] = RAW.map(([id, name, category, kcal, protein, carbs, fat, diet, allergens = [], extra = {}]) => ({
   id,
   name,
@@ -103,6 +128,8 @@ export const FOODS: Food[] = RAW.map(([id, name, category, kcal, protein, carbs,
   vegetarian: diet !== 'meat',
   allergens,
   ...extra,
+  ...(EST_PRICE_PER_KG[id] !== undefined ? { estPricePerKg: EST_PRICE_PER_KG[id] } : {}),
+  micros: { fiber: FIBER_PER_100G[id] ?? 0 },
 }));
 
 const BY_ID = new Map(FOODS.map((f) => [f.id, f]));

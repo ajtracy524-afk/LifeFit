@@ -121,14 +121,12 @@ export function targetForDate(targets: NutritionTarget[], date: ISODate): Nutrit
 
 // ---------- Diet filters ----------
 
+/** Hard filter: diet, allergens and explicit dislikes. Nothing learned can override it. */
 export function recipeAllowed(recipe: Recipe, profile: NutritionProfile | null): boolean {
   if (!profile) return true;
   return recipe.ingredients.every((ing) => {
     const food = getFood(ing.foodId);
-    if (!food) return false;
-    if (profile.diet === 'vegan' && !food.vegan) return false;
-    if (profile.diet === 'vegetarian' && !food.vegetarian) return false;
-    return !food.allergens.some((a) => profile.excluded.includes(a));
+    return !!food && foodAllowed(food, profile);
   });
 }
 
@@ -136,6 +134,7 @@ export function foodAllowed(food: Food, profile: NutritionProfile | null): boole
   if (!profile) return true;
   if (profile.diet === 'vegan' && !food.vegan) return false;
   if (profile.diet === 'vegetarian' && !food.vegetarian) return false;
+  if (profile.dislikedFoods?.includes(food.id)) return false;
   return !food.allergens.some((a) => profile.excluded.includes(a));
 }
 
