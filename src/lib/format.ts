@@ -3,6 +3,7 @@ import type { ISODate, MealSlot } from '../domain/types';
 
 const num = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
 const num1 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
+const num2 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 });
 
 export const fmt = {
   int: (n: number) => num.format(Math.round(n)),
@@ -11,6 +12,8 @@ export const fmt = {
   g: (n: number) => `${num.format(Math.round(n))} g`,
   kg: (n: number) => `${num1.format(n)} kg`,
   servings: (n: number) => (n === 1 ? '1 Portion' : `${num1.format(n)} Portionen`),
+  /** Optional nutrients: salt needs two decimals (0,03 g is not "0 g"). */
+  micro: (key: 'fiber' | 'sugar' | 'salt', n: number) => `${key === 'salt' ? num2.format(n) : num1.format(n)} g`,
 };
 
 export function formatGrams(g: number): string {

@@ -17,6 +17,7 @@ import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { ProgressBar } from '../../components/ui/Progress';
 import { Sheet } from '../../components/ui/Sheet';
+import { ProductPurchaseSheet } from './ProductPurchaseSheet';
 import styles from './shopping.module.css';
 
 export function ShoppingScreen() {
@@ -43,6 +44,7 @@ export function ShoppingScreen() {
   const [detail, setDetail] = useState<ShoppingListItem | null>(null);
   const [showDone, setShowDone] = useState(false);
   const [draft, setDraft] = useState('');
+  const [scanning, setScanning] = useState(false);
 
   const setWeek = (w: string) => navigate('shopping', w === thisWeek ? undefined : { week: w }, { replace: true });
 
@@ -115,6 +117,10 @@ export function ShoppingScreen() {
           </Button>
         )}
       </form>
+      <Button variant="ghost" size="sm" icon="barcode" onClick={() => setScanning(true)}>
+        Gekauftes Produkt scannen
+      </Button>
+      <ProductPurchaseSheet week={week} open={scanning} onClose={() => setScanning(false)} />
 
       {items.length === 0 && weekState.manual.length === 0 ? (
         <Card>

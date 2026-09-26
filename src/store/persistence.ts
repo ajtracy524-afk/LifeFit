@@ -25,6 +25,8 @@ export function emptyState(): AppState {
     closedDayTargets: {},
     learning: { preferences: {} },
     plannerSettings: defaultPlannerSettings(),
+    products: {},
+    water: {},
   };
 }
 

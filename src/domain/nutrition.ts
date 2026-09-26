@@ -8,12 +8,17 @@ import type {
   ISODate,
   LogEntry,
   Macros,
+  MealSlot,
+  MicroNutrient,
+  Micros,
   NutritionProfile,
   NutritionTarget,
   PlannedMeal,
   Profile,
   Recipe,
 } from './types';
+
+export const MICRO_NUTRIENTS: MicroNutrient[] = ['fiber', 'sugar', 'salt'];
 
 export const ZERO_MACROS: Macros = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
 
@@ -40,6 +45,30 @@ export function roundMacros(m: Macros): Macros {
 
 export function foodMacros(food: Food, grams: number): Macros {
   return scaleMacros(food.per100, grams / 100);
+}
+
+/** Only the nutrients that are known, scaled and rounded to 0.1 g (salt to 0.01 g). */
+export function scaleMicros(per100: Micros | undefined, factor: number): Micros {
+  const out: Micros = {};
+  for (const key of MICRO_NUTRIENTS) {
+    const v = per100?.[key];
+    if (v !== undefined && Number.isFinite(v)) out[key] = roundMicro(key, v * factor);
+  }
+  return out;
+}
+
+const roundMicro = (key: MicroNutrient, v: number) => (key === 'salt' ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10);
+
+/** Fiber of a recipe (catalog data) – sugar and salt are not known for the catalog. */
+export function recipeMicros(recipe: Recipe, servings = 1): Micros {
+  let fiber = 0;
+  for (const ing of recipe.ingredients) {
+    const f = getFood(ing.foodId)?.micros?.fiber;
+    // One ingredient without fiber data makes the recipe's value unknown – never guessed.
+    if (f === undefined) return {};
+    fiber += (f * ing.grams) / 100;
+  }
+  return { fiber: roundMicro('fiber', fiber * servings) };
 }
 
 export function recipeMacros(recipe: Recipe, servings = 1): Macros {
@@ -152,6 +181,7 @@ export function logFromMeal(meal: PlannedMeal, loggedAt: string = new Date().toI
     servings: meal.servings,
     method: 'plan',
     macros: roundMacros(recipe ? recipeMacros(recipe, meal.servings) : ZERO_MACROS),
+    ...(recipe ? { micros: recipeMicros(recipe, meal.servings) } : {}),
   };
 }
 
@@ -159,6 +189,53 @@ export function logFromMeal(meal: PlannedMeal, loggedAt: string = new Date().toI
 
 export function dayTotals(entries: LogEntry[], date: ISODate): Macros {
   return sumMacros(entries.filter((e) => e.date === date).map((e) => e.macros));
+}
+
+/** An optional nutrient summed over entries: `known` of `of` entries had a value. */
+export interface MicroTotal {
+  value: number;
+  known: number;
+  of: number;
+}
+
+export interface NutritionSummary {
+  macros: Macros;
+  micros: Record<MicroNutrient, MicroTotal>;
+  entries: number;
+  /** Entries missing at least one macro (e.g. a product without protein data). */
+  incomplete: number;
+}
+
+/**
+ * Totals of log entries. Macros always add up (unknown ones count as 0 and are
+ * flagged); optional nutrients report how many entries actually knew them, so
+ * the UI never presents a partial sum as complete.
+ */
+export function summarizeEntries(entries: LogEntry[]): NutritionSummary {
+  const micros = Object.fromEntries(MICRO_NUTRIENTS.map((k) => [k, { value: 0, known: 0, of: entries.length }])) as Record<MicroNutrient, MicroTotal>;
+  for (const e of entries) {
+    for (const key of MICRO_NUTRIENTS) {
+      const v = e.micros?.[key];
+      if (v !== undefined) {
+        micros[key].value += v;
+        micros[key].known++;
+      }
+    }
+  }
+  for (const key of MICRO_NUTRIENTS) micros[key].value = roundMicro(key, micros[key].value);
+  return {
+    macros: roundMacros(sumMacros(entries.map((e) => e.macros))),
+    micros,
+    entries: entries.length,
+    incomplete: entries.filter((e) => e.unknown?.length).length,
+  };
+}
+
+/** Summary of one day and of each of its meal slots. */
+export function daySummary(entries: LogEntry[], date: ISODate): { day: NutritionSummary; slots: Record<MealSlot, NutritionSummary> } {
+  const ofDay = entries.filter((e) => e.date === date);
+  const slot = (s: MealSlot) => summarizeEntries(ofDay.filter((e) => e.slot === s));
+  return { day: summarizeEntries(ofDay), slots: { breakfast: slot('breakfast'), snack: slot('snack'), lunch: slot('lunch'), dinner: slot('dinner') } };
 }
 
 /** Servings are rounded to 0.1 and kept in a sensible range. */

@@ -18,12 +18,17 @@ export function undoTo(before: AppState, after: AppState): boolean {
   return true;
 }
 
-/** Runs an action and offers "Rückgängig" in a toast – instead of confirmation dialogs. */
-export function withUndo(message: string, action: () => void): void {
+/**
+ * Runs an action and offers "Rückgängig" in a toast – instead of confirmation
+ * dialogs. An action that returns false (or changes nothing) shows no toast.
+ */
+export function withUndo(message: string, action: () => boolean | void): boolean {
   const before = snapshot();
-  action();
+  const result = action();
   const after = snapshot();
+  if (result === false || after === before) return false;
   showToast(message, { action: { label: 'Rückgängig', onClick: () => undoTo(before, after) } });
+  return true;
 }
 
 /**

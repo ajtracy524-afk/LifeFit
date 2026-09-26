@@ -31,6 +31,8 @@ const PATHS = {
   pause: 'M8 5v14M16 5v14',
   share: 'M12 15V4M8 8l4-4 4 4M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6',
   edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+  barcode: 'M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10 8v8M13 8v8M17 8v8',
+  drop: 'M12 3.5c3 3.6 6 7 6 10.5a6 6 0 0 1-12 0c0-3.5 3-6.9 6-10.5',
 } as const;
 
 export type IconName = keyof typeof PATHS;

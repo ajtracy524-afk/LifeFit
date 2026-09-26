@@ -23,6 +23,7 @@ src/
     progress.ts    Gewichtstrend, Zielfortschritt, Wochenstatistik
     engine/        Adaptive Fitness Engine: Regeln, Guardrails, Empfehlungen (siehe docs/ADAPTIVE_ENGINE.md)
   data/          Kuratierter Katalog: Lebensmittel, Rezepte, Übungen, Programme
+  services/      Produktsuche per Barcode (Open Food Facts) – der einzige Netzwerkzugriff, nur auf Nutzeraktion
   store/         Zustand (useSyncExternalStore), Aktionen, lokale Persistenz
   components/    Wiederverwendbare UI (Button, Card, Sheet, Progress, Controls …)
   features/      Screens: onboarding, today, nutrition, training, shopping, progress, profile
@@ -33,6 +34,8 @@ src/
 
 - Mahlzeit einplanen/tauschen/entfernen → Einkaufsliste ändert sich automatisch (abgeleitet, kein Sync-Code).
 - Mahlzeit „Gegessen“ → Log-Eintrag mit Nährwert-Snapshot → Tagesring, Wochenstatistik, Einkaufs-Badge.
+- Lebensmittel hinzufügen (Vorschlag, Suche, Barcode, manuell) → derselbe Log → Tagesbilanz; mit Katalog-Zuordnung auch Vorrat-Abzug und langsames Lernsignal für die nächste Planung.
+- Gekauftes Produkt scannen → Vorrat (nie automatisch aus Gegessenem). Nährwerte aus Open Food Facts, Preise nie.
 - Training abschließen → Volumen & Rekorde → Heute, Trainingsübersicht, Fortschritt.
 - Gewicht eintragen → 7-Tage-Trend → Zielfortschritt & Prognose.
 

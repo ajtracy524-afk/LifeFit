@@ -557,3 +557,321 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* ---------- Day summary (Phase A) ---------- */
+.summaryHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.summaryKcal {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.microLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.microLine strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.partial {
+  color: var(--text-3);
+}
+
+.slotTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.slotTime {
+  font-size: 13px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.slotMacros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  padding: 0 12px 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.slotMacros strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.addFood {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 2px;
+  border-top: 1px dashed var(--border);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.slotSecondary {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 4px 4px;
+}
+
+.sourceBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+
+/* ---------- Add-food hub ---------- */
+.hubNote {
+  font-size: 14px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.openLine {
+  font-size: 14px;
+  color: var(--text-2);
+  margin: 4px 0 10px;
+}
+
+.openLine strong {
+  color: var(--text);
+}
+
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.suggestion:last-child {
+  border-bottom: 0;
+}
+
+.suggestionPlanned {
+  background: var(--accent-soft);
+  border-radius: 14px;
+  padding: 12px;
+  border-bottom: 0;
+  margin-bottom: 6px;
+}
+
+.reason {
+  font-size: 12.5px;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.productHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.productImage {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  object-fit: contain;
+  background: var(--surface-2);
+  flex: none;
+}
+
+.productPlaceholder {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}
+
+.sourceNote {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 8px;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-2);
+  margin: 14px 0 6px;
+}
+
+.notice {
+  font-size: 14px;
+  background: var(--warning-soft);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  margin-top: 14px;
+}
+
+.checkRow input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
+.scanBox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #000;
+}
+
+.lookupState {
+  text-align: center;
+  padding: 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.lookupState p {
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.moreToggle {
+  align-self: flex-start;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.fieldRow3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+/* ---------- Water ---------- */
+.water {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.waterHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.waterIcon {
+  color: #3b82c4;
+  display: inline-flex;
+}
+
+.waterValue {
+  margin-left: auto;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.waterValue strong {
+  font-size: 17px;
+}
+
+.waterButtons {
+  display: grid;
+  grid-template-columns: auto repeat(4, 1fr);
+  gap: 6px;
+}
+
+.waterBtn,
+.waterMinus {
+  min-height: 40px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-weight: 650;
+  font-size: 14px;
+  color: var(--text);
+  padding: 0 8px;
+}
+
+.waterBtn:hover,
+.waterMinus:hover {
+  background: var(--accent-soft);
+}
+
+.waterMinus {
+  color: var(--text-2);
+}
+
+.waterMinus:disabled {
+  opacity: 0.4;
+}
+
+.waterGoalLink {
+  align-self: flex-start;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.confirmFooter {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.amountField {
+  margin-top: 10px;
+}

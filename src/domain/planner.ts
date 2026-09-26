@@ -544,6 +544,61 @@ export function seededRandom(seed: string): () => number {
   };
 }
 
+export interface MealOption {
+  recipe: Recipe;
+  servings: number;
+  macros: Macros;
+  /** Week score with this option (lower = better) – the planner's own measure. */
+  score: number;
+}
+
+export interface RankInput {
+  date: ISODate;
+  slot: MealSlot;
+  /** Target of the day, already reduced by what was eaten outside the plan. */
+  target: Macros;
+  /** Other meals of the day (planned or eaten) – fixed, they count for protein and variety. */
+  fixed: PlannedMeal[];
+  /** Calories the option should fill. */
+  kcal: number;
+  timeBudget: TimeBudget;
+  postWorkoutSlot?: MealSlot;
+  profile: NutritionProfile | null;
+  /** Meals of the rest of the week – context for variety, foods and leftovers. */
+  context: PlannedMeal[];
+  pantry?: Record<string, number>;
+  extras?: ScoreExtras;
+  priority?: PlanPriority;
+  exclude?: string[];
+}
+
+/**
+ * Options for ONE slot, ranked with the same week score the planner uses
+ * (protein, time budget, variety, pantry, costs, fiber, post-workout protein,
+ * preferences). Used for "Passend zu deinem Plan" – never random.
+ */
+export function rankMealOptions(input: RankInput, limit = 3): MealOption[] {
+  const W = weightsFor(input.priority);
+  return recipesForSlot(input.slot, input.profile)
+    .filter((r) => !input.exclude?.includes(r.id))
+    .map((recipe) => {
+      const day: PlanningDay = {
+        date: input.date,
+        target: input.target,
+        fixed: input.fixed,
+        remainingKcal: input.kcal,
+        slots: [input.slot],
+        picks: [recipe],
+        timeBudget: input.timeBudget,
+        postWorkoutSlot: input.postWorkoutSlot,
+      };
+      const servings = roundServings(dayFactor(day));
+      return { recipe, servings, macros: recipeMacros(recipe, servings), score: scoreWeek([day], input.pantry, W, input.context, input.extras).total };
+    })
+    .sort((a, b) => a.score - b.score)
+    .slice(0, limit);
+}
+
 export interface SwapOption {
   recipe: Recipe;
   servings: number;

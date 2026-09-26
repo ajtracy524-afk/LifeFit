@@ -4,10 +4,13 @@ import { today, weekStart } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
 import { currentWeight } from '../../domain/progress';
 import { slotsFor } from '../../domain/planner';
-import type { ActivityLevel, Allergen, DietType, GoalType, Macros, PlanPriority } from '../../domain/types';
+import type { ActivityLevel, Allergen, DietType, GoalType, Macros, MealStyle, PlanPriority } from '../../domain/types';
 import { getFood } from '../../data/foods';
 import { learnedInsights } from '../../domain/explain';
 import { trainingTimeFor } from '../../domain/schedule';
+import { formatLitres, waterStartValue } from '../../domain/water';
+import { getTaste } from '../../data/tastes';
+import { defaultMealStyle, MealStylePicker, TastePicker } from '../nutrition/TastePicker';
 import { fmt, SLOT_LABEL, weekdayShort } from '../../lib/format';
 import { applyWithUndo, withUndo } from '../../lib/undo';
 import { navigate, useRoute } from '../../lib/router';
@@ -17,6 +20,7 @@ import {
   removeFuturePlannedMeals,
   resetLearning,
   setTargets,
+  setWaterGoal,
   suggestMealsForWeek,
   updateGoal,
   updateNutritionProfile,
@@ -33,7 +37,7 @@ import { Icon, type IconName } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
 import styles from './profile.module.css';
 
-type Panel = 'goal' | 'nutrition' | 'training' | 'body' | 'budget' | 'schedule' | 'reset' | null;
+type Panel = 'goal' | 'nutrition' | 'training' | 'body' | 'budget' | 'schedule' | 'water' | 'reset' | null;
 
 const PRIORITY_LABEL: Record<PlanPriority, string> = { save: 'Sparen', balanced: 'Ausgewogen', protein: 'Protein', health: 'Gesundheit' };
 const PRIORITY_HINT: Record<PlanPriority, string> = {
@@ -114,6 +118,7 @@ export function ProfileScreen() {
             value={`Frühstück ${state.plannerSettings.mealTimes.breakfast} · Training ${trainingTimeFor(state).time}`}
             onClick={() => setPanel('schedule')}
           />
+          <Row icon="drop" label="Wasser" value={nutritionProfile.waterGoalMl ? `Tagesziel ${formatLitres(nutritionProfile.waterGoalMl)}` : 'Kein Tagesziel'} onClick={() => setPanel('water')} />
         </Card>
       </Section>
 
@@ -130,6 +135,16 @@ export function ProfileScreen() {
               {Object.keys(state.learning.preferences).length > 0 ? 'Erste Signale gesammelt, aber noch nichts Sicheres.' : 'Noch nichts.'} LifeFit lernt aus dem, was du isst,
               tauschst, überspringst und trainierst – langsam und nur aus echtem Verhalten.
             </p>
+          )}
+          {!!(nutritionProfile.favorites?.length || nutritionProfile.avoided?.length) && (
+            <div className={styles.dislikes}>
+              {nutritionProfile.favorites?.length ? (
+                <p className={styles.muted}>Gern häufiger (deine Angabe): {nutritionProfile.favorites.map((id) => getTaste(id)?.label).filter(Boolean).join(', ')}</p>
+              ) : null}
+              {nutritionProfile.avoided?.length ? (
+                <p className={styles.muted}>Eher selten (deine Angabe – zählt immer mehr als Gelerntes): {nutritionProfile.avoided.map((id) => getTaste(id)?.label).filter(Boolean).join(', ')}</p>
+              ) : null}
+            </div>
           )}
           {disliked.length > 0 && (
             <div className={styles.dislikes}>
@@ -168,6 +183,7 @@ export function ProfileScreen() {
       <BodySheet open={panel === 'body'} onClose={close} />
       <BudgetSheet open={panel === 'budget'} onClose={close} />
       <ScheduleSheet open={panel === 'schedule'} onClose={close} />
+      <WaterSheet open={panel === 'water'} onClose={close} />
       <ResetSheet open={panel === 'reset'} onClose={close} />
     </Screen>
   );
@@ -236,6 +252,48 @@ function ScheduleSheet({ open, onClose }: { open: boolean; onClose: () => void }
           onChange={(e) => setTrainingTime(e.target.value)}
         />
         <Button block onClick={save}>
+          Speichern
+        </Button>
+      </SheetForm>
+    </Sheet>
+  );
+}
+
+/** A personal tracking value – LifeFit offers a starting point, never a "must". */
+function WaterSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const state = useAppState();
+  const current = state.nutritionProfile?.waterGoalMl;
+  const [litres, setLitres] = useState(current ? String(current / 1000).replace('.', ',') : '');
+  const start = waterStartValue(currentWeight(state.weights) ?? state.goal?.startWeightKg);
+  const value = parseNumber(litres);
+  const valid = litres.trim() === '' || (Number.isFinite(value) && value >= 0.5 && value <= 6);
+  const save = () => {
+    setWaterGoal(litres.trim() === '' ? undefined : Math.round((value * 1000) / 50) * 50);
+    showToast(litres.trim() === '' ? 'Wasser ohne Tagesziel' : 'Wasser-Tagesziel gespeichert');
+    onClose();
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="Wasser" subtitle="Dein persönlicher Tracking-Wert">
+      <SheetForm>
+        <Field
+          label="Tagesziel"
+          inputMode="decimal"
+          suffix="L"
+          placeholder="kein Ziel"
+          value={litres}
+          error={valid ? undefined : 'Bitte einen Wert zwischen 0,5 und 6 L angeben.'}
+          onChange={(e) => setLitres(e.target.value)}
+        />
+        {start && (
+          <Button variant="secondary" onClick={() => setLitres(String(start / 1000).replace('.', ','))}>
+            Startwert übernehmen: {formatLitres(start)}
+          </Button>
+        )}
+        <p className={styles.muted}>
+          {start ? 'Der Startwert folgt der verbreiteten Faustregel von etwa 35 ml pro kg Körpergewicht. ' : ''}Das ist keine medizinische Empfehlung – passe den Wert so an, wie es für
+          dich stimmt.
+        </p>
+        <Button block disabled={!valid} onClick={save}>
           Speichern
         </Button>
       </SheetForm>
@@ -384,9 +442,13 @@ function NutritionForm({ onDone }: { onDone: () => void }) {
   const [diet, setDiet] = useState<DietType>(np.diet);
   const [excluded, setExcluded] = useState<Allergen[]>(np.excluded);
   const [meals, setMeals] = useState<'3' | '4'>(np.slots.length === 3 ? '3' : '4');
+  const [tastes, setTastes] = useState({ favorites: np.favorites ?? [], avoided: np.avoided ?? [] });
+  const target = [...state.targets].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
+  const suggestedStyle = defaultMealStyle(state.goal?.type ?? 'maintain', target?.kcal);
+  const [mealStyle, setMealStyle] = useState<MealStyle>(np.mealStyle ?? suggestedStyle);
 
   const save = (replan: boolean) => {
-    updateNutritionProfile({ diet, excluded, slots: slotsFor(meals === '3' ? 3 : 4) });
+    updateNutritionProfile({ diet, excluded, slots: slotsFor(meals === '3' ? 3 : 4), favorites: tastes.favorites, avoided: tastes.avoided, mealStyle });
     if (replan) {
       removeFuturePlannedMeals();
       const added = suggestMealsForWeek(weekStart(today()));
@@ -419,6 +481,10 @@ function NutritionForm({ onDone }: { onDone: () => void }) {
           { value: '4', label: '3 + Snack' },
         ]}
       />
+      <p className={styles.label}>Würdest du gern häufiger essen</p>
+      <TastePicker filter={{ diet, excluded }} favorites={tastes.favorites} avoided={tastes.avoided} onChange={setTastes} />
+      <p className={styles.label}>Mahlzeiten-Stil</p>
+      <MealStylePicker filter={{ diet, excluded }} avoided={tastes.avoided} value={mealStyle} suggested={suggestedStyle} onChange={setMealStyle} />
       <Button block size="lg" onClick={() => save(true)}>
         Speichern & Woche neu planen
       </Button>

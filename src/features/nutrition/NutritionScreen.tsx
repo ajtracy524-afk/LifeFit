@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { addDays, isoWeekNumber, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
-import { dayTotals, plannedMealMacros, sumMacros } from '../../domain/nutrition';
+import { daySummary, MICRO_NUTRIENTS, plannedMealMacros, sumMacros, type NutritionSummary } from '../../domain/nutrition';
 import { SLOT_ORDER, slotShare } from '../../domain/planner';
 import { activeWorkouts, estimateMinutes } from '../../domain/training';
 import { DAY_MODE_LABEL, excludedSlots, TIME_BUDGETS } from '../../domain/timeBudget';
@@ -25,6 +25,7 @@ import { RecipePicker, type PickerTarget } from './RecipePicker';
 import { CoachCard } from '../today/CoachCard';
 import { TimeBudgetControl } from '../today/TimeBudgetControl';
 import { WeekAutopilot } from '../plan/WeekAutopilot';
+import { WaterControl } from './WaterControl';
 import styles from './nutrition.module.css';
 
 type View = 'day' | 'week';
@@ -61,7 +62,7 @@ export function NutritionScreen() {
         <WeekView start={weekStart(date)} onOpenMeal={setOpenMeal} onPick={setPicker} />
       )}
 
-      <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} onLogInstead={(m) => setLogTarget({ date: m.date, slot: m.slot })} />
+      <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} onLogInstead={(m) => setLogTarget({ date: m.date, slot: m.slot, replacing: m.id })} />
       <RecipePicker target={picker} onClose={() => setPicker(null)} />
       <LogFoodSheet target={logTarget} onClose={() => setLogTarget(null)} />
     </Screen>
@@ -82,7 +83,8 @@ interface DayViewProps {
 function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
   const state = useAppState();
   const target = dayTargetFor(state, date);
-  const totals = dayTotals(state.logEntries, date);
+  const summary = daySummary(state.logEntries, date);
+  const totals = summary.day.macros;
   const meals = state.plannedMeals.filter((m) => m.date === date);
   const extras = state.logEntries.filter((e) => e.date === date && !e.plannedMealId);
   const profileSlots = state.nutritionProfile?.slots ?? SLOT_ORDER;
@@ -102,12 +104,6 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
         <IconButton icon="chevronRight" label="Nächster Tag" onClick={() => go(addDays(date, 1))} />
       </div>
 
-      {date >= today() && (
-        <Card>
-          <TimeBudgetControl date={date} withMode />
-        </Card>
-      )}
-
       {target && (
         <Card>
           <div className={styles.dayTotals}>
@@ -124,6 +120,19 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
             <MacroRow label="Kohlenhydrate" value={totals.carbs} target={target.carbs} color="var(--carbs)" />
             <MacroRow label="Fett" value={totals.fat} target={target.fat} color="var(--fat)" />
           </div>
+          <OptionalNutrients summary={summary.day} />
+        </Card>
+      )}
+
+      {!isFuture && (
+        <Card>
+          <WaterControl date={date} />
+        </Card>
+      )}
+
+      {date >= today() && (
+        <Card>
+          <TimeBudgetControl date={date} withMode />
         </Card>
       )}
 
@@ -133,30 +142,45 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
       {slots.map((slot) => {
         const slotMeals = meals.filter((m) => m.slot === slot);
         const slotExtras = extras.filter((e) => e.slot === slot);
-        const kcal =
-          slotMeals.filter((m) => m.status === 'eaten').reduce((s, m) => s + plannedMealMacros(m).kcal, 0) +
-          slotExtras.reduce((s, e) => s + e.macros.kcal, 0);
+        const eaten = summary.slots[slot];
         return (
           <Card key={slot} padded={false} className={styles.slotCard}>
             <header className={styles.slotHeader}>
-              <h2>{SLOT_LABEL[slot]}</h2>
-              {kcal > 0 && <span>{fmt.kcal(kcal)}</span>}
+              <span className={styles.slotTitle}>
+                <h2>{SLOT_LABEL[slot]}</h2>
+                <span className={styles.slotTime}>{state.plannerSettings.mealTimes[slot]}</span>
+              </span>
+              {eaten.entries > 0 && <span>{fmt.kcal(eaten.macros.kcal)}</span>}
             </header>
+            {eaten.entries > 0 && (
+              <p className={styles.slotMacros} aria-label={`${SLOT_LABEL[slot]}: Makros`}>
+                <span>
+                  <strong>{fmt.int(eaten.macros.protein)} g</strong> Protein
+                </span>
+                <span>
+                  <strong>{fmt.int(eaten.macros.carbs)} g</strong> Kohlenh.
+                </span>
+                <span>
+                  <strong>{fmt.int(eaten.macros.fat)} g</strong> Fett
+                </span>
+                {eaten.incomplete > 0 && <span className={styles.partial}>teils ohne Angaben</span>}
+              </p>
+            )}
             {slotMeals.map((m) => (
               <MealRow key={m.id} meal={m} onOpen={() => onOpenMeal(m.id)} checkable={!isFuture} />
             ))}
             {slotExtras.map((e) => (
               <LogRow key={e.id} entry={e} />
             ))}
-            <div className={styles.slotActions}>
-              <Button variant="ghost" size="sm" icon="plus" onClick={() => onPick({ date, slot })}>
-                Rezept
+            {!isFuture && (
+              <button type="button" className={styles.addFood} onClick={() => onLog({ date, slot })}>
+                <Icon name="plus" size={18} /> Lebensmittel hinzufügen
+              </button>
+            )}
+            <div className={styles.slotSecondary}>
+              <Button variant="ghost" size="sm" icon="calendar" onClick={() => onPick({ date, slot })}>
+                {date >= today() ? 'Rezept einplanen' : 'Rezept nachtragen'}
               </Button>
-              {!isFuture && (
-                <Button variant="ghost" size="sm" icon="search" onClick={() => onLog({ date, slot })}>
-                  Lebensmittel
-                </Button>
-              )}
             </div>
           </Card>
         );
@@ -165,15 +189,52 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
   );
 }
 
+const MICRO_LABEL = { fiber: 'Ballaststoffe', sugar: 'Zucker', salt: 'Salz' } as const;
+
+/** Fiber, sugar, salt – only when data exists, and marked if not every entry had it. */
+function OptionalNutrients({ summary }: { summary: NutritionSummary }) {
+  const known = MICRO_NUTRIENTS.filter((k) => summary.micros[k].known > 0);
+  if (!known.length) return null;
+  return (
+    <p className={styles.microLine}>
+      {known.map((k) => {
+        const m = summary.micros[k];
+        return (
+          <span key={k} title={m.known < m.of ? `Nur ${m.known} von ${m.of} Einträgen haben diese Angabe` : undefined}>
+            {MICRO_LABEL[k]} <strong>{fmt.micro(k, m.value)}</strong>
+            {m.known < m.of && <span className={styles.partial}> · aus {m.known} von {m.of}</span>}
+          </span>
+        );
+      })}
+    </p>
+  );
+}
+
+const SOURCE_LABEL: Partial<Record<LogEntry['method'], string>> = { barcode: 'Barcode', manual: 'Manuell', quick: 'Manuell', food: 'Lebensmittel' };
+const UNIT_LABEL = { g: 'g', ml: 'ml', portion: 'Portion', piece: 'Stück' } as const;
+
 function LogRow({ entry }: { entry: LogEntry }) {
+  const unknown = new Set(entry.unknown ?? []);
+  const amount = entry.amount !== undefined && entry.unit ? `${fmt.dec(entry.amount)} ${UNIT_LABEL[entry.unit]}` : entry.grams ? fmt.g(entry.grams) : undefined;
   return (
     <div className={styles.logRow}>
       <span className={styles.logText}>
+        <span className={styles.sourceBadge}>
+          {entry.method === 'barcode' && <Icon name="barcode" size={12} />}
+          {SOURCE_LABEL[entry.method]}
+          {entry.brand ? ` · ${entry.brand}` : ''}
+        </span>
         <span className={styles.mealTitle}>{entry.name}</span>
         <span className={styles.mealMeta}>
-          {fmt.kcal(entry.macros.kcal)}
-          {entry.macros.protein > 0 && ` · ${fmt.int(entry.macros.protein)} g Protein`}
-          {entry.grams && ` · ${fmt.g(entry.grams)}`}
+          {[
+            amount,
+            fmt.kcal(entry.macros.kcal),
+            unknown.has('protein') ? 'Protein –' : `${fmt.int(entry.macros.protein)} g P`,
+            unknown.has('carbs') ? 'KH –' : `${fmt.int(entry.macros.carbs)} g KH`,
+            unknown.has('fat') ? 'Fett –' : `${fmt.int(entry.macros.fat)} g F`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </span>
       </span>
       <IconButton icon="trash" label={`${entry.name} löschen`} onClick={() => withUndo(`${entry.name} gelöscht`, () => removeLogEntry(entry.id))} />

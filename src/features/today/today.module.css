@@ -522,3 +522,9 @@
   font-size: 14px;
   line-height: 1.5;
 }
+
+.waterRow {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding-top: 14px;
+}

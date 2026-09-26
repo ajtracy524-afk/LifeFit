@@ -3,7 +3,7 @@ import { PROGRAMS, getExercise } from '../../data/exercises';
 import { today } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
 import { slotsFor } from '../../domain/planner';
-import type { ActivityLevel, Allergen, DietType, Experience, GoalType, Sex } from '../../domain/types';
+import type { ActivityLevel, Allergen, DietType, Experience, GoalType, MealStyle, Sex } from '../../domain/types';
 import { fmt } from '../../lib/format';
 import { navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
@@ -12,10 +12,11 @@ import { Button, IconButton } from '../../components/ui/Button';
 import { Chip, Field, OptionCard, Segmented, Stepper, WeekdayPicker, parseNumber } from '../../components/ui/Controls';
 import { ProgressBar } from '../../components/ui/Progress';
 import { estimateMinutes } from '../training/trainingUtils';
+import { defaultMealStyle, MealStylePicker, TastePicker } from '../nutrition/TastePicker';
 import styles from './onboarding.module.css';
 
-type Step = 'welcome' | 'goal' | 'body' | 'training' | 'nutrition' | 'program' | 'result' | 'creating';
-const STEPS: Step[] = ['welcome', 'goal', 'body', 'training', 'nutrition', 'program', 'result', 'creating'];
+type Step = 'welcome' | 'goal' | 'body' | 'training' | 'nutrition' | 'tastes' | 'style' | 'program' | 'result' | 'creating';
+const STEPS: Step[] = ['welcome', 'goal', 'body', 'training', 'nutrition', 'tastes', 'style', 'program', 'result', 'creating'];
 
 const DEFAULT_DAYS: Record<number, number[]> = {
   2: [0, 3],
@@ -52,6 +53,8 @@ export function Onboarding() {
   const [diet, setDiet] = useState<DietType>('omnivore');
   const [excluded, setExcluded] = useState<Allergen[]>([]);
   const [mealsPerDay, setMealsPerDay] = useState<'3' | '4'>('4');
+  const [tastes, setTastes] = useState<{ favorites: string[]; avoided: string[] }>({ favorites: [], avoided: [] });
+  const [mealStyle, setMealStyle] = useState<MealStyle | null>(null);
   const [programId, setProgramId] = useState<string | null>(null);
   const [adjust, setAdjust] = useState({ kcal: 0, protein: 0 });
 
@@ -76,6 +79,9 @@ export function Onboarding() {
       weekdays.length,
     );
   }, [body, activity, goal, weight, weekdays.length]);
+
+  const suggestedStyle = defaultMealStyle(goal, calc?.kcal);
+  const effectiveStyle = mealStyle ?? suggestedStyle;
 
   const finalTarget = useMemo(() => {
     if (!calc) return null;
@@ -125,7 +131,14 @@ export function Onboarding() {
             createdAt: new Date().toISOString(),
           },
           goal: { type: goal, startWeightKg: weight, targetWeightKg: goal === 'maintain' ? undefined : target, startedAt: today() },
-          nutritionProfile: { diet, excluded, slots: slotsFor(mealsPerDay === '3' ? 3 : 4) },
+          nutritionProfile: {
+            diet,
+            excluded,
+            slots: slotsFor(mealsPerDay === '3' ? 3 : 4),
+            favorites: tastes.favorites,
+            avoided: tastes.avoided,
+            mealStyle: effectiveStyle,
+          },
           training: { programId: effectiveProgram, weekdays: [...weekdays].sort((a, b) => a - b) },
           target: finalTarget,
           weightKg: weight,
@@ -314,6 +327,20 @@ export function Onboarding() {
           </>
         )}
 
+        {step === 'tastes' && (
+          <>
+            <StepTitle title="Was würdest du gern häufiger essen?" text="Wähle so viele du magst. LifeFit plant davon öfter – und lernt später aus dem, was du wirklich isst." />
+            <TastePicker filter={{ diet, excluded }} favorites={tastes.favorites} avoided={tastes.avoided} onChange={setTastes} />
+          </>
+        )}
+
+        {step === 'style' && (
+          <>
+            <StepTitle title="Welche Mahlzeiten passen zu dir?" />
+            <MealStylePicker filter={{ diet, excluded }} avoided={tastes.avoided} value={effectiveStyle} suggested={suggestedStyle} kcal={calc?.kcal} onChange={setMealStyle} />
+          </>
+        )}
+
         {step === 'program' && (
           <>
             <StepTitle title="Dein Trainingsplan" text={`Für ${weekdays.length} Tage pro Woche empfehlen wir:`} />
@@ -433,6 +460,16 @@ export function Onboarding() {
             </Button>
           )}
           {step === 'nutrition' && (
+            <Button block size="lg" onClick={next}>
+              Weiter
+            </Button>
+          )}
+          {step === 'tastes' && (
+            <Button block size="lg" onClick={next}>
+              {tastes.favorites.length || tastes.avoided.length ? 'Weiter' : 'Überspringen – Weiter'}
+            </Button>
+          )}
+          {step === 'style' && (
             <Button block size="lg" onClick={next}>
               Weiter
             </Button>

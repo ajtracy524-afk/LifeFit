@@ -19,6 +19,7 @@ import { Icon } from '../../components/ui/Icon';
 import { MacroRow, ProgressBar, ProgressRing } from '../../components/ui/Progress';
 import { Sheet } from '../../components/ui/Sheet';
 import { LogFoodSheet, type LogTarget } from '../nutrition/LogFoodSheet';
+import { WaterControl } from '../nutrition/WaterControl';
 import { MealSheet } from '../nutrition/MealSheet';
 import { WeightSheet } from '../progress/WeightSheet';
 import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
@@ -150,6 +151,9 @@ export function TodayScreen() {
               <MacroRow label="Fett" value={totals.fat} target={target.fat} color="var(--fat)" />
             </div>
           )}
+          <div className={styles.waterRow}>
+            <WaterControl date={t} />
+          </div>
           <div className={styles.statusBudget}>
             <TimeBudgetControl date={t} />
           </div>
@@ -260,7 +264,7 @@ export function TodayScreen() {
         }}
       />
       <WorkoutPlanSheet session={planOpen ? (todaysSession ?? null) : null} week={week} today={t} onClose={() => setPlanOpen(false)} />
-      <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} onLogInstead={(m) => setLogTarget({ date: m.date, slot: m.slot })} />
+      <MealSheet mealId={openMeal} onClose={() => setOpenMeal(null)} onLogInstead={(m) => setLogTarget({ date: m.date, slot: m.slot, replacing: m.id })} />
       <LogFoodSheet target={logTarget} onClose={() => setLogTarget(null)} />
       <WeightSheet open={weightOpen} onClose={() => setWeightOpen(false)} />
     </Screen>

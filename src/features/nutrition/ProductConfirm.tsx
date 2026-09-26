@@ -1,0 +1,172 @@
+import { useState } from 'react';
+import { getFood } from '../../data/foods';
+import { productAmountOptions, productNutrients, suggestCatalogFoods } from '../../domain/foodEntry';
+import type { Macros, MacroKey, Micros, Product } from '../../domain/types';
+import { pantryEstimate } from '../../domain/week';
+import { fmt, formatGrams } from '../../lib/format';
+import { newId } from '../../lib/id';
+import { useAppState } from '../../store/store';
+import { Chip, Field, parseNumber } from '../../components/ui/Controls';
+import { Icon } from '../../components/ui/Icon';
+import styles from './nutrition.module.css';
+
+export interface ProductChoice {
+  /** Fixed when the screen opened – a double tap logs once. */
+  id: string;
+  amount: number;
+  foodId: string | null;
+  fromPantry: boolean;
+}
+
+interface Props {
+  product: Product;
+  /** Renders the confirm button – the caller decides what happens (eat or buy). */
+  footer: (choice: ProductChoice | null) => React.ReactNode;
+  /** Calories missing → the user completes the product by hand. */
+  onComplete: () => void;
+  /** "purchase": amount defaults to the package, pantry toggle is not shown. */
+  purpose?: 'eat' | 'purchase';
+}
+
+/**
+ * Check & confirm a scanned product: amount (100 g, portion, package or
+ * free), nutrients recalculated for that amount, and – optionally – which
+ * LifeFit food it is, so pantry, shopping and learning can use it.
+ */
+export function ProductConfirm({ product, footer, onComplete, purpose = 'eat' }: Props) {
+  const state = useAppState();
+  const options = productAmountOptions(product);
+  const initial = purpose === 'purchase' ? (product.packageSize ?? 100) : (product.servingSize ?? 100);
+  const [amountText, setAmountText] = useState(String(initial));
+  const [id] = useState(newId);
+  const suggestions = suggestCatalogFoods(`${product.name} ${product.brand ?? ''}`);
+  const linked = product.foodId ? getFood(product.foodId) : undefined;
+  const candidates = linked && !suggestions.some((f) => f.id === linked.id) ? [linked, ...suggestions] : suggestions;
+  const [foodId, setFoodId] = useState<string | null>(product.foodId ?? null);
+  const stock = foodId ? (pantryEstimate(state)[foodId] ?? 0) : 0;
+  const [fromPantry, setFromPantry] = useState(true);
+
+  const amount = parseNumber(amountText);
+  const validAmount = Number.isFinite(amount) && amount > 0 && amount <= 5000;
+  const nutrients = validAmount ? productNutrients(product, amount) : undefined;
+  const u = product.unit;
+  const choice: ProductChoice | null = validAmount && (nutrients || purpose === 'purchase') ? { id, amount, foodId, fromPantry: stock > 0 ? fromPantry : true } : null;
+
+  return (
+    <>
+      <div className={styles.productHead}>
+        {product.imageUrl ? (
+          <img className={styles.productImage} src={product.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
+        ) : (
+          <span className={styles.productPlaceholder} aria-hidden>
+            <Icon name="barcode" size={24} />
+          </span>
+        )}
+        <div className={styles.mealText}>
+          <strong className={styles.mealTitle}>{product.name}</strong>
+          <span className={styles.mealMeta}>
+            {[product.brand, `Barcode ${product.barcode}`].filter(Boolean).join(' · ')}
+          </span>
+        </div>
+      </div>
+
+      {product.per100.kcal === undefined && purpose === 'eat' && (
+        <div className={styles.notice}>
+          Für dieses Produkt fehlen die Kalorien in der Datenbank. LifeFit rechnet keine Werte aus –{' '}
+          <button type="button" className={styles.moreToggle} onClick={onComplete}>
+            von der Verpackung ergänzen
+          </button>
+        </div>
+      )}
+
+      <p className={styles.fieldLabel}>Menge</p>
+      <div className={styles.chipRow}>
+        {options.map((o) => (
+          <Chip key={o.label} selected={validAmount && amount === o.amount} onClick={() => setAmountText(String(o.amount))}>
+            {o.label}
+          </Chip>
+        ))}
+      </div>
+      <Field label={`Menge in ${u}`} inputMode="decimal" suffix={u} value={amountText} error={amountText && !validAmount ? 'Bitte eine Menge zwischen 1 und 5000 angeben.' : undefined} onChange={(e) => setAmountText(e.target.value)} className={styles.amountField} />
+
+      {purpose === 'eat' && (
+        <>
+          <NutrientGrid macros={nutrients?.macros} unknown={nutrients?.unknown ?? []} />
+          <MicroLine micros={nutrients?.micros} />
+        </>
+      )}
+      <p className={styles.sourceNote}>
+        Nährwerte pro 100 {u} laut Open Food Facts{Object.keys(product.per100).length < 4 ? ' – nicht alle Werte angegeben' : ''}. Preise liefert die Datenbank nicht.
+      </p>
+
+      <p className={styles.fieldLabel}>{purpose === 'purchase' ? 'Welches LifeFit-Lebensmittel ist das?' : 'Entspricht in LifeFit (optional)'}</p>
+      {candidates.length > 0 ? (
+        <div className={styles.chipRow}>
+          {candidates.map((f) => (
+            <Chip key={f.id} selected={foodId === f.id} onClick={() => setFoodId(foodId === f.id ? null : f.id)}>
+              {f.name}
+            </Chip>
+          ))}
+        </div>
+      ) : (
+        <p className={styles.muted}>Kein passendes Lebensmittel im LifeFit-Katalog.</p>
+      )}
+      <p className={styles.sourceNote}>
+        {purpose === 'purchase'
+          ? 'Nur so kann der Planer das Produkt aus deinem Vorrat verwenden.'
+          : 'Damit zählt es für Vorrat, Einkauf und deine Vorlieben. Ohne Zuordnung wird nur gezählt, was du isst.'}
+      </p>
+
+      {purpose === 'eat' && stock > 0 && (
+        <label className={styles.checkRow}>
+          <input type="checkbox" checked={fromPantry} onChange={(e) => setFromPantry(e.target.checked)} />
+          Aus dem Vorrat genommen (ca. {formatGrams(stock)} da)
+        </label>
+      )}
+
+      <div className={styles.confirmFooter}>{footer(choice)}</div>
+    </>
+  );
+}
+
+/** kcal and macros of an entry – unknown values show as "–", never as 0. */
+export function NutrientGrid({ macros, unknown = [] }: { macros?: Macros; unknown?: MacroKey[] }) {
+  const cell = (key: MacroKey) => (!macros || unknown.includes(key) ? '–' : `${fmt.dec(macros[key])} g`);
+  return (
+    <div className={styles.macroGrid}>
+      <div className={styles.macroCellStrong}>
+        <strong>{macros ? fmt.int(macros.kcal) : '–'}</strong>
+        <span>kcal</span>
+      </div>
+      <div className={styles.macroCell}>
+        <strong>{cell('protein')}</strong>
+        <span>Protein</span>
+      </div>
+      <div className={styles.macroCell}>
+        <strong>{cell('carbs')}</strong>
+        <span>Kohlenh.</span>
+      </div>
+      <div className={styles.macroCell}>
+        <strong>{cell('fat')}</strong>
+        <span>Fett</span>
+      </div>
+    </div>
+  );
+}
+
+const MICRO_LABEL = { fiber: 'Ballaststoffe', sugar: 'Zucker', salt: 'Salz' } as const;
+
+/** Optional nutrients – only the ones that are known. */
+export function MicroLine({ micros }: { micros?: Micros }) {
+  const known = (['fiber', 'sugar', 'salt'] as const).filter((k) => micros?.[k] !== undefined);
+  if (!known.length) return null;
+  return (
+    <p className={styles.microLine}>
+      {known.map((k) => (
+        <span key={k}>
+          {MICRO_LABEL[k]} <strong>{fmt.micro(k, micros![k]!)}</strong>
+        </span>
+      ))}
+    </p>
+  );
+}

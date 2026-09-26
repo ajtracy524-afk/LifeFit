@@ -12,8 +12,14 @@ import type { AppState, Food, LogEntry } from '../types';
  * stored amount.
  */
 
-/** Ingredient grams of one log entry. Quick entries have no ingredients. */
+/**
+ * Ingredient grams of one log entry. Quick entries have no ingredients; a
+ * scanned or manual entry counts only with a catalog food and a weight, and
+ * never when the user said it did not come from the pantry. One entry is
+ * subtracted exactly once – there is no second booking anywhere.
+ */
 export function entryIngredients(entry: LogEntry): { foodId: string; grams: number }[] {
+  if (entry.fromPantry === false) return [];
   if (entry.foodId && entry.grams) return [{ foodId: entry.foodId, grams: entry.grams }];
   if (entry.recipeId) {
     const recipe = getRecipe(entry.recipeId);

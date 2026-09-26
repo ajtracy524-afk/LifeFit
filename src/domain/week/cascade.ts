@@ -29,7 +29,8 @@ export type WeekChange =
   | { type: 'skipWorkout'; slotId: PlanSlotId }
   | { type: 'restoreWorkout'; slotId: PlanSlotId }
   | { type: 'setDayContext'; date: ISODate; context: Partial<DayContext> }
-  | { type: 'addMeal'; date: ISODate; slot: MealSlot; recipeId: string; servings: number; id?: string }
+  /** `eaten: true` = "I ate this" today (e.g. a suggestion or "Anders gegessen → Gericht") – logged and learned right away. */
+  | { type: 'addMeal'; date: ISODate; slot: MealSlot; recipeId: string; servings: number; id?: string; eaten?: boolean }
   /** `learn: false` for replacements the user did not choose themselves (accepted suggestions). */
   | { type: 'replaceMeal'; mealId: string; recipeId: string; servings?: number; learn?: boolean }
   | { type: 'removeMeal'; mealId: string }
@@ -171,18 +172,25 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
       if (!getRecipe(change.recipeId)) return fail('Rezept nicht gefunden.');
       // Adding to a past day means "I ate this" – logged right away.
       const isPast = change.date < today;
+      if (change.eaten && change.date > today) return fail('Essen in der Zukunft lässt sich noch nicht erfassen.');
+      const eaten = isPast || !!change.eaten;
+      if (change.id && s.plannedMeals.some((m) => m.id === change.id)) return fail('Diese Mahlzeit ist schon erfasst.');
       const meal: PlannedMeal = {
         id: change.id ?? newId(),
         date: change.date,
         slot: change.slot,
         recipeId: change.recipeId,
         servings: change.servings,
-        status: isPast ? 'eaten' : 'planned',
+        status: eaten ? 'eaten' : 'planned',
         source: 'user',
       };
       s.plannedMeals.push(meal);
-      if (isPast) s.logEntries.push(logFromMeal(meal, nowIso));
-      return { ok: true, title: isPast ? 'Mahlzeit erfasst' : 'Mahlzeit eingeplant' };
+      if (eaten) s.logEntries.push(logFromMeal(meal, nowIso));
+      if (change.eaten) {
+        const timeBudget = effectiveTimeBudget(dayContextFor(s, meal.date));
+        recordEvent(s, { type: 'meal_eaten', recipeId: meal.recipeId, slot: meal.slot, timeBudget }, nowIso);
+      }
+      return { ok: true, title: eaten ? 'Mahlzeit erfasst' : 'Mahlzeit eingeplant' };
     }
 
     case 'replaceMeal': {

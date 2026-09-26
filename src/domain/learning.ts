@@ -11,6 +11,9 @@ import type { ISODate, MealSlot, PreferenceStat, TimeBudget } from './types';
  *   recipe:<id>@<budget>   the recipe on days with that time budget (context)
  *   weekday:<0-6>          training on that weekday
  *   hour:<0-23>            training starting at that hour
+ *   food:<foodId>          a catalog food eaten outside the plan (searched,
+ *                          scanned product linked to it, or manual entry
+ *                          linked to it) – feeds recipes containing it
  *
  * Learning is deliberately slow (a prior of 4 "neutral" observations): one
  * skip barely moves a score, five do.
@@ -24,6 +27,7 @@ export const prefKey = {
   recipeAt: (id: string, budget: TimeBudget) => `recipe:${id}@${budget}`,
   weekday: (index: number) => `weekday:${index}`,
   hour: (h: number) => `hour:${h}`,
+  food: (id: string) => `food:${id}`,
 };
 
 export const LEARNING = {
@@ -46,7 +50,11 @@ export type LearningEvent =
   | { type: 'meal_swapped'; fromRecipeId: string; toRecipeId: string; slot: MealSlot; timeBudget: TimeBudget }
   | { type: 'workout_completed'; date: ISODate; hour: number }
   | { type: 'workout_skipped'; date: ISODate }
-  | { type: 'workout_moved'; from: ISODate; to: ISODate };
+  | { type: 'workout_moved'; from: ISODate; to: ISODate }
+  /** Real consumption outside the plan. Only logged foods with a known catalog food carry a taste signal. */
+  | { type: 'food_logged'; foodId: string }
+  /** The entry was deleted again – takes the evidence back. */
+  | { type: 'food_unlogged'; foodId: string };
 
 /** Pure: returns new preferences with the event's evidence added. */
 export function learnFromEvent(prefs: Preferences, event: LearningEvent, nowIso: string): Preferences {
@@ -90,6 +98,12 @@ export function learnFromEvent(prefs: Preferences, event: LearningEvent, nowIso:
     case 'workout_moved':
       add(prefKey.weekday(weekdayIndex(event.from)), 0, 0.5);
       add(prefKey.weekday(weekdayIndex(event.to)), 0.5, 0);
+      break;
+    case 'food_logged':
+      add(prefKey.food(event.foodId), 1, 0);
+      break;
+    case 'food_unlogged':
+      add(prefKey.food(event.foodId), -1, 0);
       break;
   }
   return next;

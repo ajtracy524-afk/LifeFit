@@ -177,3 +177,25 @@
   flex-direction: column;
   gap: 16px;
 }
+
+.waterList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.waterList li {
+  display: grid;
+  grid-template-columns: 28px 1fr 56px;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.waterList strong {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

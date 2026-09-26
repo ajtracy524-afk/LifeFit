@@ -38,7 +38,7 @@ describe('Warum dieses Gericht?', () => {
     expect(reasons).toContain('25 Min. Zubereitung');
     expect(reasons).toContain('1 Zutat ist schon zu Hause');
     expect(reasons.some((r) => /g Protein – \d+ % deines Tagesziels/.test(r))).toBe(true);
-    expect(reasons).toContain('Proteinreich nach dem Training'); // Monday training 18:00, dinner 19:00
+    expect(reasons).toContain('Proteinreich nach deinem Training um 18:00'); // Monday training 18:00, dinner 19:00
     // No invented factors: no pantry claim without pantry, no preference without evidence.
     const plain = explainMeal(state({ plannedMeals: [dinner] }), dinner, MON);
     expect(plain.some((r) => r.includes('zu Hause'))).toBe(false);

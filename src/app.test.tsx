@@ -80,6 +80,9 @@ async function completeOnboardingFlow() {
   await click('Weiter'); // body
   await click('Weiter'); // training
   await click('Weiter'); // nutrition
+  await click('Haferflocken / Porridge'); // favourite
+  await click('Weiter'); // tastes
+  await click('Weiter'); // meal style
   await click('übernehmen'); // program
   await click('Meine Woche erstellen');
   // The "creating" step saves after a short animation (1.4 s).
@@ -614,5 +617,115 @@ describe('error boundary', () => {
     } finally {
       vi.doUnmock('./features/onboarding/Onboarding');
     }
+  });
+});
+
+describe('food tracking (end to end)', () => {
+  const OFF_PRODUCT = {
+    status: 1,
+    product: { product_name: 'Knuspermüsli', brands: 'Testmarke', nutriments: { 'energy-kcal_100g': 220, proteins_100g: 8, carbohydrates_100g: 20, fat_100g: 10 }, product_quantity: 500, product_quantity_unit: 'g' },
+  };
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 0)));
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 9, 0)); // Monday 09:00
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const breakfast = { id: 'b', date: '2026-09-21', slot: 'breakfast', recipeId: 'skyr-bowl', servings: 1, status: 'planned', source: 'suggest' };
+
+  it('Barcode → product found → 250 g → 550 kcal in the day and the meal; survives a reload', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(OFF_PRODUCT), { status: 200 }));
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: [breakfast] }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+
+    await click('Lebensmittel hinzufügen'); // first slot = breakfast
+    await click('Barcode');
+    await type('Barcode-Nummer', '4000000000009');
+    await click('Produkt suchen');
+    await settle();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(text()).toContain('Knuspermüsli');
+    await type('Menge in g', '250');
+    expect(text()).toMatch(/550\s*kcal/);
+    await click('Hinzufügen');
+
+    const entries = store.getState().logEntries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ slot: 'breakfast', method: 'barcode', macros: { kcal: 550, protein: 20, carbs: 50, fat: 25 } });
+    // Day balance and the breakfast card both show it; the planned meal is untouched.
+    expect(text()).toMatch(/550\s*\/\s*[\d.]+ kcal/);
+    expect(container.querySelector('[aria-label="Frühstück: Makros"]')?.textContent).toMatch(/20 g\s*Protein.*50 g\s*Kohlenh.*25 g\s*Fett/);
+    expect(store.getState().plannedMeals[0]!.status).toBe('planned');
+
+    await act(async () => root?.unmount());
+    root = undefined;
+    const again = await startApp();
+    expect(again.getState().logEntries[0]?.barcode).toBe('4000000000009');
+    expect(text()).toContain('Knuspermüsli');
+  });
+
+  it('product not found → "Manuell erfassen" with only calories', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ status: 0 }), { status: 404 }));
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Barcode');
+    await type('Barcode-Nummer', '4000000000009');
+    await click('Produkt suchen');
+    await settle();
+    expect(text()).toContain('Produkt nicht gefunden');
+    await click('Manuell erfassen');
+    await type('Name', 'Riegel vom Kiosk');
+    await type('Kalorien', '230');
+    await click('Hinzufügen');
+    expect(store.getState().logEntries[0]).toMatchObject({ name: 'Riegel vom Kiosk', method: 'manual', barcode: '4000000000009', macros: { kcal: 230 }, unknown: ['protein', 'carbs', 'fat'] });
+    expect(text()).toMatch(/Protein –/);
+  });
+
+  it('API unreachable → honest message, manual entry offered, the app keeps working', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Barcode');
+    await type('Barcode-Nummer', '4000000000009');
+    await click('Produkt suchen');
+    await settle();
+    expect(text()).toContain('Produkt konnte nicht geladen werden.');
+    expect(text()).toContain('Du kannst es manuell erfassen.');
+    expect(button('Erneut versuchen')).toBeTruthy();
+  });
+
+  it('"Vorschlag": the planned breakfast is one tap away, alternatives come from the planner', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: [breakfast] }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    expect(text()).toContain('Dein Plan');
+    expect(text()).toContain('Oder passend zu deinem Plan');
+    expect(text()).toMatch(/Heute noch offen:/);
+    await click('Gegessen');
+    expect(store.getState().plannedMeals[0]!.status).toBe('eaten');
+  });
+
+  it('Heute: water +500 ml in one tap, −250 corrects, goal from the profile', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), nutritionProfile: { ...completeState().nutritionProfile, waterGoalMl: 2500 } }));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="500 ml Wasser hinzufügen"]')!.click());
+    expect(text()).toMatch(/0,5 L\s*\/ 2,5 L/);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml weniger"]')!.click());
+    expect(store.getState().water['2026-09-21']).toBe(250);
   });
 });

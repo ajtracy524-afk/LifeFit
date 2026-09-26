@@ -5,10 +5,12 @@
 import { getFood } from '../data/foods';
 import { findTemplate } from '../data/exercises';
 import { addDays, today, weekStart } from '../domain/dates';
-import { calculateTargets, foodMacros, logFromMeal, roundMacros } from '../domain/nutrition';
+import { calculateTargets, foodMacros, logFromMeal, roundMacros, scaleMicros } from '../domain/nutrition';
 import { activeWorkouts, createWorkout, detectRecords, workoutVolume } from '../domain/training';
 import { applyWeekChange, closeCompletedDays, dayContextFor, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
 import { recordEvent } from '../domain/learning';
+import { productEntry, type EntryContent } from '../domain/foodEntry';
+import { addWater } from '../domain/water';
 import { effectiveTimeBudget } from '../domain/timeBudget';
 import { currentWeight } from '../domain/progress';
 import { newId } from '../lib/id';
@@ -16,10 +18,12 @@ import type {
   AppState,
   FitnessGoal,
   ISODate,
+  LogEntry,
   Macros,
   MealSlot,
   NutritionProfile,
   PlannedMeal,
+  Product,
   Profile,
   TrainingSetup,
   WorkoutSet,
@@ -123,35 +127,66 @@ const budgetOn = (s: AppState, date: ISODate) => effectiveTimeBudget(dayContextF
 
 // ---------- Free logging ----------
 
-export function logFood(date: ISODate, slot: MealSlot, foodId: string, grams: number): void {
-  const food = getFood(foodId);
-  if (!food) return;
-  update((s) => {
-    s.logEntries.push({
-      id: newId(),
-      date,
-      slot,
-      loggedAt: new Date().toISOString(),
-      name: food.name,
-      foodId,
-      grams,
-      method: 'food',
-      macros: roundMacros(foodMacros(food, grams)),
-    });
-  });
+export interface LogOptions {
+  /**
+   * Id chosen when the confirm screen opened: a second tap (or a re-sent
+   * scan) with the same id is ignored – one confirmation, one entry.
+   */
+  id?: string;
+  /** false = eaten, but not taken from the pantry. */
+  fromPantry?: boolean;
 }
 
-export function logQuick(date: ISODate, slot: MealSlot, name: string, macros: Macros): void {
+/**
+ * The one path for food eaten outside the plan (catalog, barcode, manual).
+ * Real consumption goes into the log – it never books anything INTO the
+ * pantry; taking from the pantry is derived from the entry (see pantry.ts).
+ * An entry with a known catalog food is a (slow) taste signal.
+ * Returns false if nothing was added (duplicate id).
+ */
+export function logEntry(date: ISODate, slot: MealSlot, content: EntryContent, opts: LogOptions = {}): boolean {
+  const id = opts.id ?? newId();
+  if (getState().logEntries.some((e) => e.id === id)) return false;
   update((s) => {
-    s.logEntries.push({
-      id: newId(),
-      date,
-      slot,
-      loggedAt: new Date().toISOString(),
-      name: name.trim() || 'Schnelleintrag',
-      method: 'quick',
-      macros: roundMacros(macros),
-    });
+    const loggedAt = new Date().toISOString();
+    const entry: LogEntry = { id, date, slot, loggedAt, ...content, ...(opts.fromPantry === false ? { fromPantry: false } : {}) };
+    s.logEntries.push(entry);
+    if (entry.foodId && getFood(entry.foodId)) recordEvent(s, { type: 'food_logged', foodId: entry.foodId }, loggedAt);
+  });
+  return true;
+}
+
+export function logFood(date: ISODate, slot: MealSlot, foodId: string, grams: number, opts: LogOptions = {}): boolean {
+  const food = getFood(foodId);
+  if (!food) return false;
+  return logEntry(
+    date,
+    slot,
+    { name: food.name, foodId, grams, method: 'food', macros: roundMacros(foodMacros(food, grams)), micros: scaleMicros(food.micros, grams / 100) },
+    opts,
+  );
+}
+
+/**
+ * Logs `amount` of a scanned product. The product (with the user's catalog
+ * link) is kept in the local cache so it can be found again offline.
+ */
+export function logProduct(date: ISODate, slot: MealSlot, product: Product, amount: number, opts: LogOptions & { foodId?: string | null } = {}): boolean {
+  const foodId = opts.foodId === null ? undefined : (opts.foodId ?? product.foodId);
+  const content = productEntry(product, amount, foodId);
+  if (!content) return false;
+  const id = opts.id ?? newId();
+  if (getState().logEntries.some((e) => e.id === id)) return false;
+  saveProduct({ ...product, foodId });
+  return logEntry(date, slot, content, { ...opts, id });
+}
+
+/** Remembers a looked-up product locally (no network next time). Keeps an existing catalog link unless one is given. */
+export function saveProduct(product: Product): void {
+  update((s) => {
+    s.products ??= {};
+    const known = s.products[product.barcode];
+    s.products[product.barcode] = { ...product, foodId: 'foodId' in product ? product.foodId : known?.foodId };
   });
 }
 
@@ -162,7 +197,39 @@ export function removeLogEntry(id: string): void {
       const meal = s.plannedMeals.find((m) => m.id === entry.plannedMealId);
       if (meal) meal.status = 'planned';
     }
+    // Deleting takes the taste evidence back (planned meals: see unmarkEaten).
+    if (entry && !entry.plannedMealId && entry.foodId && getFood(entry.foodId)) {
+      recordEvent(s, { type: 'food_unlogged', foodId: entry.foodId }, new Date().toISOString());
+    }
     s.logEntries = s.logEntries.filter((e) => e.id !== id);
+  });
+}
+
+/**
+ * A planner suggestion was eaten. If the slot had a planned meal, it is
+ * exchanged (a real swap – learned like one) and marked eaten; otherwise the
+ * suggestion is added as eaten. Both go through the cascade.
+ */
+export function eatSuggestion(date: ISODate, slot: MealSlot, recipeId: string, servings: number, replaceMealId?: string): boolean {
+  if (replaceMealId) {
+    const result = applyChange({ type: 'replaceMeal', mealId: replaceMealId, recipeId, servings });
+    if (!result.ok) return false;
+    markEaten(replaceMealId);
+    return true;
+  }
+  return applyChange({ type: 'addMeal', date, slot, recipeId, servings, eaten: true }).ok;
+}
+
+// ---------- Water ----------
+
+export function addWaterMl(date: ISODate, ml: number): void {
+  update((s) => addWater(s, date, ml));
+}
+
+/** Personal tracking value; undefined removes it. */
+export function setWaterGoal(ml: number | undefined): void {
+  update((s) => {
+    if (s.nutritionProfile) s.nutritionProfile = { ...s.nutritionProfile, waterGoalMl: ml };
   });
 }
 

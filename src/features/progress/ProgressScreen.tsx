@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { getExercise } from '../../data/exercises';
-import { addDays, today, weekStart } from '../../domain/dates';
+import { addDays, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
+import { formatLitres, waterHistory } from '../../domain/water';
 import { goalProgress, latestWeight, weekStats, weightsInRange } from '../../domain/progress';
 import { formatSet } from '../../domain/training';
 import type { GoalType } from '../../domain/types';
-import { fmt, relativeDay } from '../../lib/format';
+import { fmt, relativeDay, weekdayShort } from '../../lib/format';
 import { href } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
 import { removeWeight } from '../../store/actions';
@@ -151,6 +152,7 @@ export function ProgressScreen() {
             ratio={thisWeek.workoutsPlanned ? thisWeek.workoutsDone / thisWeek.workoutsPlanned : undefined}
           />
         </div>
+        <WaterWeek start={start} today={t} />
         {lastWeek.workoutsDone > 0 && thisWeek.volumeKg > 0 && (
           <p className={styles.compare}>
             Trainingsvolumen {thisWeek.volumeKg >= lastWeek.volumeKg ? 'über' : 'unter'} Vorwoche ({fmt.int(lastWeek.volumeKg)} kg)
@@ -179,6 +181,28 @@ export function ProgressScreen() {
 
       <WeightSheet open={weightOpen} onClose={() => setWeightOpen(false)} />
     </Screen>
+  );
+}
+
+/** Water per day of this week – a plain list, no statistics. */
+function WaterWeek({ start, today: t }: { start: string; today: string }) {
+  const state = useAppState();
+  const days = waterHistory(state, weekDays(start)).filter((d) => d.date <= t);
+  const goal = state.nutritionProfile?.waterGoalMl;
+  if (!days.some((d) => d.ml > 0)) return null;
+  return (
+    <Card>
+      <CardHeader title="Wasser" meta={goal ? `Ziel ${formatLitres(goal)}` : undefined} />
+      <ul className={styles.waterList}>
+        {days.map((d) => (
+          <li key={d.date}>
+            <span>{weekdayShort(weekdayIndex(d.date))}</span>
+            <ProgressBar value={d.ml} max={goal ?? Math.max(...days.map((x) => x.ml))} height={6} color="#3b82c4" label={`Wasser ${weekdayShort(weekdayIndex(d.date))}`} />
+            <strong>{d.ml ? formatLitres(d.ml) : '–'}</strong>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

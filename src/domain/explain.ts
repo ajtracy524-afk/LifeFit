@@ -1,8 +1,11 @@
+import { getFood } from '../data/foods';
 import { getRecipe } from '../data/recipes';
+import { MEAL_STYLES } from '../data/tastes';
 import { weekdayLong, weekdayShort } from '../lib/format';
 import { addDays, weekStart, weekdayIndex } from './dates';
 import { affinityIndex, learnedTrainingDays, learnedTrainingHour, LEARNING, preferenceOf, prefKey } from './learning';
 import { plannedMealMacros } from './nutrition';
+import { matchingTastes, recipeStyle } from './preferences';
 import { effectivePrepMin } from './planner';
 import { postWorkoutSlot, preWorkoutSlot, sessionOn, trainingTimeFor } from './schedule';
 import { effectiveTimeBudget, LEFTOVER_PREP_MIN, TIME_BUDGETS } from './timeBudget';
@@ -54,12 +57,26 @@ export function explainMeal(state: AppState, meal: PlannedMeal, today: ISODate):
   const macros = plannedMealMacros(meal);
   const target = dayTargetFor(state, meal.date);
   if (target) reasons.push(`${Math.round(macros.protein)} g Protein – ${Math.round((macros.protein / target.protein) * 100)} % deines Tagesziels`);
-  if (meal.slot === postWorkoutSlot(state, meal.date) && macros.protein >= 30) reasons.push('Proteinreich nach dem Training');
-  else if (meal.slot === preWorkoutSlot(state, meal.date)) reasons.push('Kleine Mahlzeit vor dem Training');
+  const time = trainingTimeFor(state).time;
+  if (meal.slot === postWorkoutSlot(state, meal.date) && macros.protein >= 30) reasons.push(`Proteinreich nach deinem Training um ${time}`);
+  else if (meal.slot === preWorkoutSlot(state, meal.date)) reasons.push(`Kleine Mahlzeit vor deinem Training um ${time}`);
+
+  // What the user told LifeFit (onboarding / profile) – only if the recipe really matches.
+  const np = state.nutritionProfile;
+  const favorites = matchingTastes(recipe.id, np?.favorites);
+  if (favorites.length) reasons.push(`Passt zu deiner Vorliebe: ${favorites.slice(0, 2).map((t) => t.label).join(', ')}`);
+  if (np?.mealStyle && np.mealStyle !== 'balanced' && recipeStyle(recipe) === np.mealStyle) {
+    reasons.push(`Passt zu deinem Mahlzeiten-Stil „${MEAL_STYLES.find((s) => s.id === np.mealStyle)!.label}“`);
+  }
 
   // Learned behaviour – only with real, repeated evidence.
-  const eaten = state.learning?.preferences[prefKey.recipe(recipe.id)]?.pos ?? 0;
-  if (eaten >= 3 && affinityIndex(state.learning.preferences)(recipe.id, budget) > 0.15) reasons.push(`Isst du gern – schon ${Math.round(eaten)}× gegessen`);
+  const prefs = state.learning?.preferences ?? {};
+  const eaten = prefs[prefKey.recipe(recipe.id)]?.pos ?? 0;
+  if (eaten >= 3 && affinityIndex(prefs)(recipe.id, budget) > 0.15) reasons.push(`Isst du gern – schon ${Math.round(eaten)}× gegessen`);
+  const oftenEaten = recipe.ingredients
+    .map((i) => ({ food: getFood(i.foodId), p: preferenceOf(prefs[prefKey.food(i.foodId)]) }))
+    .filter((x) => x.food && x.food.category !== 'pantry' && x.p.confidence >= LEARNING.showFromConfidence && x.p.score > 0.3);
+  if (oftenEaten.length) reasons.push(`Enthält, was du oft isst: ${oftenEaten.slice(0, 2).map((x) => x.food!.name).join(', ')}`);
 
   return reasons;
 }
@@ -122,6 +139,15 @@ export function learnedInsights(state: AppState): string[] {
   const avoided = recipes.filter((x) => x.p.score < -0.3).sort((a, b) => a.p.score - b.p.score).slice(0, 3);
   if (liked.length) insights.push(`Du isst gern: ${liked.map((x) => getRecipe(x.id)!.title).join(', ')}`);
   if (avoided.length) insights.push(`Tauschst oder überspringst du oft: ${avoided.map((x) => getRecipe(x.id)!.title).join(', ')}`);
+
+  // Foods eaten outside the plan (searched, scanned, manual with a known food).
+  const foods = Object.entries(prefs)
+    .filter(([key]) => key.startsWith('food:'))
+    .map(([key, stat]) => ({ food: getFood(key.slice(5)), p: preferenceOf(stat) }))
+    .filter((x) => x.food && x.p.confidence >= LEARNING.showFromConfidence && x.p.score > 0.3)
+    .sort((a, b) => b.p.evidence - a.p.evidence)
+    .slice(0, 3);
+  if (foods.length) insights.push(`Isst du oft zusätzlich: ${foods.map((x) => x.food!.name).join(', ')} – Rezepte damit kommen etwas häufiger`);
 
   const busy = Object.entries(prefs)
     .filter(([key]) => key.endsWith('@low'))

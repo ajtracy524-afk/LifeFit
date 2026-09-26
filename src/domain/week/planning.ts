@@ -1,11 +1,31 @@
 import { daysBetween, weekDays, weekStart } from '../dates';
-import { affinityIndex } from '../learning';
+import { plannerAffinity } from '../preferences';
 import { postWorkoutSlot } from '../schedule';
-import { seededRandom, slotShare, suggestWeek } from '../planner';
-import type { AppState, ISODate, PlannedMeal } from '../types';
+import { rankMealOptions, seededRandom, slotShare, suggestWeek, type MealOption } from '../planner';
+import { plannedMealMacros, sumMacros } from '../nutrition';
+import type { AppState, ISODate, Macros, MealSlot, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { availablePantry, dayContextFor } from './weekPlan';
 import { effectiveTimeBudget, excludedSlots } from '../timeBudget';
+
+/**
+ * Inputs every planning path shares: free pantry, personalization (learned +
+ * explicit, pre-aggregated once), budget, priority, pantry age. One place, so
+ * the week planner and the slot suggestions can never disagree.
+ */
+function plannerContext(state: AppState, dates: ISODate[], today: ISODate) {
+  const first = dates[0]!;
+  return {
+    // Meals of this week are part of the score (context), so only stock that
+    // earlier weeks still need is reserved – never counted twice.
+    pantry: availablePantry(state, maxDate(weekStart(first), today), today),
+    affinity: plannerAffinity(state.learning?.preferences ?? {}, state.nutritionProfile),
+    priority: state.plannerSettings?.priority ?? 'balanced',
+    // The weekly budget, pro rata for the days being planned.
+    budgetEur: state.plannerSettings?.weeklyBudgetEur !== undefined ? (state.plannerSettings.weeklyBudgetEur * dates.length) / 7 : undefined,
+    pantryAgeDays: pantryAge(state, today),
+  };
+}
 
 /**
  * The ONE entry into the week planner. Onboarding, "Woche vorschlagen",
@@ -21,6 +41,7 @@ export function planMeals(
   const profile = state.nutritionProfile;
   const target = first ? dayTargetFor(state, first) : undefined;
   if (!first || !profile || !target) return [];
+  const notPlannable = (d: ISODate) => [...new Set([...excludedSlots(dayContextFor(state, d)), ...handledSlots(state, d, today)])];
   return suggestWeek({
     dates,
     slots: opts.slots ?? profile.slots,
@@ -30,29 +51,85 @@ export function planMeals(
       if (!t) return t;
       const kcal = opts.targetKcalFor?.(d);
       if (kcal !== undefined) return { ...t, kcal };
-      // Slots eaten out keep their share of the day for the restaurant meal –
-      // the planned meals do not grow to make up for it.
-      const out = excludedSlots(dayContextFor(state, d)).filter((sl) => profile.slots.includes(sl));
+      // Slots eaten out (or already eaten otherwise) keep their share of the
+      // day – the planned meals do not grow to make up for it.
+      const out = notPlannable(d).filter((sl) => profile.slots.includes(sl));
       if (out.length === 0) return t;
       const share = 1 - slotShare(out, profile.slots);
       return { ...t, kcal: t.kcal * share, protein: t.protein * share };
     },
     profile,
     existing: opts.existing ?? weekMeals(state, first),
-    // Meals of this week are part of the score (context), so only stock that
-    // earlier weeks still need is reserved – never counted twice.
-    pantry: availablePantry(state, maxDate(weekStart(first), today), today),
+    ...plannerContext(state, dates, today),
     timeBudgetFor: (d) => effectiveTimeBudget(dayContextFor(state, d)),
-    excludedSlotsFor: (d) => excludedSlots(dayContextFor(state, d)),
-    // Personalization layer, pre-aggregated once for the whole run.
-    affinity: affinityIndex(state.learning?.preferences ?? {}),
-    priority: state.plannerSettings?.priority ?? 'balanced',
-    // The weekly budget, pro rata for the days being planned.
-    budgetEur: state.plannerSettings?.weeklyBudgetEur !== undefined ? (state.plannerSettings.weeklyBudgetEur * dates.length) / 7 : undefined,
+    excludedSlotsFor: notPlannable,
     postWorkoutSlotFor: (d) => postWorkoutSlot(state, d),
-    pantryAgeDays: pantryAge(state, today),
     random: seededRandom(opts.seed),
   });
+}
+
+/**
+ * Slots the user already handled on a day that has begun: "Anders gegessen"
+ * left the planned meal as skipped. Re-planning must not put a meal there
+ * again – the user ate something else. (Food merely logged in a slot does not
+ * block it: it may be an extra next to a planned meal that is still due.)
+ */
+function handledSlots(state: AppState, date: ISODate, today: ISODate): MealSlot[] {
+  if (date > today) return [];
+  return [...new Set(state.plannedMeals.filter((m) => m.date === date && m.status === 'skipped').map((m) => m.slot))];
+}
+
+export interface SlotSuggestions {
+  options: MealOption[];
+  /** What is still open for the day after everything eaten and planned elsewhere. */
+  open: Macros;
+}
+
+/**
+ * "Passend zu deinem Plan": options for one meal slot, ranked by the planner's
+ * week score. Knows the day target, what was already eaten (also outside the
+ * plan), the other meals of the day, pantry, budget, time budget, training
+ * and learned + explicit preferences. `exclude` = recipes not to offer (e.g.
+ * the meal already planned there).
+ */
+export function slotSuggestions(state: AppState, date: ISODate, slot: MealSlot, today: ISODate, limit = 3, exclude: string[] = []): SlotSuggestions {
+  const target = dayTargetFor(state, date);
+  const profile = state.nutritionProfile;
+  const empty = { options: [], open: { kcal: 0, protein: 0, carbs: 0, fat: 0 } };
+  if (!target || !profile) return empty;
+
+  const week = weekMeals(state, date);
+  const fixed = week.filter((m) => m.date === date && m.slot !== slot);
+  // Eaten outside the plan (searched, scanned, manual) – the plan's meals are already in `fixed`.
+  const extra = sumMacros(state.logEntries.filter((e) => e.date === date && !e.plannedMealId).map((e) => e.macros));
+  const fixedKcal = sumMacros(fixed.map(plannedMealMacros)).kcal;
+  const dayTarget = { ...target, kcal: Math.max(0, target.kcal - extra.kcal), protein: Math.max(1, target.protein - extra.protein) };
+  const slotKcal = target.kcal * slotShare([slot], profile.slots.includes(slot) ? profile.slots : [...profile.slots, slot]);
+  // Fill what is left of the day, within sensible bounds of a normal portion for this slot.
+  const kcal = Math.min(slotKcal * 1.5, Math.max(slotKcal * 0.5, dayTarget.kcal - fixedKcal));
+
+  const ctx = plannerContext(state, [date], today);
+  const options = rankMealOptions(
+    {
+      date,
+      slot,
+      target: dayTarget,
+      fixed,
+      kcal,
+      timeBudget: effectiveTimeBudget(dayContextFor(state, date)),
+      postWorkoutSlot: postWorkoutSlot(state, date),
+      profile,
+      context: week.filter((m) => m.date !== date),
+      pantry: ctx.pantry,
+      extras: { affinity: ctx.affinity, budgetEur: ctx.budgetEur, pantryAgeDays: ctx.pantryAgeDays },
+      priority: ctx.priority,
+      exclude,
+    },
+    limit,
+  );
+  const openKcal = Math.max(0, dayTarget.kcal - fixedKcal);
+  const openProtein = Math.max(0, target.protein - extra.protein - fixed.reduce((s, m) => s + plannedMealMacros(m).protein, 0));
+  return { options, open: { kcal: openKcal, protein: openProtein, carbs: 0, fat: 0 } };
 }
 
 /** Non-skipped meals of the week containing `date` – context for foods, variety and leftovers. */

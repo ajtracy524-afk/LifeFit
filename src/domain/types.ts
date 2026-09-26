@@ -52,8 +52,15 @@ export interface Food {
   micros?: Partial<Record<MicroNutrient, number>>;
 }
 
-/** Micronutrients the app can know about (per 100 g). Only fiber is filled so far. */
-export type MicroNutrient = 'fiber';
+/**
+ * Optional nutrients the app can know about. The catalog knows fiber; sugar
+ * and salt only come from packaged products or the user. Never estimated.
+ */
+export type MicroNutrient = 'fiber' | 'sugar' | 'salt';
+export type Micros = Partial<Record<MicroNutrient, number>>;
+export type MacroKey = 'protein' | 'carbs' | 'fat';
+/** Unit an amount was entered in. `g`/`ml` are measured, `portion`/`piece` are counted. */
+export type FoodUnit = 'g' | 'ml' | 'portion' | 'piece';
 
 export interface RecipeIngredient {
   foodId: string;
@@ -130,7 +137,17 @@ export interface NutritionProfile {
   slots: MealSlot[];
   /** Explicit "mag ich nicht" – a hard filter right after allergens, stronger than anything learned. */
   dislikedFoods?: string[];
+  /** "Würde ich gern häufiger essen" (taste ids, see data/tastes.ts) – a starting point, learning can outweigh it. */
+  favorites?: string[];
+  /** "Eher selten oder gar nicht" – a strong soft rule, always stronger than anything learned. */
+  avoided?: string[];
+  /** Kind of meals that suit the user's daily target – the planner still sizes every portion. */
+  mealStyle?: MealStyle;
+  /** Personal daily water tracking value in ml – set by the user, never a medical target. */
+  waterGoalMl?: number;
 }
+
+export type MealStyle = 'light' | 'balanced' | 'hearty';
 
 /** Versioned: the target valid for a day is the latest with validFrom <= day. */
 export interface NutritionTarget extends Macros {
@@ -172,9 +189,49 @@ export interface LogEntry {
   foodId?: string;
   grams?: number;
   servings?: number;
-  method: 'plan' | 'food' | 'quick';
+  /**
+   * plan = eaten planned meal · food = catalog food · barcode = scanned product ·
+   * manual = entered by hand · quick = older calorie-only entries (still read).
+   */
+  method: 'plan' | 'food' | 'quick' | 'manual' | 'barcode';
   /** Snapshot – history stays correct even if the catalog changes. */
   macros: Macros;
+  /** Optional nutrients – only those actually known, never estimated. */
+  micros?: Micros;
+  /** Macros the source did not provide: 0 in `macros` (so sums work), shown as unknown. */
+  unknown?: MacroKey[];
+  /** Amount as the user entered it (manual / barcode). `grams` stays the weight for the pantry. */
+  amount?: number;
+  unit?: FoodUnit;
+  /** Scanned product (key into AppState.products). */
+  barcode?: string;
+  brand?: string;
+  /** false = eaten, but not taken from the pantry (the estimate stays untouched). */
+  fromPantry?: false;
+}
+
+/**
+ * A packaged product found by barcode – cached locally so logging it again
+ * needs no network. Nutrients come from the product source; prices never do.
+ */
+export interface Product {
+  barcode: string;
+  name: string;
+  brand?: string;
+  /** Per 100 g (or 100 ml, see `unit`) – only values the source provided. */
+  per100: Partial<Macros>;
+  micros100: Micros;
+  unit: 'g' | 'ml';
+  /** One serving in `unit`, if the source states it. */
+  servingSize?: number;
+  servingLabel?: string;
+  /** Whole package in `unit`, if the source states it. */
+  packageSize?: number;
+  imageUrl?: string;
+  source: 'openfoodfacts';
+  fetchedAt: string;
+  /** Catalog food the user said this product is – enables pantry, shopping and learning. */
+  foodId?: string;
 }
 
 export type SetType = 'warmup' | 'working';
@@ -321,4 +378,8 @@ export interface AppState {
   /** Personalization layer – learned from real behaviour, stored locally only. */
   learning: { preferences: Record<string, PreferenceStat> };
   plannerSettings: PlannerSettings;
+  /** Products looked up by barcode, keyed by barcode – a local cache, never synced. */
+  products: Record<string, Product>;
+  /** Water drunk per day in ml. A new day simply has no entry yet. */
+  water: Record<ISODate, number>;
 }
