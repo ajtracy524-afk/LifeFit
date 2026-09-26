@@ -74,9 +74,9 @@ export function MealSheet({ mealId, onClose, onLogInstead }: MealSheetProps) {
                       {fmt.kcal(o.macros.kcal)} · {o.recipe.prepMin} min
                     </span>
                   </span>
-                  <span className={o.proteinDelta >= 0 ? styles.deltaUp : styles.delta}>
-                    {o.proteinDelta >= 0 ? '+' : '−'}
-                    {fmt.int(Math.abs(o.proteinDelta))} g P
+                  <span className={Math.round(o.proteinDelta) >= 0 ? styles.deltaUp : styles.delta}>
+                    {Math.round(o.proteinDelta) > 0 ? '+' : Math.round(o.proteinDelta) < 0 ? '−' : '±'}
+                    {fmt.int(Math.abs(Math.round(o.proteinDelta)))} g P
                   </span>
                 </button>
               </li>

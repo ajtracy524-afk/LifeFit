@@ -126,7 +126,10 @@ export function ProfileScreen() {
               ))}
             </ul>
           ) : (
-            <p className={styles.muted}>Noch nichts. LifeFit lernt aus dem, was du isst, tauschst, überspringst und trainierst – langsam und nur aus echtem Verhalten.</p>
+            <p className={styles.muted}>
+              {Object.keys(state.learning.preferences).length > 0 ? 'Erste Signale gesammelt, aber noch nichts Sicheres.' : 'Noch nichts.'} LifeFit lernt aus dem, was du isst,
+              tauschst, überspringst und trainierst – langsam und nur aus echtem Verhalten.
+            </p>
           )}
           {disliked.length > 0 && (
             <div className={styles.dislikes}>

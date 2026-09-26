@@ -546,6 +546,34 @@ describe('personal plan on Heute', () => {
     await click('Rückgängig');
     expect(store.getState()).toBe(before);
   });
+
+  it('"Was LifeFit gelernt hat" grows from real behaviour and can be reset (undo-able)', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: day() }));
+    window.history.replaceState(null, '', '/#/profile');
+    const store = await startApp();
+    expect(text()).toMatch(/Was LifeFit gelernt hat[\s\S]*Noch nichts\./);
+    expect(text()).not.toContain('Gelerntes zurücksetzen');
+
+    // One eaten meal is a signal, not yet a statement.
+    const { markEaten } = await import('./store/actions');
+    await act(async () => markEaten('m0'));
+    expect(text()).toContain('Erste Signale gesammelt, aber noch nichts Sicheres.');
+
+    const { learnFromEvent } = await import('./domain/learning');
+    await act(async () =>
+      store.update((s) => {
+        for (let i = 0; i < 6; i++) s.learning.preferences = learnFromEvent(s.learning.preferences, { type: 'meal_eaten', recipeId: 'overnight-oats', slot: 'breakfast', timeBudget: 'normal' }, 'x');
+      }),
+    );
+    expect(text()).toMatch(/Du isst gern: Protein Overnight Oats/);
+
+    const learned = store.getState();
+    await click('Gelerntes zurücksetzen');
+    expect(store.getState().learning.preferences).toEqual({});
+    expect(text()).toMatch(/Noch nichts\./);
+    await click('Rückgängig');
+    expect(store.getState()).toBe(learned);
+  });
 });
 
 describe('undo safety', () => {
