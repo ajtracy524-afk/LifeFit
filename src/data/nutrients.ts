@@ -1,4 +1,4 @@
-import type { MicroNutrient } from '../domain/types';
+import type { Macros, MicroNutrient, Micros } from '../domain/types';
 
 /**
  * Every optional nutrient LifeFit can know, in ONE table: label, unit the
@@ -54,3 +54,15 @@ export const FROM_GRAMS: Record<NutrientInfo['unit'], number> = { g: 1, mg: 1000
  * salt). Scanned products take sodium straight from the source data.
  */
 export const SALT_PER_SODIUM = 2.5;
+
+/**
+ * Consistency rule for one food's values: sugar is part of the carbohydrates,
+ * so a sugar value above the carbs of the SAME nutrition table is impossible –
+ * a data conflict (two sources, or an error in a source). Such a sugar value is
+ * treated as unknown: never capped, never estimated.
+ */
+export function consistentMicros(per100: Partial<Macros>, micros: Micros | undefined): Micros | undefined {
+  if (!micros || micros.sugar === undefined || per100.carbs === undefined || micros.sugar <= per100.carbs + 0.05) return micros;
+  const { sugar: _conflict, ...rest } = micros;
+  return rest;
+}

@@ -21,7 +21,7 @@ import { CountUp } from '../../components/ui/CountUp';
 import { Sheet } from '../../components/ui/Sheet';
 import { LogFoodSheet, type LogTarget } from '../nutrition/LogFoodSheet';
 import { WaterControl } from '../nutrition/WaterControl';
-import { MicronutrientPanel } from '../nutrition/MicronutrientPanel';
+import { NutrientReportEntry } from '../nutrition/NutrientReport';
 import { BudgetLine } from '../nutrition/BudgetLine';
 import { CalorieStatusBadge } from '../nutrition/CalorieStatusBadge';
 import { DayTypeBadge } from './DayTypeBadge';
@@ -155,6 +155,9 @@ export function TodayScreen() {
       {/* Training or rest day – at a glance, a training day links to the session. */}
       <DayTypeBadge session={todaysSession} completed={isCompletedOn(state.workouts, t)} running={running} />
 
+      {/* What to do next comes first – progress follows right below (morning check: "was steht an?"). */}
+      <NextActionCard action={action} onPlanWeek={setPlanningWeek} onStart={begin} onOpenMeal={(id) => openMealSheet(id)} onReplaceMeal={(id) => openMealSheet(id, true)} />
+
       {/* Daily target */}
       {target && (
         <Card>
@@ -193,7 +196,7 @@ export function TodayScreen() {
           <DayGoals date={t} />
           <div className={styles.macroRow}>
             <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
-            <MicronutrientPanel summary={day} />
+            <NutrientReportEntry date={t} onLog={() => setLogTarget({ date: t, slot: logSlot() })} />
           </div>
           <div className={styles.waterRow}>
             <WaterControl date={t} />
@@ -204,8 +207,6 @@ export function TodayScreen() {
         </Card>
       )}
 
-      {/* The one next action of the day */}
-      <NextActionCard action={action} onPlanWeek={setPlanningWeek} onStart={begin} onOpenMeal={(id) => openMealSheet(id)} onReplaceMeal={(id) => openMealSheet(id, true)} />
 
       {/* Only safety notices belong on "Heute" – plus, once today's training is done, what to eat now (fitness → nutrition). */}
       <CoachCard domains={['safety']} />

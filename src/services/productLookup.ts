@@ -1,5 +1,5 @@
 import { FROM_GRAMS, NUTRIENTS } from '../data/nutrients';
-import { roundMicro, VITAL_NUTRIENTS } from '../domain/nutrition';
+import { consistentMicros, roundMicro, VITAL_NUTRIENTS } from '../domain/nutrition';
 import type { Micros, Product } from '../domain/types';
 
 /**
@@ -137,12 +137,14 @@ export function normalizeOffProduct(barcode: string, raw: OffProduct, now: Date 
   const servingSize = inUnit(raw.serving_quantity, raw.serving_quantity_unit) ?? (servingText && inUnit(servingText.value, servingText.unit));
   const packageSize = inUnit(raw.product_quantity, raw.product_quantity_unit) ?? (quantityText && inUnit(quantityText.value, quantityText.unit));
 
+  // Crowd data: a sugar value above the declared carbs is a data error → unknown.
+  const checked = consistentMicros(per100, micros100) ?? {};
   return {
     barcode,
     name,
     ...(raw.brands ? { brand: raw.brands.split(',')[0]!.trim() } : {}),
     per100,
-    micros100,
+    micros100: checked,
     unit,
     ...(servingSize ? { servingSize, ...(raw.serving_size ? { servingLabel: raw.serving_size } : {}) } : {}),
     ...(packageSize ? { packageSize } : {}),

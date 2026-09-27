@@ -1,0 +1,132 @@
+/* Status colours of the whole app (see --tone-* in global.css). */
+.row {
+  --tone: var(--text-3);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.row[data-tone='green'] {
+  --tone: var(--tone-good);
+}
+
+.row[data-tone='orange'] {
+  --tone: var(--tone-watch);
+}
+
+.row[data-tone='red'] {
+  --tone: var(--tone-alert);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.value {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+/* The fill grows from the left (scaleX – smooth and cheap). */
+.fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--tone);
+  transform-origin: left;
+  transform: scaleX(var(--fill));
+  transition: transform 0.8s var(--ease-out);
+  animation: thermoIn 0.9s var(--ease-out);
+}
+
+/* Range: the green band where the target lies. */
+.band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--tone-good) 22%, transparent);
+}
+
+/* Limit: the last stretch before it is marked as "caution". */
+.caution {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--tone-watch) 22%, transparent);
+}
+
+.mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text-2);
+  opacity: 0.55;
+}
+
+.limit {
+  background: var(--tone-alert);
+  opacity: 0.8;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.row[data-tone='red'] .status,
+.row[data-tone='orange'] .status {
+  color: var(--text);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.row[data-tone='none'] .dot {
+  background: transparent;
+  border: 1.5px solid var(--text-3);
+}
+
+.note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+@keyframes thermoIn {
+  from {
+    transform: scaleX(0);
+  }
+}

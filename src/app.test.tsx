@@ -1081,15 +1081,16 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
       localStorage.setItem(KEY, JSON.stringify({ ...completeState(), logEntries: [scanned, planEntry] }));
       window.history.replaceState(null, '', `/#/${route}`);
       await startApp();
-      await act(async () => open(/Mikronährstoffe anzeigen/).click());
-      const list = container.querySelector('[aria-label="Mikronährstoffe"]')!.textContent!;
-      expect(list).toMatch(/Calcium\s*275 mg\s*\/ 800 mg/);
-      expect(text()).toMatch(/Werte aus 1 von 2 Einträgen – die übrigen haben keine Angabe \(nicht 0\)/);
-      expect(list).toMatch(/Natrium\s*90 mg/);
-      expect(list).not.toMatch(/Vitamin C/);
+      // The micronutrients live in the Nährstoff-Auswertung (one place on both pages).
+      await act(async () => open(/Nährstoff-Auswertung/).click());
+      const row = (label: string) => container.querySelector(`[aria-label^="${label}:"]`)?.getAttribute('aria-label') ?? '';
+      // Known from 1 of 2 entries: shown with its reference, marked incomplete – not rated, never presented as complete.
+      expect(row('Calcium')).toBe('Calcium: 275 / 800 mg, mind. 275 mg – Daten unvollständig (ohne Bewertung)');
+      expect(row('Natrium')).toMatch(/^Natrium: 90 \/ 2\.000 mg, Daten unvollständig/);
+      expect(row('Vitamin C')).toBe('');
       expect(text()).toMatch(/Keine Daten: Vitamin A, Vitamin C/);
       expect(text()).not.toMatch(/Vitamin C\s*0/);
-      expect(text()).toMatch(/Referenz = Nährstoffbezugswert/);
+      expect(text()).toMatch(/Allgemeiner Referenzwert \(NRV\) – für alle gleich, nicht individuell berechnet/);
     });
   }
 
@@ -1097,10 +1098,10 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
     localStorage.setItem(KEY, JSON.stringify({ ...completeState(), logEntries: [{ ...scanned, micros: { potassium: 1800, calcium: 275 } }] }));
     window.history.replaceState(null, '', '/#/today');
     await startApp();
-    await act(async () => open(/Mikronährstoffe anzeigen/).click());
-    const list = container.querySelector('[aria-label="Mikronährstoffe"]')!.textContent!;
-    expect(list).toMatch(/Kalium\s*1,8 g\s*\/ 2 g/);
-    expect(list).toMatch(/Calcium\s*275 mg\s*\/ 800 mg/);
+    await act(async () => open(/Nährstoff-Auswertung/).click());
+    const row = (label: string) => container.querySelector(`[aria-label^="${label}:"]`)!.getAttribute('aria-label')!;
+    expect(row('Kalium')).toMatch(/^Kalium: 1,8 \/ 2 g, Noch 200 mg/);
+    expect(row('Calcium')).toMatch(/^Calcium: 275 \/ 800 mg, Noch 525 mg/);
   });
 
   it('Heute: timeline says gegessen / als Nächstes / später, shows real replacement cost and recipe cost ranges', async () => {
@@ -1120,15 +1121,15 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
     expect(text()).not.toMatch(/0\.00 CHF|€/);
   });
 
-  it('Heute: a day without micronutrient data says so instead of showing zeros', async () => {
+  it('Heute: a day without micronutrient data says so in the report instead of showing zeros', async () => {
     localStorage.setItem(KEY, JSON.stringify({ ...completeState(), logEntries: [planEntry] }));
     window.history.replaceState(null, '', '/#/today');
     await startApp();
-    await act(async () => open(/Mikronährstoffe anzeigen/).click());
-    expect(text()).toMatch(/Für heute liegen keine Angaben vor/);
-    expect(container.querySelector('[aria-label="Mikronährstoffe"]')).toBeNull();
-    // No values → no reference note (it only explains values).
-    expect(text()).not.toMatch(/Referenz = Nährstoffbezugswert/);
+    await act(async () => open(/Nährstoff-Auswertung/).click());
+    // No vitamin/mineral data: listed once as "keine Daten", no empty thermometers, no fake zeros.
+    expect(container.querySelector('[aria-label="Vitamine"]')!.querySelectorAll('[aria-label*=": "]')).toHaveLength(0);
+    expect(container.querySelector('[aria-label="Vitamine"]')!.textContent).toMatch(/Keine Daten: Vitamin A, Vitamin C/);
+    expect(text()).not.toMatch(/Vitamin C\s*0|0 \/ 80 mg/);
   });
 
   it('Heute: Essen erfassen → Barcode → Kamera → Produkt → Menge → Preis 4.95 CHF → Tagesbilanz + Budget', async () => {
@@ -1528,7 +1529,7 @@ describe('own dishes, extended database, online search, feedback (Ernährung ↔
     // The undo toast stays short; the ONE feedback line is the celebration chip – a protein 'power' moment, level 2.
     expect(toast()).toMatch(/Hähnchenbrust erfasst/);
     const chip = document.querySelector<HTMLElement>('[data-testid="celebration"]')!;
-    expect(chip.textContent).toBe('💪+24 g ProteinStarker Protein-Boost');
+    expect(chip.textContent).toBe('💪Protein-Boost · +24 gnoch 137 g bis zum Tagesziel');
     expect(chip.dataset).toMatchObject({ kind: 'power', level: '2' });
   });
 
@@ -1594,7 +1595,9 @@ describe('gamification loop on Heute and Ernährung (action → reaction → pro
     await startApp();
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
     expect(container.querySelectorAll('[aria-label^="Wasser: 250 ml"] path[class*="bottleWave"]')).toHaveLength(1);
-    expect(chip()).toBeNull(); // a normal glass: motion, no message
+    // A normal glass: the small water boost (level 1) – same chip system as protein and fiber.
+    expect(chip()!.dataset).toMatchObject({ kind: 'water', level: '1' });
+    expect(chip()!.textContent).toBe('💧Wasser-Boost · +250 mlnoch 0,25 L bis zum Ziel');
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
     expect(chip()!.dataset).toMatchObject({ kind: 'water', level: '3' });
     expect(chip()!.textContent).toMatch(/Wasserziel erreicht2 L heute/);
@@ -1713,5 +1716,88 @@ describe('must-haves: "Wie gestern", "Was kann ich kochen?", training → nutrit
     await startApp();
     expect(text()).toMatch(/Nach deinem Training/);
     expect(text()).toMatch(/Heute fehlen noch [\d.]+ kcal und \d+ g Protein/);
+  });
+});
+
+describe('Nährstoff-Auswertung and the nutrition week plan', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 12, 45)); // Tuesday 12:45
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const MON = '2026-09-21';
+  const TUE = '2026-09-22';
+  const log = (patch: Record<string, unknown>) => ({ id: `e${Math.random()}`, date: TUE, slot: 'lunch', loggedAt: `${TUE}T12:00:00Z`, name: 'Eintrag', method: 'manual', macros: { kcal: 0, protein: 0, carbs: 0, fat: 0 }, ...patch });
+  const withGoal = (patch: Record<string, unknown> = {}) => ({
+    ...completeState(),
+    closedDayTargets: { [TUE]: 2700, [MON]: 2700 },
+    nutritionProfile: { ...completeState().nutritionProfile, waterGoalMl: 2000 },
+    ...patch,
+  });
+  const row = (label: string) => document.querySelector(`dialog[open] [aria-label^="${label}:"]`)?.getAttribute('aria-label') ?? '';
+
+  it('Ernährung: the entry shows the most important hint; the report explains the day with thermometers, words and a next step', async () => {
+    const entries = [log({ macros: { kcal: 1500, protein: 90, carbs: 150, fat: 50 }, micros: { salt: 6.2, fiber: 14, sugar: 40, vitaminC: 95, calcium: 300 } })];
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ logEntries: entries, water: { [TUE]: 1000 } })));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    // The main page stays compact: one line with the alert, not a wall of values.
+    expect(container.querySelector('[class*="reportEntry"]')!.textContent).toMatch(/Nährstoff-AuswertungSalz: über dem empfohlenen Bereich/);
+    await click('Nährstoff-Auswertung');
+    const summary = document.querySelector('dialog[open] [aria-label="Zusammenfassung"]')!.textContent!;
+    expect(summary).toMatch(/Salz bereits über dem empfohlenen Bereich\./);
+    expect(summary).toMatch(/Protein: noch 70 g bis zum Ziel\./);
+    // Three kinds, three ratings.
+    expect(row('Protein')).toBe('Protein: 90 / 160 g, Noch 70 g (beobachten)'); // minimum, open
+    expect(row('Salz')).toBe('Salz: 6,2 / 5 g, über dem empfohlenen Bereich (außerhalb)'); // upper limit
+    expect(row('Vitamin C')).toBe('Vitamin C: 95 / 80 mg, Im Zielbereich (im Bereich)'); // more is not "better", just reached
+    expect(row('Ballaststoffe')).toMatch(/^Ballaststoffe: 14 \/ 38 g, Noch 24 g/); // 14 g per 1000 kcal of 2700
+    expect(row('Wasser')).toBe('Wasser: 1 / 2 L, Noch 1 L (beobachten)');
+    expect(document.querySelector('dialog[open]')!.textContent).toMatch(/Keine Daten: Vitamin A/);
+    // Next step from the data: water right here (same boost system).
+    await clickInDialog('+250 ml Wasser');
+    expect(store.getState().water[TUE]).toBe(1250);
+    expect(document.querySelector<HTMLElement>('[data-testid="celebration"]')!.textContent).toMatch(/Wasser-Boost · \+250 ml/);
+    expect(row('Wasser')).toBe('Wasser: 1,25 / 2 L, Noch 0,75 L (beobachten)');
+  });
+
+  it('Heute has the same entry (one report for both pages)', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ logEntries: [log({ macros: { kcal: 800, protein: 60, carbs: 80, fat: 20 } })] })));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    await click('Nährstoff-Auswertung');
+    expect(row('Kalorien')).toMatch(/^Kalorien: 800 \/ 2\.700 kcal, Noch 1\.900 kcal/);
+  });
+
+  it('week plan: one card per day – today highlighted, training/rest tag, eaten count, kcal/protein bars; past days fold', async () => {
+    const meals = [
+      { id: 'm1', date: MON, slot: 'lunch', recipeId: 'chili', servings: 1, status: 'eaten', source: 'suggest' },
+      { id: 't1', date: TUE, slot: 'lunch', recipeId: 'bolognese', servings: 1, status: 'eaten', source: 'suggest' },
+      { id: 't2', date: TUE, slot: 'dinner', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' },
+    ];
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ plannedMeals: meals })));
+    window.history.replaceState(null, '', '/#/nutrition?view=week');
+    await startApp();
+    const cards = [...container.querySelectorAll('[class*="weekDay_"]')].filter((c) => c.querySelector('[class*="weekDayHead"]'));
+    expect(cards).toHaveLength(7);
+    const mon = cards[0]!;
+    const tue = cards[1]!;
+    expect(tue.className).toMatch(/weekDayToday/);
+    expect(tue.textContent).toMatch(/Di\s*Heute/);
+    expect(tue.textContent).toMatch(/1 \/ 2 gegessen/);
+    expect(tue.textContent).toMatch(/kcal[\d.]+ \/ [\d.]+/);
+    expect(tue.textContent).toMatch(/🌿 Ruhetag/); // trains Mon/Wed/Fri
+    expect(mon.textContent).toMatch(/🏋️/);
+    // Monday is past: folded to its summary, expandable.
+    expect(mon.querySelector('[class*="weekDayMeals"]')).toBeNull();
+    await act(async () => mon.querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!.click());
+    expect(mon.querySelector('[class*="weekDayMeals"]')!.textContent).toMatch(/Chili/);
   });
 });

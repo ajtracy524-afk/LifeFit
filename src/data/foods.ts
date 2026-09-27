@@ -1,6 +1,6 @@
 import type { Allergen, Food, Micros, ShoppingCategory } from '../domain/types';
 import { FOOD_MICROS } from './foodMicros';
-import { SALT_PER_SODIUM } from './nutrients';
+import { consistentMicros, SALT_PER_SODIUM } from './nutrients';
 
 /** Supermarket walking order, used to sort the shopping list. */
 export const CATEGORIES: { id: ShoppingCategory; label: string }[] = [
@@ -139,7 +139,7 @@ export const FOODS: Food[] = RAW.map(([id, name, category, kcal, protein, carbs,
   allergens,
   ...extra,
   ...(EST_PRICE_PER_KG[id] !== undefined ? { estPricePerKg: EST_PRICE_PER_KG[id] } : {}),
-  ...(catalogMicros(id) ? { micros: catalogMicros(id) } : {}),
+  ...(catalogMicros(id) ? { micros: consistentMicros({ carbs }, catalogMicros(id)) } : {}),
 }));
 
 const BY_ID = new Map(FOODS.map((f) => [f.id, f]));

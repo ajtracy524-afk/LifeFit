@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { getRecipe } from '../../data/recipes';
-import { addDays, isoWeekNumber, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
-import { BASIC_NUTRIENTS, daySummary, plannedMealMacros, sumMacros, type NutritionSummary } from '../../domain/nutrition';
-import { SLOT_ORDER, slotShare } from '../../domain/planner';
-import { activeWorkouts, estimateMinutes } from '../../domain/training';
-import { DAY_MODE_LABEL, excludedSlots, TIME_BUDGETS } from '../../domain/timeBudget';
-import { dayContextFor, dayTargetFor, weekShopping } from '../../domain/week';
-import type { ISODate, LogEntry, MealSlot, PlannedMeal } from '../../domain/types';
-import { fmt, formatDateLong, relativeDay, SLOT_LABEL, weekdayShort } from '../../lib/format';
+import { addDays, isoWeekNumber, today, weekDays, weekStart } from '../../domain/dates';
+import { BASIC_NUTRIENTS, daySummary, type NutritionSummary } from '../../domain/nutrition';
+import { SLOT_ORDER } from '../../domain/planner';
+import { activeWorkouts } from '../../domain/training';
+import { excludedSlots } from '../../domain/timeBudget';
+import { buildWeekPlan, dayContextFor, dayTargetFor } from '../../domain/week';
+import type { ISODate, LogEntry } from '../../domain/types';
+import { fmt, formatDateLong, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { href, navigate, useRoute } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
 import { removeLogEntry } from '../../store/actions';
@@ -30,8 +30,11 @@ import { CoachCard } from '../today/CoachCard';
 import { TimeBudgetControl } from '../today/TimeBudgetControl';
 import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { WaterControl } from './WaterControl';
-import { MicronutrientPanel } from './MicronutrientPanel';
+import { NutrientReportEntry } from './NutrientReport';
 import { BudgetLine } from './BudgetLine';
+import { WeekDayCard } from './WeekDayCard';
+import { dayOverview } from '../../domain/week/dayOverview';
+import { priceLookup } from '../../domain/costs';
 import { CookSheet } from './CookSheet';
 import { CalorieStatusBadge } from './CalorieStatusBadge';
 import styles from './nutrition.module.css';
@@ -134,7 +137,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
             <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
           </div>
           <OptionalNutrients summary={summary.day} />
-          <MicronutrientPanel summary={summary.day} />
+          {!isFuture && <NutrientReportEntry date={date} onLog={() => onLog({ date, slot: slots.find((s) => !summary.slots[s].entries) ?? slots[0]! })} />}
         </Card>
       )}
 
@@ -296,7 +299,10 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
   const end = days[6]!;
   const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
   const training = useMemo(() => activeWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, state.dayContexts, start]);
-  const shoppingCount = useMemo(() => weekShopping(state, start, t).filter((i) => i.state === 'open').length, [state, start, t]);
+  // The week as the central WeekPlan computes it – the cards only display it.
+  const plan = useMemo(() => buildWeekPlan(state, start, t), [state, start, t]);
+  const shoppingCount = plan.shopping.filter((i) => i.state === 'open').length;
+  const price = useMemo(() => priceLookup(state.products), [state.products]);
 
   // Slots eaten out are free on purpose – not "open".
   const openSlots = days
@@ -344,62 +350,9 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
         </Card>
       )}
 
-      {days.map((d) => {
-        const dayMeals = state.plannedMeals.filter((m) => m.date === d);
-        const target = dayTargetFor(state, d);
-        const planned = sumMacros(dayMeals.filter((m) => m.status !== 'skipped').map(plannedMealMacros));
-        // On an eating-out day the planned meals cover only their share of the target.
-        const out = excludedSlots(dayContextFor(state, d)).filter((sl) => slots.includes(sl));
-        const plannedShare = out.length ? 1 - slotShare(out, slots) : 1;
-        const fit = target && dayMeals.length > 0 ? planned.kcal / (target.kcal * plannedShare) : undefined;
-        const session = training.find((s) => s.date === d);
-        const past = d < t;
-        return (
-          <Card key={d} padded={false} className={[styles.dayCard, past && styles.dayCardPast].filter(Boolean).join(' ')}>
-            <header className={styles.dayHeader}>
-              <a href={href('nutrition', { view: 'day', date: d })} className={styles.dayName}>
-                <strong>{weekdayShort(weekdayIndex(d))}</strong>
-                <span>{d === t ? 'Heute' : relativeDayShort(d)}</span>
-              </a>
-              {session && (
-                <span className={styles.trainingTag}>
-                  <Icon name="dumbbell" size={14} /> {session.template.name} · ~{estimateMinutes(session.template)} min
-                  {session.status === 'moved' ? ' · verschoben' : ''}
-                </span>
-              )}
-              {dayContextFor(state, d).timeBudget !== 'normal' && dayContextFor(state, d).mode === 'normal' && (
-                <span className={styles.trainingTag}>
-                  <Icon name="clock" size={14} /> {TIME_BUDGETS[dayContextFor(state, d).timeBudget].label}
-                </span>
-              )}
-              {dayContextFor(state, d).mode !== 'normal' && (
-                <span className={styles.trainingTag}>
-                  <Icon name="calendar" size={14} /> {DAY_MODE_LABEL[dayContextFor(state, d).mode]}
-                </span>
-              )}
-              <span className={styles.flex} />
-              {fit !== undefined && (
-                <span className={Math.abs(fit - 1) <= 0.08 ? styles.fitOk : styles.fitOff} title="Geplante Kalorien im Vergleich zum Ziel">
-                  {fmt.kcal(planned.kcal)}
-                </span>
-              )}
-            </header>
-            {slots.map((slot) => {
-              const slotMeals = dayMeals.filter((m) => m.slot === slot);
-              if (slotMeals.length === 0) {
-                return past ? null : (
-                  <button key={slot} type="button" className={styles.emptySlot} onClick={() => onPick({ date: d, slot })}>
-                    <Icon name="plus" size={16} /> {SLOT_LABEL[slot]}
-                  </button>
-                );
-              }
-              return slotMeals.map((m: PlannedMeal) => (
-                <MealRow key={m.id} meal={m} label={SLOT_LABEL[slot as MealSlot]} onOpen={() => onOpenMeal(m.id)} checkable={d <= t} />
-              ));
-            })}
-          </Card>
-        );
-      })}
+      {plan.days.map((day) => (
+        <WeekDayCard key={day.date} day={day} overview={dayOverview(day, t, slots, price)} today={t} slots={slots} session={training.find((s) => s.date === day.date)} onOpenMeal={onOpenMeal} onPick={onPick} />
+      ))}
 
       {!isPastWeek &&
         (shoppingCount > 0 ? (

@@ -3,11 +3,9 @@ import type { ISODate } from '../../domain/types';
 import { today } from '../../domain/dates';
 import { formatLitres, waterOn, waterStreak, WATER_STREAK_MIN_DAYS } from '../../domain/water';
 import { href } from '../../lib/router';
-import { withUndo } from '../../lib/undo';
-import { celebrate } from '../../lib/celebrate';
-import { haptic, useCrossing, useIncrease } from '../../lib/motion';
+import { useCrossing, useIncrease } from '../../lib/motion';
+import { changeWater } from './waterActions';
 import { CountUp } from '../../components/ui/CountUp';
-import { addWaterMl } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import styles from './nutrition.module.css';
 
@@ -47,10 +45,7 @@ export function WaterControl({ date }: { date: ISODate }) {
   const setTo = (next: number) => {
     const delta = next - ml;
     if (delta === 0) return;
-    const done = withUndo(`Wasser ${delta > 0 ? '+' : '−'}${Math.abs(delta)} ml · ${formatLitres(next)}`, () => addWaterMl(date, delta));
-    if (!done || delta < 0) return;
-    if (goal && ml < goal && next >= goal) celebrate({ kind: 'water', icon: '💧', title: 'Wasserziel erreicht', detail: `${formatLitres(next)} heute`, level: 3 });
-    else haptic(1);
+    changeWater(date, delta);
   };
   const tap = (i: number) => setTo(i === full - 1 ? ml - unit : (i + 1) * unit);
 

@@ -3,7 +3,8 @@ import { getFood } from '../data/foods';
 import { emptyState } from '../store/persistence';
 import { ingredientFromFood } from './dishes';
 import { runEngine } from './engine';
-import { FEEDBACK_RULES, foodFeedback, withFeedback } from './foodFeedback';
+import { foodFeedback, withFeedback } from './foodFeedback';
+import { references } from './nutrientReport';
 import type { AppState, CustomDish, LogEntry, Macros, NutritionTarget } from './types';
 
 /** Feedback after logging: at most one line, only from real values, no judgement. */
@@ -25,16 +26,18 @@ describe('food feedback', () => {
     expect(foodFeedback({ entry: { macros: m(100, 2, 20, 1) }, before: m(2450, 60, 200, 60), target })?.kind).not.toBe('calorie_zone');
   });
 
-  it('sugar: said once, neutrally, when the day crosses the EU reference of 90 g – with the real number', () => {
-    const f = foodFeedback({ entry: { macros: m(300, 3, 70, 1), micros: { sugar: 40 } }, before, sugarBefore: 60, target });
-    expect(f).toEqual({ kind: 'sugar', icon: 'ℹ️', text: 'Zucker heute bei 100 g – über dem Referenzwert von 90 g', amount: 100 });
-    expect(FEEDBACK_RULES.sugarReferenceG).toBe(90);
+  it('sugar: said once, neutrally, when the day crosses the ONE sugar reference (EU 90 g at 2000 kcal, scaled: 113 g at 2500 kcal)', () => {
+    const f = foodFeedback({ entry: { macros: m(300, 3, 70, 1), micros: { sugar: 40 } }, before, sugarBefore: 80, target });
+    expect(f).toEqual({ kind: 'sugar', icon: 'ℹ️', text: 'Zucker heute bei 120 g – über dem Referenzwert von 113 g', amount: 120, limit: 113 });
+    expect(references(target, undefined).sugar!.amount).toBe(113);
+    // Below the personal reference (100 g < 113 g) → nothing yet.
+    expect(foodFeedback({ entry: { macros: m(300, 3, 70, 1), micros: { sugar: 40 } }, before, sugarBefore: 60, target })).toBeUndefined();
     // Already above before → not repeated with every entry.
-    expect(foodFeedback({ entry: { macros: m(300, 3, 70, 1), micros: { sugar: 40 } }, before, sugarBefore: 95, target })?.kind).not.toBe('sugar');
+    expect(foodFeedback({ entry: { macros: m(300, 3, 70, 1), micros: { sugar: 40 } }, before, sugarBefore: 115, target })?.kind).not.toBe('sugar');
   });
 
   it('protein-rich (≥ 20 g and ≥ 25 % of the energy), fiber-rich (≥ 5 g), balanced – in that order', () => {
-    expect(foodFeedback({ entry: { macros: m(150, 27, 10, 0.5) }, before, target })).toEqual({ kind: 'protein', icon: '💪', text: 'Starker Protein-Boost · 27 g', amount: 27 });
+    expect(foodFeedback({ entry: { macros: m(150, 27, 10, 0.5) }, before, target })).toEqual({ kind: 'protein', icon: '💪', text: 'Starker Protein-Boost · 27 g', amount: 27, remaining: 83 });
     expect(foodFeedback({ entry: { macros: m(300, 10, 50, 5), micros: { fiber: 8 } }, before, target })).toEqual({ kind: 'fiber', icon: '🌱', text: 'Gute Ballaststoffquelle · 8 g', amount: 8 });
     // 22 % protein, 50 % carbs, 27 % fat of 600 kcal – balanced, but not protein-rich.
     expect(foodFeedback({ entry: { macros: m(600, 33, 75, 18) }, before, target })?.kind).toBe('balanced');
@@ -50,7 +53,7 @@ describe('food feedback', () => {
   it('never judges or claims health effects', () => {
     const texts = [
       foodFeedback({ entry: { macros: m(400, 30, 20, 10) }, before: m(1000, 125, 100, 30), target }),
-      foodFeedback({ entry: { macros: m(300, 3, 70, 1), micros: { sugar: 40 } }, before, sugarBefore: 60, target }),
+      foodFeedback({ entry: { macros: m(300, 3, 70, 1), micros: { sugar: 40 } }, before, sugarBefore: 80, target }),
       foodFeedback({ entry: { macros: m(150, 27, 10, 0.5) }, before, target }),
     ].map((f) => f!.text);
     for (const t of texts) expect(t).not.toMatch(/schlecht|ungesund|gesund|macht dich|stärker|sollst|musst/i);

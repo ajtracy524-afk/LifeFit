@@ -37,11 +37,11 @@ export function feedbackCelebration(fb: FoodFeedback): CelebrationInput {
     case 'calorie_zone':
       return { kind: 'target', icon: '🎯', title: 'Im Zielbereich', detail: 'Kalorien heute im Ziel', level: 3 };
     case 'sugar':
-      return { kind: 'info', icon: 'ℹ️', title: `Zucker heute bei ${fmt.g(fb.amount ?? 0)}`, detail: 'über dem Referenzwert von 90 g', level: 1 };
+      return { kind: 'info', icon: 'ℹ️', title: `Zucker heute bei ${fmt.g(fb.amount ?? 0)}`, detail: `über dem Referenzwert von ${fb.limit ?? 90} g`, level: 1 };
     case 'protein':
-      return { kind: 'power', icon: '💪', title: `+${fmt.g(fb.amount ?? 0)} Protein`, detail: 'Starker Protein-Boost', level: 2 };
+      return { kind: 'power', icon: '💪', title: `Protein-Boost · +${fmt.g(fb.amount ?? 0)}`, detail: fb.remaining ? `noch ${fmt.g(fb.remaining)} bis zum Tagesziel` : 'Starke Proteinquelle', level: 2 };
     case 'fiber':
-      return { kind: 'grow', icon: '🌱', title: `+${fmt.g(fb.amount ?? 0)} Ballaststoffe`, detail: 'Gute Ballaststoffquelle', level: 2 };
+      return { kind: 'grow', icon: '🌱', title: `Ballaststoff-Boost · +${fmt.g(fb.amount ?? 0)}`, detail: 'Gute Ballaststoffquelle', level: 2 };
     case 'micro':
       return { kind: 'sparkle', icon: '✨', title: fb.text, detail: 'Referenzwert der Lebensmittelkennzeichnung (NRV)', level: 2 };
     case 'balanced':

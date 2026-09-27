@@ -64,6 +64,8 @@ export function scaleMicros(per100: Micros | undefined, factor: number): Micros 
   return out;
 }
 
+export { consistentMicros } from '../data/nutrients';
+
 /** Salt to 0.01 g, small mg/µg values to 0.01, everything else to 0.1 – never rounds a real amount down to 0. */
 export function roundMicro(key: MicroNutrient, v: number): number {
   const precision = key === 'salt' || (NUTRIENTS[key].unit !== 'g' && Math.abs(v) < 1) ? 100 : 10;

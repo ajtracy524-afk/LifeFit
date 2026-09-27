@@ -2,7 +2,7 @@ import type { DbFood } from '../data/foodDb';
 import { SALT_PER_SODIUM } from '../data/nutrients';
 import { ingredientCostRange, type CostRange, type PriceLookup } from './costs';
 import type { EntryContent } from './foodEntry';
-import { roundMacros, scaleMacros, scaleMicros, sumCompleteMicros } from './nutrition';
+import { consistentMicros, roundMacros, scaleMacros, scaleMicros, sumCompleteMicros } from './nutrition';
 import type { CustomDish, DishIngredient, Food, MacroKey, Macros, Micros, Product } from './types';
 
 /**
@@ -95,7 +95,7 @@ export function ingredientFromFood(food: Food, grams: number, id: string): DishI
 }
 
 export function ingredientFromDb(food: DbFood, grams: number, id: string): DishIngredient {
-  return { id, name: food.name, grams, source: 'database', ref: food.id, per100: { ...food.per100 }, micros100: withSalt(food.micros) };
+  return { id, name: food.name, grams, source: 'database', ref: food.id, per100: { ...food.per100 }, micros100: dbFoodMicros(food) };
 }
 
 /** Undefined for a product without calories – it cannot be part of a computed dish. */
@@ -134,7 +134,7 @@ export function validateDish(draft: DishDraft): DishErrors {
 /** Log entry content of a database food (FoodData Central) – no catalog link, so no pantry and no price. */
 export function dbFoodEntry(food: DbFood, grams: number): EntryContent {
   const f = grams / 100;
-  const micros = scaleMicros(withSalt(food.micros), f);
+  const micros = scaleMicros(dbFoodMicros(food), f);
   return {
     name: food.name,
     method: 'food',
@@ -147,5 +147,5 @@ export function dbFoodEntry(food: DbFood, grams: number): EntryContent {
 
 /** Per-100 g micros of a database food as used everywhere (salt from sodium). */
 export function dbFoodMicros(food: DbFood): Micros {
-  return withSalt(food.micros);
+  return consistentMicros(food.per100, withSalt(food.micros)) ?? {};
 }

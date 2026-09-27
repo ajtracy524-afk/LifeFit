@@ -26,6 +26,10 @@
   /* Motion: one spring and one ease for the whole app (see lib/motion.ts). */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Status tones (thermometers, badges): green = in range, amber = watch, red = outside. Existing colours – no new palette. */
+  --tone-good: var(--accent);
+  --tone-watch: var(--carbs);
+  --tone-alert: var(--danger);
   --space: 16px;
   --tabbar-h: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);

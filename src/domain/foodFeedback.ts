@@ -1,5 +1,6 @@
 import { fmt } from '../lib/format';
 import { calorieStatus } from './calorieStatus';
+import { references, REPORT_RULES } from './nutrientReport';
 import { NUTRIENTS } from '../data/nutrients';
 import { VITAL_NUTRIENTS } from './nutrition';
 import type { Macros, MacroKey, MicroNutrient, Micros, NutritionTarget } from './types';
@@ -19,11 +20,6 @@ export const FEEDBACK_RULES = {
   proteinEnergyShare: 0.25,
   /** "Gute Ballaststoffquelle" from this much fiber in the entry. */
   fiberG: 5,
-  /**
-   * Sugar: the EU reference intake for total sugars (Regulation 1169/2011,
-   * Annex XIII part B: 90 g) – mentioned once, when the day crosses it.
-   */
-  sugarReferenceG: 90,
   /** "Ausgewogen": energy shares inside these ranges, for a real meal (≥ 250 kcal). */
   balancedMinKcal: 250,
   balanced: { protein: [0.2, 0.35], carbs: [0.4, 0.55], fat: [0.2, 0.35] },
@@ -35,6 +31,10 @@ export interface FoodFeedback {
   text: string;
   /** The number behind it (g protein / g fiber of the entry, g sugar of the day) – for the celebration line. */
   amount?: number;
+  /** What is still open towards the day target after this entry (protein), if a target exists. */
+  remaining?: number;
+  /** The reference the amount was compared with (sugar). */
+  limit?: number;
   /** The vitamin/mineral behind a "micro" feedback. */
   nutrient?: MicroNutrient;
 }
@@ -66,13 +66,15 @@ export function foodFeedback({ entry, before, sugarBefore, microsBefore = {}, ta
   }
   const sugar = entry.micros?.sugar;
   if (sugar !== undefined && sugar > 0) {
+    // The ONE sugar reference of the app (nutrientReport): EU 90 g at 2'000 kcal, scaled to the day target.
+    const limit = references(target, undefined).sugar?.amount ?? REPORT_RULES.sugarReferenceG;
     const day = (sugarBefore ?? 0) + sugar;
-    if ((sugarBefore ?? 0) < F.sugarReferenceG && day >= F.sugarReferenceG) {
-      return { kind: 'sugar', icon: 'ℹ️', text: `Zucker heute bei ${fmt.g(day)} – über dem Referenzwert von ${F.sugarReferenceG} g`, amount: day };
+    if ((sugarBefore ?? 0) < limit && day >= limit) {
+      return { kind: 'sugar', icon: 'ℹ️', text: `Zucker heute bei ${fmt.g(day)} – über dem Referenzwert von ${limit} g`, amount: day, limit };
     }
   }
   if (!unknown.has('protein') && m.protein >= F.proteinBoostG && (m.protein * 4) / m.kcal >= F.proteinEnergyShare) {
-    return { kind: 'protein', icon: '💪', text: `Starker Protein-Boost · ${fmt.g(m.protein)}`, amount: m.protein };
+    return { kind: 'protein', icon: '💪', text: `Starker Protein-Boost · ${fmt.g(m.protein)}`, amount: m.protein, ...(target ? { remaining: Math.max(0, target.protein - before.protein - m.protein) } : {}) };
   }
   const fiber = entry.micros?.fiber;
   if (fiber !== undefined && fiber >= F.fiberG) return { kind: 'fiber', icon: '🌱', text: `Gute Ballaststoffquelle · ${fmt.g(fiber)}`, amount: fiber };
