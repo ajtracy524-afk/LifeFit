@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
 import { getExercise } from '../../data/exercises';
-import { completedSetCount, formatSet } from '../../domain/training';
+import { planSummary, planVsActual, PLAN_STATUS_LABEL, workoutStats } from '../../domain/trainingHistory';
+import { recordText } from '../../domain/workoutRecords';
+import { celebrate } from '../../lib/celebrate';
 import { fmt, formatDateLong, formatDuration } from '../../lib/format';
 import { navigate, useRoute } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
@@ -13,12 +16,24 @@ import { today } from '../../domain/dates';
 import { EmptyState } from '../../components/ui/Feedback';
 import styles from './training.module.css';
 
-/** Summary right after finishing (`done=1`) and detail view from the history. */
+/**
+ * Summary right after finishing (`done=1`) and detail view from the history:
+ * duration, exercises, sets, reps, volume, real records – and per exercise
+ * what was planned and what really happened.
+ */
 export function WorkoutSummary() {
   const { params } = useRoute();
   const state = useAppState();
   const workout = state.workouts.find((w) => w.id === params.get('id') && w.status === 'completed');
   const justFinished = params.get('done') === '1';
+  const records = workout?.records ?? [];
+
+  // Right after finishing: one celebration for the records of this session (they are real – detectRecords).
+  useEffect(() => {
+    if (!justFinished || !records.length) return;
+    celebrate({ kind: 'power', icon: '🏆', title: records.length === 1 ? 'Neue Bestleistung' : `${records.length} neue Bestleistungen`, detail: workout?.name, level: 3 });
+    // Only on arrival.
+  }, []);
 
   if (!workout) {
     return (
@@ -33,12 +48,12 @@ export function WorkoutSummary() {
     );
   }
 
-  const duration = new Date(workout.endedAt ?? workout.startedAt).getTime() - new Date(workout.startedAt).getTime();
+  const stats = workoutStats(workout);
   const previous = state.workouts
     .filter((w) => w.status === 'completed' && w.templateId === workout.templateId && w.startedAt < workout.startedAt)
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-  const volumeDelta = previous?.volumeKg ? ((workout.volumeKg ?? 0) - previous.volumeKg) / previous.volumeKg : undefined;
-  const records = workout.records ?? [];
+  const volumeDelta = previous?.volumeKg && stats.volumeKg ? (stats.volumeKg - previous.volumeKg) / previous.volumeKg : undefined;
+  const plan = planSummary(workout);
 
   return (
     <Screen
@@ -48,34 +63,61 @@ export function WorkoutSummary() {
     >
       {justFinished && <p className={styles.muted}>{workout.name} ist gespeichert. Dein Fortschritt wurde aktualisiert.</p>}
 
-      <div className={styles.statGrid}>
-        <Stat label="Dauer" value={formatDuration(duration)} />
-        <Stat label="Volumen" value={`${fmt.int(workout.volumeKg ?? 0)} kg`} sub={volumeDelta !== undefined ? `${volumeDelta >= 0 ? '+' : '−'}${fmt.int(Math.abs(volumeDelta * 100))} % zum letzten Mal` : undefined} />
-        <Stat label="Sätze" value={String(completedSetCount(workout))} />
-      </div>
-
       {records.length > 0 && (
         <Card tone="accent">
-          <h2 className={styles.cardTitle}>🏆 {records.length === 1 ? 'Neuer Rekord' : `${records.length} neue Rekorde`}</h2>
+          <h2 className={styles.cardTitle}>🏆 {records.length === 1 ? 'Neue Bestleistung' : `${records.length} neue Bestleistungen`}</h2>
           <ul className={styles.recordList}>
-            {records.map((r) => (
-              <li key={r.exerciseId}>
-                <span>{getExercise(r.exerciseId)?.name}</span>
-                <strong>{formatSet(r)}</strong>
-              </li>
-            ))}
+            {records.map((r) => {
+              const t = recordText(r);
+              return (
+                <li key={r.exerciseId}>
+                  <span>
+                    {t.icon} {t.title}
+                  </span>
+                  <strong>{t.detail}</strong>
+                </li>
+              );
+            })}
           </ul>
         </Card>
       )}
 
+      <div className={styles.statGrid} aria-label="Zusammenfassung">
+        <Stat label="Dauer" value={formatDuration(stats.durationMin * 60000)} />
+        <Stat label="Übungen" value={String(stats.exercises)} />
+        <Stat label="Sätze" value={String(stats.sets)} />
+        {stats.volumeKg > 0 && (
+          <Stat
+            label="Volumen"
+            value={`${fmt.int(stats.volumeKg)} kg`}
+            sub={volumeDelta !== undefined ? `${volumeDelta >= 0 ? '+' : '−'}${fmt.int(Math.abs(volumeDelta * 100))} % zum letzten Mal` : undefined}
+          />
+        )}
+        {stats.reps > 0 && <Stat label="Wdh." value={fmt.int(stats.reps)} />}
+        {stats.cardioMin > 0 && <Stat label="Cardio" value={`${fmt.int(stats.cardioMin)} min`} />}
+      </div>
+
       <Card>
+        {plan && <p className={styles.planLine}>{plan}</p>}
         <ul className={styles.summaryList}>
-          {workout.exercises.map((ex) => (
-            <li key={ex.id}>
-              <strong>{getExercise(ex.exerciseId)?.name}</strong>
-              <span className={styles.muted}>{ex.sets.map((s) => formatSet(s)).join(' · ')}</span>
-            </li>
-          ))}
+          {workout.exercises.map((ex) => {
+            const row = planVsActual(ex);
+            return (
+              <li key={ex.id} data-status={row.status}>
+                <div className={styles.summaryHead}>
+                  <strong>{getExercise(ex.exerciseId)?.name ?? 'Übung'}</strong>
+                  {row.status !== 'as_planned' && PLAN_STATUS_LABEL[row.status] && (
+                    <span className={styles.statusTag} data-status={row.status}>
+                      {PLAN_STATUS_LABEL[row.status]}
+                    </span>
+                  )}
+                </div>
+                {row.replacedFrom && <span className={styles.muted}>statt {row.replacedFrom}</span>}
+                {row.planned && <span className={styles.planRow}>Geplant: {row.planned}</span>}
+                <span className={styles.muted}>{row.actual ? `${row.planned ? 'Gemacht: ' : ''}${row.actual}` : 'Nicht gemacht'}</span>
+              </li>
+            );
+          })}
         </ul>
       </Card>
 

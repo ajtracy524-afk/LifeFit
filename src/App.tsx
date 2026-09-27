@@ -15,6 +15,10 @@ import { NutritionScreen } from './features/nutrition/NutritionScreen';
 import { TrainingScreen } from './features/training/TrainingScreen';
 import { SessionScreen } from './features/training/SessionScreen';
 import { WorkoutSummary } from './features/training/WorkoutSummary';
+import { ExerciseLibraryScreen } from './features/training/ExerciseLibrary';
+import { RoutineEditor } from './features/training/RoutineEditor';
+import { ProgramsScreen } from './features/training/ProgramsScreen';
+import { HistoryScreen } from './features/training/HistoryScreen';
 import { ShoppingScreen } from './features/shopping/ShoppingScreen';
 import { ProgressScreen } from './features/progress/ProgressScreen';
 import { ProfileScreen } from './features/profile/ProfileScreen';
@@ -43,7 +47,7 @@ export function App() {
   }
 
   const fullscreen = route.path === 'session';
-  const activeTab: Tab | null = route.path === 'workout' ? 'training' : (['today', 'nutrition', 'training', 'shopping', 'progress'] as Tab[]).includes(route.path as Tab) ? (route.path as Tab) : null;
+  const activeTab: Tab | null = (['workout', 'exercises', 'routine', 'programs', 'history'] as string[]).includes(route.path) ? 'training' : (['today', 'nutrition', 'training', 'shopping', 'progress'] as Tab[]).includes(route.path as Tab) ? (route.path as Tab) : null;
 
   return (
     <>
@@ -54,6 +58,10 @@ export function App() {
         {route.path === 'training' && <TrainingScreen />}
         {route.path === 'session' && <SessionScreen />}
         {route.path === 'workout' && <WorkoutSummary />}
+        {route.path === 'exercises' && <ExerciseLibraryScreen />}
+        {route.path === 'routine' && <RoutineEditor />}
+        {route.path === 'programs' && <ProgramsScreen />}
+        {route.path === 'history' && <HistoryScreen />}
         {route.path === 'shopping' && <ShoppingScreen />}
         {route.path === 'progress' && <ProgressScreen />}
         {route.path === 'profile' && <ProfileScreen />}

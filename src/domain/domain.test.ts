@@ -135,7 +135,7 @@ describe('planner', () => {
 describe('training', () => {
   it('rotates templates across the week', () => {
     const s = scheduleForWeek({ programId: 'upper-lower', weekdays: [0, 1, 3, 4] }, '2026-09-21');
-    expect(s.map((x) => x.template.name)).toEqual(['Oberkörper A', 'Unterkörper A', 'Oberkörper B', 'Unterkörper B']);
+    expect(s.map((x) => x.template.name)).toEqual(['Oberkörper – Kraft', 'Unterkörper – Kniebeuge', 'Oberkörper – Klimmzüge & Arme', 'Unterkörper – Kreuzheben & Po']);
   });
 
   const done = (id: string, startedAt: string, weight: number, reps: number[]): Workout => ({
@@ -162,15 +162,25 @@ describe('training', () => {
     expect(progressionSuggestion(done('a', '2026-09-01T10:00', 80, [10, 9, 8]).exercises[0]!.sets, 10, 'bench-press')).toBeUndefined();
   });
 
-  it('prefills a new session with the last performance', () => {
+  it('prefills a new session with today’s target: the last performance plus one rep inside the range (double progression)', () => {
     const history = [done('a', '2026-09-01T10:00', 80, [8, 8, 7])];
     const template = { id: 'ppl-push', name: 'Push', focus: '', exercises: [{ exerciseId: 'bench-press', sets: 3, repMin: 6, repMax: 10, restSec: 150 }] };
     const w = createWorkout(template, history, '2026-09-08');
     expect(w.exercises[0]!.sets.map((s) => [s.weightKg, s.reps])).toEqual([
+      [80, 9],
+      [80, 9],
       [80, 8],
-      [80, 8],
-      [80, 7],
     ]);
+    // The target is stored separately – what the user really does never overwrites the plan.
+    expect(w.exercises[0]!.sets.map((s) => s.target)).toEqual([
+      { weightKg: 80, reps: 9 },
+      { weightKg: 80, reps: 9 },
+      { weightKg: 80, reps: 8 },
+    ]);
+    expect(w.exercises[0]!.planned).toEqual({ exerciseId: 'bench-press', sets: 3, repMin: 6, repMax: 10, weightKg: 80 });
+    // Never above the range: 10 stays 10 (then more weight is due – see progressionSuggestion).
+    const top = createWorkout(template, [done('b', '2026-09-01T10:00', 80, [10, 10, 9])], '2026-09-08');
+    expect(top.exercises[0]!.sets.map((s) => s.reps)).toEqual([10, 10, 10]);
   });
 
   it('detects personal records only against earlier sessions', () => {

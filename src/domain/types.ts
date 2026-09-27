@@ -105,15 +105,36 @@ export interface Recipe {
   personal?: true;
 }
 
-export type Equipment = 'barbell' | 'dumbbell' | 'machine' | 'cable' | 'bodyweight';
+export type Equipment = 'barbell' | 'dumbbell' | 'machine' | 'cable' | 'bodyweight' | 'kettlebell' | 'band' | 'cardio_machine';
+
+/** Muscle groups of the library (filter + body map). "Beine" in the filter = quads + hamstrings. */
+export type MuscleGroup = 'chest' | 'back' | 'shoulders' | 'biceps' | 'triceps' | 'forearms' | 'quads' | 'hamstrings' | 'glutes' | 'calves' | 'core' | 'cardio';
+export type Difficulty = 'beginner' | 'intermediate' | 'advanced';
+/** strength = sets × reps × kg, cardio = minutes (optionally km), mobility = minutes / reps without load. */
+export type ExerciseType = 'strength' | 'cardio' | 'mobility';
 
 export interface Exercise {
   id: string;
   name: string;
+  /** Short muscle label for lists ("Brust", "Beinbeuger & Po"). */
   muscle: string;
   equipment: Equipment;
   /** Bodyweight exercises log reps; weight is optional (added load). */
   bodyweight?: boolean;
+  primary: MuscleGroup;
+  secondary: MuscleGroup[];
+  difficulty: Difficulty;
+  type: ExerciseType;
+  /** Compound (several joints) or isolation – strength only. */
+  mechanics?: 'compound' | 'isolation';
+  /** One sentence: what the movement is. */
+  description: string;
+  /** Short steps – how to do it. */
+  steps: string[];
+  /** Common mistakes / hints. */
+  tips: string[];
+  /** Exercises that train the same thing (ids, most similar first). */
+  alternatives: string[];
 }
 
 export interface TemplateExercise {
@@ -122,6 +143,10 @@ export interface TemplateExercise {
   repMin: number;
   repMax: number;
   restSec: number;
+  /** Cardio / mobility: planned minutes per set (block). */
+  durationMin?: number;
+  /** Exercises with the same group run back to back as a superset (rest after the last one). */
+  supersetGroup?: string;
 }
 
 export interface WorkoutTemplate {
@@ -131,12 +156,39 @@ export interface WorkoutTemplate {
   exercises: TemplateExercise[];
 }
 
+/** A reusable workout of the user ("Meine Routinen") – a template with a history of its own. */
+export interface Routine extends WorkoutTemplate {
+  createdAt: string;
+  updatedAt: string;
+  /** Built-in template it was copied from. */
+  copiedFrom?: string;
+}
+
 export interface WorkoutProgram {
   id: string;
   name: string;
   description: string;
   templates: WorkoutTemplate[];
+  /** Planned duration – a block, not an end: afterwards it simply continues. */
+  weeks?: number;
+  /** For whom it fits – used by recommendProgram. */
+  level?: Experience;
+  days?: number[];
+  equipment?: TrainingEquipment;
+  goal?: GoalType;
 }
+
+/** An own program: routines (own or built-in template ids) that rotate like a built-in program. */
+export interface CustomProgram {
+  id: string;
+  name: string;
+  routineIds: string[];
+  weeks?: number;
+  createdAt: string;
+}
+
+/** What the user can train with – filters the recommendation and replacement suggestions. */
+export type TrainingEquipment = 'gym' | 'home' | 'bodyweight';
 
 // ---------- User data ----------
 
@@ -188,6 +240,10 @@ export interface TrainingSetup {
   weekdays: number[];
   /** F1: training days of single weeks chosen in the weekly check-in (keyed by week start). */
   weekOverrides?: Record<ISODate, number[]>;
+  /** What the user can train with (default: gym). */
+  equipment?: TrainingEquipment;
+  /** Day the current program started – "Woche 3 von 12". */
+  startedAt?: ISODate;
 }
 
 export type PlannedMealStatus = 'planned' | 'eaten' | 'skipped';
@@ -281,7 +337,8 @@ export interface Product {
   price?: { chf: number; amount: number; at: string };
 }
 
-export type SetType = 'warmup' | 'working';
+/** 'working' = a normal set. Every type except warmup counts for volume and records. */
+export type SetType = 'warmup' | 'working' | 'drop' | 'failure' | 'amrap';
 
 export interface WorkoutSet {
   id: string;
@@ -289,6 +346,23 @@ export interface WorkoutSet {
   reps: number | null;
   done: boolean;
   type: SetType;
+  /** Cardio / mobility: minutes and (optional) distance. */
+  durationMin?: number | null;
+  distanceKm?: number | null;
+  /** What was planned for this set when the session started – the actual values stay separate. */
+  target?: { weightKg: number | null; reps: number | null };
+  /** Deliberately left out in the session (not the same as "not ticked yet"). */
+  skipped?: boolean;
+}
+
+/** The plan of one exercise, frozen at the start – "Geplant 3 × 8–10 @ 80 kg". */
+export interface PlannedExercise {
+  exerciseId: string;
+  sets: number;
+  repMin: number;
+  repMax: number;
+  weightKg?: number | null;
+  durationMin?: number;
 }
 
 export interface WorkoutExercise {
@@ -298,14 +372,26 @@ export interface WorkoutExercise {
   repMax: number;
   restSec: number;
   sets: WorkoutSet[];
+  /** Plan snapshot; missing for exercises added in the session (extra) and on older workouts. */
+  planned?: PlannedExercise;
+  /** Swapped in the session – the planned exercise stays in `planned`. */
+  replacedFrom?: string;
+  skipped?: boolean;
+  extra?: boolean;
+  supersetGroup?: string;
 }
+
+/** est_1rm / max_reps: the best set · max_weight: heaviest ever · rep: more reps at a weight · volume: most kg × reps in one session. */
+export type RecordKind = 'est_1rm' | 'max_reps' | 'max_weight' | 'rep' | 'volume';
 
 export interface PersonalRecord {
   exerciseId: string;
-  kind: 'est_1rm' | 'max_reps';
+  kind: RecordKind;
   value: number;
   weightKg: number | null;
   reps: number;
+  /** The best before – for "+5 kg" / "10 statt 8". */
+  previous?: number;
 }
 
 export interface Workout {
@@ -432,6 +518,10 @@ export interface AppState {
   water: Record<ISODate, number>;
   /** The user's own saved dishes ("Meine Gerichte"), keyed by id. */
   customDishes: Record<string, CustomDish>;
+  /** The user's own reusable workouts ("Meine Routinen"), keyed by id. */
+  routines: Record<string, Routine>;
+  /** The user's own programs (rotation of routines), keyed by id. */
+  customPrograms: Record<string, CustomProgram>;
 }
 
 /** One ingredient of an own dish, with the nutrient values it had when it was added. */

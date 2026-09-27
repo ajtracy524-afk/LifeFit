@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { AppState } from '../domain/types';
 import { clearState, emptyState, loadState, saveState } from './persistence';
 import { syncPersonal } from '../domain/personal';
+import { syncTraining } from '../domain/trainingPersonal';
 
 type Listener = () => void;
 
@@ -9,6 +10,7 @@ const initial = loadState();
 let state: AppState = initial.state;
 // Own products and dishes are known to getFood / getRecipe / the planner from the first render on.
 syncPersonal(state);
+syncTraining(state);
 const listeners = new Set<Listener>();
 
 /** Status of local persistence, shown as a banner if saving fails. */
@@ -41,6 +43,7 @@ export function update(recipe: (draft: AppState) => void): void {
   recipe(draft);
   state = draft;
   syncPersonal(state);
+  syncTraining(state);
   persist();
   emit();
 }
@@ -49,6 +52,7 @@ export function update(recipe: (draft: AppState) => void): void {
 export function commit(next: AppState): void {
   state = next;
   syncPersonal(state);
+  syncTraining(state);
   persist();
   emit();
 }
@@ -71,6 +75,7 @@ export function resetAll(): void {
   clearState();
   state = emptyState();
   syncPersonal(state);
+  syncTraining(state);
   // The recovery copy is gone, so the "data was corrupted" banner no longer applies.
   if (storageNotice === 'recovered') {
     storageNotice = undefined;

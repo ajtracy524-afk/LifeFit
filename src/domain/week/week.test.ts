@@ -218,7 +218,7 @@ describe('cascade', () => {
     const kcal = (s: AppState, d: string) => s.plannedMeals.filter((m) => m.date === d).reduce((sum, m) => sum + plannedMealMacros(m).kcal, 0);
     expect(kcal(r.state, THU)).toBeLessThan(kcal(before, THU));
     expect(kcal(r.state, FRI)).toBeGreaterThan(kcal(before, FRI));
-    expect(r.summary.title).toBe('Ganzkörper B auf Freitag verschoben');
+    expect(r.summary.title).toBe('Ganzkörper – Kreuzheben & Latzug auf Freitag verschoben');
     expect(r.summary.details.join(' ')).toMatch(/Portionen angepasst/);
   });
 

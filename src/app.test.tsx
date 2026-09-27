@@ -2093,3 +2093,249 @@ describe('hardening: product corrections, origin, skipped parts (UI)', () => {
     expect(dlg.querySelector('[aria-label="Zutaten"]')!.textContent).toMatch(/Skyr \(Emmi\)/);
   });
 });
+
+describe('training premium core (UI)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 10, 0)); // Tuesday 10:00
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    (await import('./lib/celebrate')).dismissCelebration();
+  });
+
+  const MON = '2026-09-21';
+  const done = (weight: number, reps: number) => ({ id: `s${Math.random()}`, weightKg: weight, reps, done: true, type: 'working' });
+  // Last week's push: bench 80 × 8 × 3, shoulder press 20 × 10.
+  const lastPush = {
+    id: 'old',
+    date: '2026-09-15',
+    templateId: 'ppl-push',
+    name: 'Push',
+    startedAt: '2026-09-15T17:00:00Z',
+    endedAt: '2026-09-15T18:00:00Z',
+    status: 'completed',
+    exercises: [
+      { id: 'o1', exerciseId: 'bench-press', repMin: 6, repMax: 10, restSec: 150, sets: [done(80, 8), done(80, 8), done(80, 8)] },
+      { id: 'o2', exerciseId: 'overhead-press', repMin: 8, repMax: 12, restSec: 120, sets: [done(20, 10)] },
+    ],
+  };
+  const withTraining = (patch: Record<string, unknown> = {}) => ({
+    ...completeState(),
+    training: { programId: 'push-pull-legs', weekdays: [0, 2, 4], startedAt: '2026-09-01' },
+    workouts: [lastPush],
+    ...patch,
+  });
+  const dialog = () => document.querySelector<HTMLDialogElement>('dialog[open]');
+  const dialogButton = (start: string) => {
+    const found = [...(dialog()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find((b) => b.textContent?.trim().startsWith(start));
+    if (!found) throw new Error(`Dialog button starting "${start}" not found`);
+    return found;
+  };
+  const byLabel = <T extends HTMLElement>(label: string) => {
+    const el = container.querySelector<T>(`[aria-label="${label}"]`);
+    if (!el) throw new Error(`[aria-label="${label}"] not found`);
+    return el;
+  };
+  const tap = (el: HTMLElement) => act(async () => el.click());
+  const setInput = async (el: HTMLInputElement, value: string) => {
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setValue.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const chip = () => document.querySelector<HTMLElement>('[data-testid="celebration"]');
+
+  it('library: muscle chips, filters, search; the detail explains the exercise with figure, muscles, steps, alternatives and own numbers', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withTraining()));
+    window.history.replaceState(null, '', '/#/training');
+    await startApp();
+    await click('Übungen');
+    expect(window.location.hash).toBe('#/exercises');
+    const rows = () => [...container.querySelectorAll<HTMLButtonElement>('main ul button')].map((b) => b.querySelector('strong')!.textContent);
+    const all = rows().length;
+    expect(all).toBeGreaterThanOrEqual(50);
+    await click('Brust');
+    expect(rows().slice(0, 3)).toEqual(['Bankdrücken', 'Kurzhantel-Bankdrücken', 'Schrägbankdrücken (KH)']);
+    expect(rows()).toContain('Enges Bankdrücken'); // chest as secondary muscle, listed after
+    await click('Filter');
+    await click('Maschine');
+    expect(rows()).toEqual(['Brustpresse (Maschine)']);
+    await click('Maschine');
+    await click('Brust');
+    await setInput(byLabel<HTMLInputElement>('Übung suchen'), 'kreuzheb');
+    expect(rows()).toEqual(['Kreuzheben', 'Rumänisches Kreuzheben', 'Rumänisches Kreuzheben (KH)']);
+
+    await setInput(byLabel<HTMLInputElement>('Übung suchen'), 'Bankdrücken');
+    await tap([...container.querySelectorAll<HTMLButtonElement>('main ul button')].find((b) => b.querySelector('strong')!.textContent === 'Bankdrücken')!);
+    const d = dialog()!;
+    expect(d.getAttribute('aria-label')).toBe('Bankdrücken');
+    expect(d.querySelector('svg[role="img"]')!.getAttribute('aria-label')).toBe('Trainiert: Brust (hauptsächlich), Trizeps, Schultern');
+    expect(d.textContent).toMatch(/Kraft · Langhantel · Fortgeschritten/);
+    expect(d.textContent).toMatch(/Letztes Training80 kg × 8 · 80 kg × 8 · 80 kg × 8/);
+    expect(d.textContent).toMatch(/Bestleistung80 kg × 8/);
+    expect(d.textContent).toMatch(/So geht’s/);
+    expect(d.textContent).toMatch(/Darauf achten/);
+    // Alternatives open in place.
+    await tap(dialogButton('Kurzhantel-Bankdrücken'));
+    expect(dialog()!.querySelector('h2')!.textContent).toBe('Kurzhantel-Bankdrücken');
+  });
+
+  it('gym flow: start → prefilled target → ✓ → live record + rest timer with the next set → edit, skip, set type, replace → finish with plan vs. reality', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withTraining()));
+    window.history.replaceState(null, '', '/#/training');
+    const store = await startApp();
+    await tap(byLabel('Push – Brust, Schulter & Trizeps starten'));
+    expect(window.location.hash).toBe('#/session');
+    const bench = container.querySelector('section[aria-label="Bankdrücken"]')!;
+    // Today's target from last time (80 × 8 → 80 × 9) is prefilled, last time and best are right at the exercise.
+    expect(bench.querySelector<HTMLInputElement>('[aria-label="Gewicht Satz 1"]')!.value).toBe('80');
+    expect(bench.querySelector<HTMLInputElement>('[aria-label="Wiederholungen Satz 1"]')!.value).toBe('9');
+    expect(bench.textContent).toMatch(/Letztes Training: 80 kg × 8, 80 kg × 8, 80 kg × 8/);
+    expect(bench.textContent).toMatch(/Bestleistung: 80 kg × 8/);
+    expect(bench.textContent).toMatch(/Heute: 80 kg × 9/);
+    expect(bench.querySelector('[role="row"]:nth-child(2) [class*="prev"]')!.textContent).toBe('80×8');
+
+    // ✓ → a real rep record right away, and the rest timer starts by itself.
+    await tap(bench.querySelector<HTMLButtonElement>('[aria-label="Satz 1 erledigt"]')!);
+    expect(chip()!.textContent).toMatch(/Wiederholungs-Rekord/);
+    expect(chip()!.textContent).toMatch(/Bankdrücken · 80 kg: 9 statt 8/);
+    const timer = () => container.querySelector<HTMLElement>('[role="timer"]');
+    expect(timer()!.textContent).toMatch(/Pause/);
+    expect(timer()!.textContent).toMatch(/2:30/);
+    expect(timer()!.textContent).toMatch(/Als Nächstes: Bankdrücken · Satz 2 · 80 kg × 9/);
+    await tap(byLabel('30 Sekunden mehr'));
+    expect(timer()!.textContent).toMatch(/3:00/);
+    await tap(byLabel('30 Sekunden weniger'));
+    await tap(byLabel('30 Sekunden weniger'));
+    expect(timer()!.textContent).toMatch(/2:00/);
+    await tap([...timer()!.querySelectorAll('button')].find((b) => b.textContent === 'Überspringen')!);
+    expect(timer()).toBeNull();
+    // The same record is not celebrated twice in one session.
+    (await import('./lib/celebrate')).dismissCelebration();
+    await tap(bench.querySelector<HTMLButtonElement>('[aria-label="Satz 2 erledigt"]')!);
+    expect(chip()).toBeNull();
+    // Edit a set: only 7 reps in set 3.
+    await setInput(bench.querySelector<HTMLInputElement>('[aria-label="Wiederholungen Satz 3"]')!, '7');
+    await tap(bench.querySelector<HTMLButtonElement>('[aria-label="Satz 3 erledigt"]')!);
+    const w = () => store.getState().workouts.find((x) => x.status === 'in_progress')!;
+    expect(w().exercises[0]!.sets.map((s) => [s.weightKg, s.reps, s.done])).toEqual([
+      [80, 9, true],
+      [80, 9, true],
+      [80, 7, true],
+    ]);
+
+    // Set options on the incline press: warm-up for set 1, skip set 3.
+    const incline = () => container.querySelector('section[aria-label="Schrägbankdrücken (KH)"]')!;
+    await tap(incline().querySelector<HTMLButtonElement>('[aria-label^="Satz 1: Normal"]')!);
+    await tap(dialogButton('WAufwärmen'));
+    expect(incline().querySelector('[aria-label^="Satz 1: Aufwärmen"]')!.textContent).toBe('W');
+    await tap(incline().querySelector<HTMLButtonElement>('[aria-label^="Satz 3: Normal"]')!);
+    await clickInDialog('Satz überspringen');
+    expect(incline().querySelector<HTMLInputElement>('[aria-label="Gewicht Satz 3"]')!.disabled).toBe(true);
+    expect(incline().querySelector<HTMLButtonElement>('[aria-label="Satz 3 erledigt"]')!.disabled).toBe(true);
+    await setInput(incline().querySelector<HTMLInputElement>('[aria-label="Gewicht Satz 2"]')!, '24');
+    await setInput(incline().querySelector<HTMLInputElement>('[aria-label="Wiederholungen Satz 2"]')!, '10');
+    await tap(incline().querySelector<HTMLButtonElement>('[aria-label="Satz 2 erledigt"]')!);
+
+    // Replace the shoulder press with the machine – straight from "trainiert dasselbe".
+    await tap(byLabel('Optionen für Schulterdrücken (KH)'));
+    await clickInDialog('Übung ersetzen');
+    expect(dialog()!.textContent).toMatch(/Trainiert dasselbe/);
+    await tap(dialogButton('Schulterpresse (Maschine)'));
+    const machine = container.querySelector('section[aria-label="Schulterpresse (Maschine)"]')!;
+    expect(machine.textContent).toMatch(/Ersetzt · statt Schulterdrücken \(KH\)/);
+    expect(machine.textContent).toMatch(/Erstes Mal/); // prefilled from ITS OWN history (none) – nothing invented
+    await setInput(machine.querySelector<HTMLInputElement>('[aria-label="Gewicht Satz 1"]')!, '40');
+    await tap(machine.querySelector<HTMLButtonElement>('[aria-label="Satz 1 erledigt"]')!);
+    // Skip the lateral raise completely; stop early (triceps not started).
+    await tap(byLabel('Optionen für Seitheben'));
+    await clickInDialog('Übung überspringen');
+    expect(container.querySelector('section[aria-label="Seitheben"]')!.getAttribute('data-state')).toBe('skipped');
+
+    await click('Beenden');
+    await clickInDialog('Speichern');
+    expect(window.location.hash).toMatch(/^#\/workout\?id=.+&done=1$/);
+    expect(text()).toMatch(/Stark gemacht/);
+    expect(text()).toMatch(/Neue Bestleistung/);
+    expect(text()).toMatch(/Wiederholungs-RekordBankdrücken · 80 kg: 9 statt 8/);
+    const summary = container.querySelector('[aria-label="Zusammenfassung"]')!.textContent!;
+    expect(summary).toMatch(/Übungen3/);
+    expect(summary).toMatch(/Sätze5/); // 3 bench + 1 incline (warm-up not counted) + 1 machine
+    expect(text()).toMatch(/1 von 5 Übungen wie geplant · 1 mit weniger Sätzen\/Wdh\. · 1 ersetzt · 2 ausgelassen/);
+    const item = (name: string) => [...container.querySelectorAll('li[data-status]')].find((li) => li.querySelector('strong')!.textContent === name)!;
+    expect(item('Bankdrücken').textContent).toMatch(/Geplant: 3 × 6–10 @ 80 kgGemacht: 9 @ 80 · 9 @ 80 · 7 @ 80/);
+    expect(item('Schulterpresse (Maschine)').textContent).toMatch(/Ersetztstatt Schulterdrücken \(KH\)/);
+    expect(item('Seitheben').textContent).toMatch(/AusgelassenGeplant: 3 × 12–20Nicht gemacht/);
+    expect(item('Schrägbankdrücken (KH)').getAttribute('data-status')).toBe('less');
+  });
+
+  it('history, muscle groups this week, routines (create, start, duplicate, delete) and programs (choose, own program)', async () => {
+    const thisWeek = { ...lastPush, id: 'mon', date: MON, startedAt: `${MON}T17:00:00Z`, endedAt: `${MON}T17:52:00Z`, name: 'Push – Brust, Schulter & Trizeps', volumeKg: 2120, records: [{ exerciseId: 'bench-press', kind: 'rep', value: 9, weightKg: 80, reps: 9, previous: 8 }] };
+    localStorage.setItem(KEY, JSON.stringify(withTraining({ workouts: [lastPush, thisWeek] })));
+    window.history.replaceState(null, '', '/#/training');
+    const store = await startApp();
+    // Which muscle groups were trained this week (bench 3 sets: chest 3, shoulders + arms 1.5; shoulder press 1 set).
+    expect(byLabel('Brust: 3 Sätze')).toBeTruthy();
+    expect(byLabel('Schultern: 2,5 Sätze')).toBeTruthy();
+    expect(byLabel('Beine: 0 Sätze')).toBeTruthy();
+    // History by week.
+    await click('Verlauf');
+    expect(window.location.hash).toBe('#/history');
+    expect(text()).toMatch(/Diese Woche/);
+    expect(text()).toMatch(/Push – Brust, Schulter & Trizeps.*52 min · 4 Sätze · 2.120 kg · 1 Rekord/);
+    expect(text()).toMatch(/Letzte Woche/);
+
+    // A new routine.
+    await act(async () => window.location.assign('#/routine'));
+    await type('Name', 'Oberkörper kurz');
+    await click('Übung hinzufügen');
+    await setInput(dialog()!.querySelector<HTMLInputElement>('[aria-label="Übung suchen"]')!, 'Latzug');
+    await tap(dialogButton('Latzug'));
+    expect(text()).toMatch(/LatzugSätzeWdh\. vonbisPause s/);
+    await click('Routine speichern');
+    expect(window.location.hash).toBe('#/training');
+    const routine = Object.values(store.getState().routines)[0]!;
+    expect(routine).toMatchObject({ name: 'Oberkörper kurz', exercises: [{ exerciseId: 'lat-pulldown', sets: 3, repMin: 8, repMax: 12 }] });
+    // Duplicate, then delete the copy.
+    await tap(byLabel('Optionen für Oberkörper kurz'));
+    await clickInDialog('Duplizieren');
+    expect(Object.values(store.getState().routines).map((r) => r.name).sort()).toEqual(['Oberkörper kurz', 'Oberkörper kurz (Kopie)']);
+    await tap(byLabel('Optionen für Oberkörper kurz (Kopie)'));
+    await clickInDialog('Löschen');
+    expect(Object.keys(store.getState().routines)).toEqual([routine.id]);
+    // Start it like any session.
+    await tap(byLabel('Oberkörper kurz starten'));
+    expect(window.location.hash).toBe('#/session');
+    expect(container.querySelector('section[aria-label="Latzug"]')).toBeTruthy();
+    await act(async () => store.update((s) => void (s.workouts = s.workouts.filter((w) => w.status !== 'in_progress'))));
+
+    // Programs: the recommendation, the real week preview, choosing one.
+    await act(async () => window.location.assign('#/programs'));
+    const card = (name: string) => byLabel(name);
+    expect(card('Push / Pull / Beine').textContent).toMatch(/Aktiv · Woche 4 von 12/);
+    expect(card('Ganzkörper').textContent).toMatch(/Empfohlen/); // beginner + 3 days
+    await tap(card('Oberkörper / Unterkörper').querySelector<HTMLButtonElement>('[aria-label="Wochenplan zeigen"]')!);
+    expect(card('Oberkörper / Unterkörper').textContent).toMatch(/Woche 1Mo (Ober|Unter)körper – [^·]+ · Mi (Ober|Unter)körper – [^·]+ · Fr (Ober|Unter)körper – [^·]+Woche 2Mo /); // the real rotation of this calendar week
+    await tap([...card('Oberkörper / Unterkörper').querySelectorAll('button')].find((b) => b.textContent === 'Dieses Programm wählen')!);
+    expect(store.getState().training).toMatchObject({ programId: 'upper-lower', weekdays: [0, 2, 4], startedAt: '2026-09-22' });
+    // Completed workouts are untouched by the plan change.
+    expect(store.getState().workouts.map((w) => w.id)).toEqual(['old', 'mon']);
+    // An own program from the routine + a built-in session.
+    await click('Programm erstellen');
+    await type('Name', 'Mein Wechsel');
+    await tap(dialogButton('Oberkörper kurz'));
+    await tap(dialogButton('Beine – Kniebeuge & Hüfte'));
+    await clickInDialog('Speichern');
+    const own = Object.values(store.getState().customPrograms)[0]!;
+    expect(own).toMatchObject({ name: 'Mein Wechsel', routineIds: [routine.id, 'ppl-legs'] });
+    expect(card('Mein Wechsel').textContent).toMatch(/2 Einheiten im Wechsel/);
+  });
+});

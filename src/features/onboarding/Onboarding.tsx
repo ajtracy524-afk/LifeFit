@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PROGRAMS, getExercise } from '../../data/exercises';
+import { programsFor, recommendationReason, recommendProgram } from '../../domain/programs';
 import { today } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
 import { slotsFor } from '../../domain/planner';
-import type { ActivityLevel, Allergen, DietType, Experience, GoalType, MealStyle, Sex } from '../../domain/types';
+import type { ActivityLevel, Allergen, DietType, Experience, GoalType, MealStyle, Sex, TrainingEquipment } from '../../domain/types';
 import { fmt } from '../../lib/format';
 import { navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
@@ -26,12 +27,6 @@ const DEFAULT_DAYS: Record<number, number[]> = {
   6: [0, 1, 2, 3, 4, 5],
 };
 
-function suggestProgram(days: number, experience: Experience): string {
-  if (days <= 2) return 'full-body';
-  if (days === 3) return experience === 'beginner' ? 'full-body' : 'push-pull-legs';
-  if (days === 4) return 'upper-lower';
-  return 'push-pull-legs';
-}
 
 interface BodyForm {
   name: string;
@@ -56,6 +51,7 @@ export function Onboarding() {
   const [tastes, setTastes] = useState<{ favorites: string[]; avoided: string[] }>({ favorites: [], avoided: [] });
   const [mealStyle, setMealStyle] = useState<MealStyle | null>(null);
   const [programId, setProgramId] = useState<string | null>(null);
+  const [equipment, setEquipment] = useState<TrainingEquipment>('gym');
   const [adjust, setAdjust] = useState({ kcal: 0, protein: 0 });
 
   const index = STEPS.indexOf(step);
@@ -68,7 +64,10 @@ export function Onboarding() {
   const back = () => setStep(STEPS[index - 1]!);
 
   const weight = parseNumber(body.weight);
-  const effectiveProgram = programId ?? suggestProgram(weekdays.length, experience);
+  const fit = { days: weekdays.length, experience, goal, equipment };
+  const recommended = recommendProgram(fit);
+  // A program chosen for other equipment does not stay selected.
+  const effectiveProgram = programId && programsFor(equipment).some((p) => p.id === programId) ? programId : recommended;
 
   const calc = useMemo(() => {
     if (!Number.isFinite(weight)) return null;
@@ -139,7 +138,7 @@ export function Onboarding() {
             avoided: tastes.avoided,
             mealStyle: effectiveStyle,
           },
-          training: { programId: effectiveProgram, weekdays: [...weekdays].sort((a, b) => a - b) },
+          training: { programId: effectiveProgram, weekdays: [...weekdays].sort((a, b) => a - b), equipment, startedAt: today() },
           target: finalTarget,
           weightKg: weight,
         });
@@ -345,11 +344,21 @@ export function Onboarding() {
           <>
             <StepTitle title="Dein Trainingsplan" text={`Für ${weekdays.length} Tage pro Woche empfehlen wir:`} />
             <div className={styles.stack}>
-              {PROGRAMS.map((p) => (
+              <Segmented<TrainingEquipment>
+                label="Wo trainierst du?"
+                value={equipment}
+                onChange={setEquipment}
+                options={[
+                  { value: 'gym', label: 'Studio' },
+                  { value: 'home', label: 'Zuhause (KH)' },
+                  { value: 'bodyweight', label: 'Ohne Geräte' },
+                ]}
+              />
+              {programsFor(equipment).map((p) => (
                 <OptionCard
                   key={p.id}
-                  title={p.id === suggestProgram(weekdays.length, experience) ? `${p.name} · Empfohlen` : p.name}
-                  description={p.description}
+                  title={p.id === recommended ? `${p.name} · Empfohlen` : p.name}
+                  description={p.id === recommended ? `${recommendationReason(fit)} ${p.description}` : p.description}
                   selected={effectiveProgram === p.id}
                   onClick={() => setProgramId(p.id)}
                 />

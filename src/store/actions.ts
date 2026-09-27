@@ -6,7 +6,7 @@ import { getFood } from '../data/foods';
 import { findTemplate } from '../data/exercises';
 import { addDays, today, weekStart } from '../domain/dates';
 import { calculateTargets, foodMacros, logFromMeal, roundMacros, scaleMicros } from '../domain/nutrition';
-import { activeWorkouts, createWorkout, detectRecords, workoutVolume } from '../domain/training';
+import { activeWorkouts, createWorkout, detectRecords, workoutExercise, workoutVolume } from '../domain/training';
 import { applyWeekChange, closeCompletedDays, dayContextFor, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
 import { recordEvent } from '../domain/learning';
 import { productEntry, type EntryContent } from '../domain/foodEntry';
@@ -28,7 +28,11 @@ import type {
   PlannedMeal,
   Product,
   Profile,
+  Routine,
+  SetType,
+  TemplateExercise,
   TrainingSetup,
+  WorkoutExercise,
   WorkoutSet,
   WorkoutTemplate,
 } from '../domain/types';
@@ -502,11 +506,13 @@ export function completeSet(workoutId: string, exerciseEntryId: string, setId: s
     if (!ex || !set) return;
     set.done = done;
     if (!done) return;
-    if (set.reps === null) set.reps = ex.repMax;
+    delete set.skipped;
+    if (set.reps === null && set.durationMin === undefined) set.reps = ex.repMax;
     for (const next of ex.sets.slice(index + 1)) {
       if (next.done) continue;
       if (next.weightKg === null) next.weightKg = set.weightKg;
       if (next.reps === null) next.reps = set.reps;
+      if (next.durationMin == null && set.durationMin != null) next.durationMin = set.durationMin;
     }
   });
 }
@@ -516,7 +522,101 @@ export function addSet(workoutId: string, exerciseEntryId: string): void {
     const ex = s.workouts.find((w) => w.id === workoutId)?.exercises.find((e) => e.id === exerciseEntryId);
     if (!ex) return;
     const last = ex.sets[ex.sets.length - 1];
-    ex.sets.push({ id: newId(), weightKg: last?.weightKg ?? null, reps: last?.reps ?? null, done: false, type: 'working' });
+    ex.sets.push({
+      id: newId(),
+      weightKg: last?.weightKg ?? null,
+      reps: last?.reps ?? null,
+      done: false,
+      type: 'working',
+      ...(last?.durationMin !== undefined ? { durationMin: last.durationMin, distanceKm: null } : {}),
+    });
+    // A set more than planned is simply one more set – the plan snapshot stays as it was.
+    ex.skipped = false;
+  });
+}
+
+function sessionExercise(s: AppState, workoutId: string, exerciseEntryId: string): WorkoutExercise | undefined {
+  return s.workouts.find((w) => w.id === workoutId && w.status === 'in_progress')?.exercises.find((e) => e.id === exerciseEntryId);
+}
+
+/** Normal / warm-up / drop / failure / AMRAP – only the label of the set changes, its values stay. */
+export function setSetType(workoutId: string, exerciseEntryId: string, setId: string, type: SetType): void {
+  update((s) => {
+    const set = sessionExercise(s, workoutId, exerciseEntryId)?.sets.find((x) => x.id === setId);
+    if (set) set.type = type;
+  });
+}
+
+/** Leave a set out on purpose (or take it back). A skipped set is never "done". */
+export function skipSet(workoutId: string, exerciseEntryId: string, setId: string, skipped: boolean): void {
+  update((s) => {
+    const set = sessionExercise(s, workoutId, exerciseEntryId)?.sets.find((x) => x.id === setId);
+    if (!set) return;
+    set.skipped = skipped || undefined;
+    if (skipped) set.done = false;
+  });
+}
+
+/** Removes one set that is not done (the plan snapshot keeps the planned count). */
+export function removeSet(workoutId: string, exerciseEntryId: string, setId: string): void {
+  update((s) => {
+    const ex = sessionExercise(s, workoutId, exerciseEntryId);
+    if (!ex || ex.sets.length <= 1) return;
+    ex.sets = ex.sets.filter((x) => x.id !== setId || x.done);
+  });
+}
+
+/** Skip a whole exercise (or take it back): its open sets are marked skipped, done sets stay. */
+export function skipExercise(workoutId: string, exerciseEntryId: string, skipped: boolean): void {
+  update((s) => {
+    const ex = sessionExercise(s, workoutId, exerciseEntryId);
+    if (!ex) return;
+    ex.skipped = skipped || undefined;
+    for (const set of ex.sets) if (!set.done) set.skipped = skipped || undefined;
+  });
+}
+
+/**
+ * Swap an exercise in the running session. The plan snapshot keeps the
+ * planned exercise; the new one gets fresh sets (same count and range),
+ * prefilled from ITS OWN history. Done sets of the old exercise are kept as
+ * their own (extra) entry, so nothing that happened is lost.
+ */
+export function replaceExercise(workoutId: string, exerciseEntryId: string, newExerciseId: string): void {
+  update((s) => {
+    const w = s.workouts.find((x) => x.id === workoutId && x.status === 'in_progress');
+    const index = w?.exercises.findIndex((e) => e.id === exerciseEntryId) ?? -1;
+    const old = w?.exercises[index];
+    if (!w || !old || old.exerciseId === newExerciseId) return;
+    const te: TemplateExercise = {
+      exerciseId: newExerciseId,
+      sets: Math.max(1, old.sets.filter((x) => !x.done).length || old.planned?.sets || old.sets.length),
+      repMin: old.repMin,
+      repMax: old.repMax,
+      restSec: old.restSec,
+      ...(old.planned?.durationMin ? { durationMin: old.planned.durationMin } : {}),
+    };
+    const fresh = workoutExercise(te, s.workouts);
+    const next: WorkoutExercise = {
+      ...fresh,
+      ...(old.planned ? { planned: old.planned } : { extra: true }),
+      replacedFrom: old.replacedFrom ?? old.exerciseId,
+      ...(old.supersetGroup ? { supersetGroup: old.supersetGroup } : {}),
+    };
+    delete (next as Partial<WorkoutExercise>).skipped;
+    const doneSets = old.sets.filter((x) => x.done);
+    const kept: WorkoutExercise[] = doneSets.length ? [{ ...old, planned: undefined, extra: true, sets: doneSets }] : [];
+    w.exercises.splice(index, 1, ...kept, next);
+  });
+}
+
+/** An exercise that was not planned – added at the end of the session. */
+export function addExerciseToWorkout(workoutId: string, exerciseId: string, template?: Partial<TemplateExercise>): void {
+  update((s) => {
+    const w = s.workouts.find((x) => x.id === workoutId && x.status === 'in_progress');
+    if (!w) return;
+    const te: TemplateExercise = { exerciseId, sets: 3, repMin: 8, repMax: 12, restSec: 90, ...template };
+    w.exercises.push(workoutExercise(te, s.workouts, { extra: true }));
   });
 }
 
@@ -532,10 +632,15 @@ export function finishWorkout(workoutId: string): void {
   update((s) => {
     const w = s.workouts.find((x) => x.id === workoutId);
     if (!w) return;
-    // Keep history clean: only sets that were actually done.
+    // Keep history clean: only sets that were actually done. A planned exercise
+    // without a done set stays as "ausgelassen" (its plan snapshot is kept) –
+    // plan and reality both remain readable. Unplanned extras without a set go.
     w.exercises = w.exercises
-      .map((ex) => ({ ...ex, sets: ex.sets.filter((set) => set.done) }))
-      .filter((ex) => ex.sets.length > 0);
+      .map((ex) => {
+        const sets = ex.sets.filter((set) => set.done && !set.skipped);
+        return sets.length ? { ...ex, sets, skipped: undefined } : { ...ex, sets, skipped: true };
+      })
+      .filter((ex) => ex.sets.length > 0 || !!ex.planned);
     w.status = 'completed';
     w.endedAt = new Date().toISOString();
     recordEvent(s, { type: 'workout_completed', date: w.date, hour: new Date(w.startedAt).getHours() }, w.endedAt);
@@ -649,10 +754,121 @@ export function updateNutritionProfile(patch: Partial<NutritionProfile>): void {
   });
 }
 
+/** Program / days / equipment (as before: the setup is replaced). A new program starts its "Woche 1" today. */
 export function updateTraining(setup: TrainingSetup): void {
   update((s) => {
-    s.training = setup;
+    const prev = s.training;
+    const changedProgram = !prev || prev.programId !== setup.programId;
+    s.training = {
+      ...(prev?.equipment ? { equipment: prev.equipment } : {}),
+      ...setup,
+      startedAt: setup.startedAt ?? (changedProgram ? today() : (prev?.startedAt ?? today())),
+    };
   });
+}
+
+// ---------- Routines & own programs ----------
+
+export interface RoutineDraft {
+  name: string;
+  focus?: string;
+  exercises: TemplateExercise[];
+}
+
+/** A routine needs a name and at least one exercise; the values are clamped to sensible ranges. */
+export function validRoutine(d: RoutineDraft): string | undefined {
+  if (!d.name.trim()) return 'Bitte gib der Routine einen Namen.';
+  if (!d.exercises.length) return 'Füge mindestens eine Übung hinzu.';
+  return undefined;
+}
+
+const clampInt = (n: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(n || 0)));
+
+/** Creates or updates an own routine. Returns its id (undefined if invalid). */
+export function saveRoutine(draft: RoutineDraft, id?: string): string | undefined {
+  if (validRoutine(draft)) return undefined;
+  const now = new Date().toISOString();
+  const routineId = id ?? `routine:${newId()}`;
+  update((s) => {
+    const prev = s.routines[routineId];
+    const exercises = draft.exercises.map((e) => {
+      const repMin = clampInt(e.repMin, 0, 100);
+      return {
+        ...e,
+        sets: clampInt(e.sets, 1, 10),
+        repMin,
+        repMax: Math.max(repMin, clampInt(e.repMax, 0, 100)),
+        restSec: clampInt(e.restSec, 0, 600),
+        ...(e.durationMin ? { durationMin: clampInt(e.durationMin, 1, 240) } : {}),
+      };
+    });
+    s.routines[routineId] = {
+      ...(prev ?? { createdAt: now }),
+      id: routineId,
+      name: draft.name.trim(),
+      focus: draft.focus?.trim() || focusOf(exercises),
+      exercises,
+      updatedAt: now,
+    } as Routine;
+  });
+  return routineId;
+}
+
+/** "5 Übungen · Brust, Schultern" – derived when the user gives no focus. */
+function focusOf(exercises: TemplateExercise[]): string {
+  return `${exercises.length} ${exercises.length === 1 ? 'Übung' : 'Übungen'}`;
+}
+
+/** Copies an own routine or a built-in session into a new own routine ("… (Kopie)"). */
+export function duplicateRoutine(sourceId: string): string | undefined {
+  const source = getState().routines[sourceId] ?? findTemplate(sourceId);
+  if (!source) return undefined;
+  const id = saveRoutine({ name: `${source.name} (Kopie)`, focus: source.focus, exercises: source.exercises.map((e) => ({ ...e })) });
+  if (id && !sourceId.startsWith('routine:')) {
+    update((s) => {
+      s.routines[id]!.copiedFrom = sourceId;
+    });
+  }
+  return id;
+}
+
+/**
+ * Deletes an own routine. Workouts done with it keep their history (they
+ * store their own copy); own programs simply no longer rotate it.
+ */
+export function deleteRoutine(id: string): boolean {
+  if (!getState().routines[id]) return false;
+  update((s) => {
+    delete s.routines[id];
+    for (const p of Object.values(s.customPrograms)) p.routineIds = p.routineIds.filter((r) => r !== id);
+  });
+  return true;
+}
+
+/** Own program: routines (own or built-in) that rotate on the training days. */
+export function saveProgram(draft: { name: string; routineIds: string[]; weeks?: number }, id?: string): string | undefined {
+  if (!draft.name.trim() || !draft.routineIds.length) return undefined;
+  const programId = id ?? `program:${newId()}`;
+  update((s) => {
+    s.customPrograms[programId] = {
+      createdAt: s.customPrograms[programId]?.createdAt ?? new Date().toISOString(),
+      id: programId,
+      name: draft.name.trim(),
+      routineIds: [...draft.routineIds],
+      ...(draft.weeks ? { weeks: clampInt(draft.weeks, 1, 52) } : {}),
+    };
+  });
+  return programId;
+}
+
+/** The active program cannot be deleted (the week plan depends on it) – choose another one first. */
+export function deleteProgram(id: string): boolean {
+  const s = getState();
+  if (!s.customPrograms[id] || s.training?.programId === id) return false;
+  update((d) => {
+    delete d.customPrograms[id];
+  });
+  return true;
 }
 
 /** Clears upcoming, not yet eaten meals – e.g. after the diet changed. */

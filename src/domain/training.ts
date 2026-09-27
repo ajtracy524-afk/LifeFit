@@ -2,7 +2,7 @@ import { getExercise, getProgram } from '../data/exercises';
 import { newId } from '../lib/id';
 import { addDays, daysBetween, weekDays } from './dates';
 import { effectiveTimeBudget, TIME_BUDGETS } from './timeBudget';
-import type { DayContext, ISODate, PersonalRecord, PlanSlotId, TemplateExercise, TrainingSetup, Workout, WorkoutOverride, WorkoutSet, WorkoutTemplate } from './types';
+import type { DayContext, ISODate, PlanSlotId, TemplateExercise, TrainingSetup, Workout, WorkoutExercise, WorkoutOverride, WorkoutSet, WorkoutTemplate } from './types';
 
 export interface ScheduledWorkout {
   date: ISODate;
@@ -36,9 +36,9 @@ export function scheduleForWeek(setup: TrainingSetup | null, weekStartDate: ISOD
   }));
 }
 
-/** Session length in seconds: rest time plus ~40 s per set. */
+/** Session length in seconds: rest time plus ~40 s per set; cardio / mobility blocks by their minutes. */
 export function estimateSeconds(template: Pick<WorkoutTemplate, 'exercises'>): number {
-  return template.exercises.reduce((s, e) => s + e.sets * (e.restSec + 40), 0);
+  return template.exercises.reduce((s, e) => s + e.sets * ((e.durationMin ? e.durationMin * 60 : 40) + e.restSec), 0);
 }
 
 /** Rough session length in minutes, rounded to 5. */
@@ -196,14 +196,27 @@ export function nextScheduled(
 
 // ---------- Session creation & progression ----------
 
+/**
+ * A set that really counts: done, not skipped, not a warm-up. Normal, drop,
+ * failure and AMRAP sets all count for volume, records and progression.
+ */
+export function isWorkSet(s: WorkoutSet): boolean {
+  return s.done && !s.skipped && s.type !== 'warmup';
+}
+
+/** Cardio and mobility log minutes (and km), not kg × reps. */
+export const isTimed = (exerciseId: string): boolean => {
+  const type = getExercise(exerciseId)?.type;
+  return type === 'cardio' || type === 'mobility';
+};
+
 export function lastSetsFor(workouts: Workout[], exerciseId: string, excludeId?: string): WorkoutSet[] | undefined {
   const sorted = workouts
     .filter((w) => w.status === 'completed' && w.id !== excludeId)
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   for (const w of sorted) {
-    const ex = w.exercises.find((e) => e.exerciseId === exerciseId);
-    const done = ex?.sets.filter((s) => s.done && s.type === 'working');
-    if (done && done.length > 0) return done;
+    const done = w.exercises.filter((e) => e.exerciseId === exerciseId).flatMap((e) => e.sets.filter(isWorkSet));
+    if (done.length > 0) return done;
   }
   return undefined;
 }
@@ -212,6 +225,7 @@ export function weightStep(exerciseId: string): number {
   const ex = getExercise(exerciseId);
   if (!ex) return 2.5;
   if (ex.equipment === 'dumbbell') return 2;
+  if (ex.equipment === 'kettlebell') return 4;
   if (ex.equipment === 'machine' || ex.equipment === 'cable') return 5;
   return 2.5;
 }
@@ -223,11 +237,65 @@ export function weightStep(exerciseId: string): number {
 export function progressionSuggestion(last: WorkoutSet[] | undefined, repMax: number, exerciseId: string): number | undefined {
   if (!last || last.length === 0) return undefined;
   const ex = getExercise(exerciseId);
-  if (ex?.bodyweight) return undefined;
+  if (ex?.bodyweight || (ex && ex.type !== 'strength')) return undefined;
   const weight = Math.max(...last.map((s) => s.weightKg ?? 0));
   if (weight <= 0) return undefined;
   const allTop = last.every((s) => (s.reps ?? 0) >= repMax);
   return allTop ? weight + weightStep(exerciseId) : undefined;
+}
+
+/**
+ * Today's target per set (double progression, only from real history):
+ * - every set reached the top of the range last time → more weight, back to the bottom of the range
+ * - otherwise the same weight and one rep more where the range allows ("80 kg × 9" after 80 × 8)
+ * - no history → nothing (the user picks the first weight)
+ */
+export function setTargets(
+  te: Pick<TemplateExercise, 'exerciseId' | 'sets' | 'repMin' | 'repMax'>,
+  last: WorkoutSet[] | undefined,
+): Array<{ weightKg: number | null; reps: number | null }> {
+  const suggested = progressionSuggestion(last, te.repMax, te.exerciseId);
+  const bodyweight = getExercise(te.exerciseId)?.bodyweight;
+  return Array.from({ length: te.sets }, (_, i) => {
+    const prev = last?.[Math.min(i, last.length - 1)];
+    if (suggested) return { weightKg: suggested, reps: te.repMin };
+    if (!prev) return { weightKg: null, reps: null };
+    const reps = prev.reps !== null && !bodyweight && prev.reps < te.repMax ? prev.reps + 1 : prev.reps;
+    return { weightKg: prev.weightKg, reps };
+  });
+}
+
+/** A fresh exercise entry of a session: plan snapshot + prefilled sets (the targets – one tap confirms). */
+export function workoutExercise(te: TemplateExercise, history: Workout[], opts: { extra?: boolean } = {}): WorkoutExercise {
+  const last = lastSetsFor(history, te.exerciseId);
+  const timed = isTimed(te.exerciseId);
+  const targets = timed ? [] : setTargets(te, last);
+  const lastMinutes = last?.find((s) => s.durationMin)?.durationMin ?? null;
+  return {
+    id: newId(),
+    exerciseId: te.exerciseId,
+    repMin: te.repMin,
+    repMax: te.repMax,
+    restSec: te.restSec,
+    ...(te.supersetGroup ? { supersetGroup: te.supersetGroup } : {}),
+    ...(opts.extra
+      ? { extra: true as const }
+      : {
+          planned: {
+            exerciseId: te.exerciseId,
+            sets: te.sets,
+            repMin: te.repMin,
+            repMax: te.repMax,
+            weightKg: targets[0]?.weightKg ?? null,
+            ...(te.durationMin ? { durationMin: te.durationMin } : {}),
+          },
+        }),
+    sets: Array.from({ length: te.sets }, (_, i) =>
+      timed
+        ? { id: newId(), weightKg: null, reps: null, done: false, type: 'working' as const, durationMin: te.durationMin ?? lastMinutes, distanceKm: null }
+        : { id: newId(), ...targets[i]!, done: false, type: 'working' as const, target: targets[i]! },
+    ),
+  };
 }
 
 export function createWorkout(template: WorkoutTemplate, history: Workout[], date: ISODate): Workout {
@@ -238,42 +306,23 @@ export function createWorkout(template: WorkoutTemplate, history: Workout[], dat
     name: template.name,
     startedAt: new Date().toISOString(),
     status: 'in_progress',
-    exercises: template.exercises.map((te) => {
-      const last = lastSetsFor(history, te.exerciseId);
-      const suggested = progressionSuggestion(last, te.repMax, te.exerciseId);
-      return {
-        id: newId(),
-        exerciseId: te.exerciseId,
-        repMin: te.repMin,
-        repMax: te.repMax,
-        restSec: te.restSec,
-        sets: Array.from({ length: te.sets }, (_, i) => {
-          const prev = last?.[Math.min(i, last.length - 1)];
-          return {
-            id: newId(),
-            // Prefill with last performance so logging is mostly a single tap.
-            weightKg: suggested ?? prev?.weightKg ?? null,
-            reps: suggested ? te.repMin : (prev?.reps ?? null),
-            done: false,
-            type: 'working' as const,
-          };
-        }),
-      };
-    }),
+    exercises: template.exercises.map((te) => workoutExercise(te, history)),
   };
 }
 
 // ---------- Stats & records ----------
 
+/** kg × reps of all work sets (warm-ups and skipped sets never count). */
+export function exerciseVolume(ex: Pick<WorkoutExercise, 'sets'>): number {
+  return ex.sets.reduce((s, set) => (isWorkSet(set) ? s + (set.weightKg ?? 0) * (set.reps ?? 0) : s), 0);
+}
+
 export function workoutVolume(w: Workout): number {
-  return w.exercises.reduce(
-    (sum, ex) => sum + ex.sets.reduce((s, set) => (set.done && set.type === 'working' ? s + (set.weightKg ?? 0) * (set.reps ?? 0) : s), 0),
-    0,
-  );
+  return w.exercises.reduce((sum, ex) => sum + exerciseVolume(ex), 0);
 }
 
 export function completedSetCount(w: Workout): number {
-  return w.exercises.reduce((n, ex) => n + ex.sets.filter((s) => s.done).length, 0);
+  return w.exercises.reduce((n, ex) => n + ex.sets.filter((s) => s.done && !s.skipped).length, 0);
 }
 
 /** Epley estimate of the one-rep max. */
@@ -282,42 +331,14 @@ export function estimateOneRepMax(weightKg: number, reps: number): number {
   return reps === 1 ? weightKg : weightKg * (1 + reps / 30);
 }
 
-function bestOf(workout: Workout, exerciseId: string): PersonalRecord | undefined {
-  const bodyweight = getExercise(exerciseId)?.bodyweight;
-  let best: PersonalRecord | undefined;
-  for (const ex of workout.exercises) {
-    if (ex.exerciseId !== exerciseId) continue;
-    for (const s of ex.sets) {
-      if (!s.done || s.type !== 'working' || !s.reps) continue;
-      const weighted = !bodyweight && (s.weightKg ?? 0) > 0;
-      const candidate: PersonalRecord = weighted
-        ? { exerciseId, kind: 'est_1rm', value: estimateOneRepMax(s.weightKg!, s.reps), weightKg: s.weightKg, reps: s.reps }
-        : { exerciseId, kind: 'max_reps', value: s.reps, weightKg: s.weightKg, reps: s.reps };
-      if (!best || candidate.value > best.value) best = candidate;
-    }
-  }
-  return best;
-}
+export { detectRecords } from './workoutRecords';
 
-/** Records beaten in `workout` compared with all earlier completed workouts. First-time lifts don't count. */
-export function detectRecords(workout: Workout, history: Workout[]): PersonalRecord[] {
-  const earlier = history.filter((w) => w.status === 'completed' && w.id !== workout.id && w.startedAt < workout.startedAt);
-  const records: PersonalRecord[] = [];
-  for (const ex of workout.exercises) {
-    const current = bestOf(workout, ex.exerciseId);
-    if (!current) continue;
-    const previous = earlier
-      .map((w) => bestOf(w, ex.exerciseId))
-      .filter((r): r is PersonalRecord => !!r && r.kind === current.kind);
-    if (previous.length === 0) continue;
-    const prevBest = Math.max(...previous.map((r) => r.value));
-    if (current.value > prevBest + 0.01) records.push(current);
-  }
-  return records;
-}
-
-export function formatSet(s: Pick<WorkoutSet, 'weightKg' | 'reps'>): string {
+export function formatSet(s: Pick<WorkoutSet, 'weightKg' | 'reps'> & Partial<Pick<WorkoutSet, 'durationMin' | 'distanceKm'>>): string {
+  if (s.durationMin) return `${formatKg(s.durationMin)} min${s.distanceKm ? ` · ${formatKg(s.distanceKm)} km` : ''}`;
   const reps = s.reps ?? 0;
   if (!s.weightKg) return `${reps} Wdh.`;
-  return `${String(s.weightKg).replace('.', ',')} kg × ${reps}`;
+  return `${formatKg(s.weightKg)} kg × ${reps}`;
 }
+
+/** "82,5" – German decimal comma, no trailing zeros. */
+export const formatKg = (n: number): string => String(Math.round(n * 100) / 100).replace('.', ',');

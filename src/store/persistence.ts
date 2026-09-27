@@ -1,3 +1,4 @@
+import { findTemplate } from '../data/exercises';
 import { toISODate, weekStart } from '../domain/dates';
 import { buildShoppingList, shoppingRange } from '../domain/shopping';
 import type { AppState, PantryItem, ShoppingWeekState } from '../domain/types';
@@ -28,6 +29,8 @@ export function emptyState(): AppState {
     products: {},
     water: {},
     customDishes: {},
+    routines: {},
+    customPrograms: {},
   };
 }
 
@@ -117,7 +120,40 @@ export function loadState(): LoadResult {
 
 /** All one-time clean-ups of older stored data, applied on load. */
 function migrateLegacy(state: AppState): AppState {
-  return normalizeLegacyDayModes(dropLegacyEurBudget(state));
+  return renameLegacyWorkouts(normalizeLegacyDayModes(dropLegacyEurBudget(state)));
+}
+
+/** Built-in session names before they described their content ("Training A" says nothing). */
+const LEGACY_TEMPLATE_NAMES: Record<string, string> = {
+  'fb-a': 'Ganzkörper A',
+  'fb-b': 'Ganzkörper B',
+  'ul-upper-a': 'Oberkörper A',
+  'ul-lower-a': 'Unterkörper A',
+  'ul-upper-b': 'Oberkörper B',
+  'ul-lower-b': 'Unterkörper B',
+  'ppl-push': 'Push',
+  'ppl-pull': 'Pull',
+  'ppl-legs': 'Beine',
+};
+
+/**
+ * One-time migration: workouts saved under an old built-in name get the
+ * current, descriptive name of the same session ("Ganzkörper A" →
+ * "Ganzkörper – Kniebeuge & Bankdrücken"), keeping a "(kurz)" / "(reduziert)"
+ * suffix. Only exact old names of that template id – nothing else changes.
+ */
+export function renameLegacyWorkouts(state: AppState): AppState {
+  let changed = false;
+  const workouts = (state.workouts ?? []).map((w) => {
+    const old = LEGACY_TEMPLATE_NAMES[w.templateId];
+    const current = findTemplate(w.templateId)?.name;
+    if (!old || !current) return w;
+    const m = w.name.match(/^(.*?)( \((kurz|reduziert)\))*$/);
+    if (m?.[1] !== old) return w;
+    changed = true;
+    return { ...w, name: current + w.name.slice(old.length) };
+  });
+  return changed ? { ...state, workouts } : state;
 }
 
 /**

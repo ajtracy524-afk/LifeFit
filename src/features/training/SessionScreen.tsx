@@ -1,31 +1,66 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getExercise } from '../../data/exercises';
-import { completedSetCount, formatSet, lastSetsFor, progressionSuggestion } from '../../domain/training';
-import type { Workout, WorkoutExercise, WorkoutSet } from '../../domain/types';
+import { alternativesFor, EQUIPMENT_LABEL, SET_TYPE_LABEL, SET_TYPE_SHORT } from '../../domain/exerciseLibrary';
+import { completedSetCount, formatKg, formatSet, isTimed, lastSetsFor } from '../../domain/training';
+import { bestSet } from '../../domain/trainingHistory';
+import { exerciseBests, recordText, setRecord, volumeRecord } from '../../domain/workoutRecords';
+import type { SetType, Workout, WorkoutExercise, WorkoutSet } from '../../domain/types';
+import { celebrate } from '../../lib/celebrate';
 import { formatClock } from '../../lib/format';
+import { haptic } from '../../lib/motion';
 import { navigate } from '../../lib/router';
-import { addSet, completeSet, discardWorkout, finishWorkout, removeLastSet, updateSet } from '../../store/actions';
-import { useAppState } from '../../store/store';
+import {
+  addExerciseToWorkout,
+  addSet,
+  completeSet,
+  discardWorkout,
+  finishWorkout,
+  removeSet,
+  replaceExercise,
+  setSetType,
+  skipExercise,
+  skipSet,
+  updateSet,
+} from '../../store/actions';
+import { getState, useAppState } from '../../store/store';
 import { Button, IconButton } from '../../components/ui/Button';
 import { parseNumber } from '../../components/ui/Controls';
 import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { ProgressBar } from '../../components/ui/Progress';
 import { Sheet } from '../../components/ui/Sheet';
+import { ExercisePicker } from './ExerciseLibrary';
+import { ExerciseSheet } from './ExerciseSheet';
 import { useNow, useWakeLock } from './hooks';
 import styles from './training.module.css';
 
 interface Rest {
   endsAt: number;
   total: number;
+  /** "Bankdrücken · Satz 2 · 80 kg × 8" – what comes after the rest. */
+  next?: string;
 }
 
-/** Full-screen live session: prefilled sets, one tap per set, automatic rest timer. */
+type Picker = { mode: 'add' } | { mode: 'replace'; exerciseEntryId: string };
+
+/**
+ * Full-screen live session – the gym flow: exercise → set → ✓ → rest timer →
+ * next set, all on one screen. Sets are prefilled with today's target (from
+ * the last session), so a tap confirms; every value stays editable. Plan and
+ * reality stay separate: skipping, replacing, adding sets or exercises and
+ * stopping early only change what really happened.
+ */
 export function SessionScreen() {
   const state = useAppState();
   const workout = state.workouts.find((w) => w.status === 'in_progress');
   const [rest, setRest] = useState<Rest | null>(null);
   const [confirm, setConfirm] = useState<'finish' | 'discard' | null>(null);
+  const [setMenu, setSetMenu] = useState<{ exerciseEntryId: string; setId: string } | null>(null);
+  const [exMenu, setExMenu] = useState<string | null>(null);
+  const [picker, setPicker] = useState<Picker | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  // Each record is celebrated once per exercise and kind in a session (un-ticking and ticking again does not repeat it).
+  const celebrated = useRef(new Set<string>());
   const now = useNow(workout ? 1000 : null);
   useWakeLock(!!workout);
 
@@ -42,22 +77,33 @@ export function SessionScreen() {
     );
   }
 
-  const total = workout.exercises.reduce((n, e) => n + e.sets.length, 0);
+  const open = workout.exercises.flatMap((e) => e.sets.filter((s) => !s.skipped));
+  const total = open.length;
   const done = completedSetCount(workout);
   const elapsed = (now - new Date(workout.startedAt).getTime()) / 1000;
+  const equipment = state.training?.equipment;
+  const menuExercise = workout.exercises.find((e) => e.id === exMenu);
+  const menuSet = setMenu ? workout.exercises.find((e) => e.id === setMenu.exerciseEntryId)?.sets.find((s) => s.id === setMenu.setId) : undefined;
+  const replacing = picker?.mode === 'replace' ? workout.exercises.find((e) => e.id === picker.exerciseEntryId) : undefined;
 
   const onSetDone = (exercise: WorkoutExercise, set: WorkoutSet) => {
     const nowDone = !set.done;
     completeSet(workout.id, exercise.id, set.id, nowDone);
-    if (nowDone) {
-      navigator.vibrate?.(15);
-      setRest({ endsAt: Date.now() + exercise.restSec * 1000, total: exercise.restSec });
-    }
+    if (!nowDone) return;
+    if (!celebrateRecord(workout, exercise, set, celebrated.current)) haptic(1);
+    // Superset: straight to the next exercise of the group, the rest comes after the last one.
+    const group = exercise.supersetGroup ? workout.exercises.filter((e) => e.supersetGroup === exercise.supersetGroup && !e.skipped) : [];
+    if (group.length > 1 && group[group.length - 1]!.id !== exercise.id) return setRest(null);
+    setRest({ endsAt: Date.now() + exercise.restSec * 1000, total: exercise.restSec, next: nextSetText(getState().workouts.find((w) => w.id === workout.id) ?? workout) });
   };
 
   const finish = () => {
     finishWorkout(workout.id);
     navigate('workout', { id: workout.id, done: '1' }, { replace: true });
+  };
+  const discard = () => {
+    discardWorkout(workout.id);
+    navigate('training', undefined, { replace: true });
   };
 
   return (
@@ -83,8 +129,20 @@ export function SessionScreen() {
 
       <div className={styles.exerciseList}>
         {workout.exercises.map((ex) => (
-          <ExerciseCard key={ex.id} workout={workout} exercise={ex} history={state.workouts} onSetDone={(set) => onSetDone(ex, set)} />
+          <ExerciseCard
+            key={ex.id}
+            workout={workout}
+            exercise={ex}
+            history={state.workouts}
+            onSetDone={(set) => onSetDone(ex, set)}
+            onSetMenu={(setId) => setSetMenu({ exerciseEntryId: ex.id, setId })}
+            onMenu={() => setExMenu(ex.id)}
+            onInfo={() => setInfo(ex.exerciseId)}
+          />
         ))}
+        <Button variant="secondary" icon="plus" onClick={() => setPicker({ mode: 'add' })}>
+          Übung hinzufügen
+        </Button>
         <Button variant="ghost" className={styles.discard} onClick={() => setConfirm('discard')}>
           Training verwerfen
         </Button>
@@ -92,25 +150,126 @@ export function SessionScreen() {
 
       {rest && <RestTimer rest={rest} now={now} onChange={setRest} />}
 
+      {/* Set options: type, skip, remove. */}
+      <Sheet open={!!menuSet} onClose={() => setSetMenu(null)} title="Satz" subtitle={menuSet ? formatSet(menuSet) : undefined}>
+        {menuSet && setMenu && (
+          <div className={styles.menu}>
+            <p className={styles.planLabel}>Satz-Typ</p>
+            <div className={styles.typeGrid} role="radiogroup" aria-label="Satz-Typ">
+              {(Object.keys(SET_TYPE_LABEL) as SetType[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  role="radio"
+                  aria-checked={menuSet.type === t}
+                  className={menuSet.type === t ? styles.typeOptionActive : styles.typeOption}
+                  onClick={() => {
+                    setSetType(workout.id, setMenu.exerciseEntryId, setMenu.setId, t);
+                    setSetMenu(null);
+                  }}
+                >
+                  <span className={styles.typeBadge}>{SET_TYPE_SHORT[t] || '1'}</span>
+                  {SET_TYPE_LABEL[t]}
+                </button>
+              ))}
+            </div>
+            <p className={styles.muted}>Aufwärmsätze zählen nicht fürs Volumen und nicht für Rekorde.</p>
+            <Button
+              variant="secondary"
+              block
+              onClick={() => {
+                skipSet(workout.id, setMenu.exerciseEntryId, setMenu.setId, !menuSet.skipped);
+                setSetMenu(null);
+              }}
+            >
+              {menuSet.skipped ? 'Satz wieder aufnehmen' : 'Satz überspringen'}
+            </Button>
+            {!menuSet.done && (workout.exercises.find((e) => e.id === setMenu.exerciseEntryId)?.sets.length ?? 0) > 1 && (
+              <Button
+                variant="ghost"
+                block
+                icon="trash"
+                onClick={() => {
+                  removeSet(workout.id, setMenu.exerciseEntryId, setMenu.setId);
+                  setSetMenu(null);
+                }}
+              >
+                Satz entfernen
+              </Button>
+            )}
+          </div>
+        )}
+      </Sheet>
+
+      {/* Exercise options: details, replace, skip, add a set. */}
+      <Sheet open={!!menuExercise} onClose={() => setExMenu(null)} title={menuExercise ? (getExercise(menuExercise.exerciseId)?.name ?? 'Übung') : ''}>
+        {menuExercise && (
+          <div className={styles.menu}>
+            <Button variant="secondary" block icon="info" onClick={() => (setExMenu(null), setInfo(menuExercise.exerciseId))}>
+              Anleitung & Details
+            </Button>
+            <Button variant="secondary" block icon="swap" onClick={() => (setExMenu(null), setPicker({ mode: 'replace', exerciseEntryId: menuExercise.id }))}>
+              Übung ersetzen
+            </Button>
+            <Button variant="secondary" block icon="plus" onClick={() => (addSet(workout.id, menuExercise.id), setExMenu(null))}>
+              Satz hinzufügen
+            </Button>
+            <Button variant="secondary" block onClick={() => (skipExercise(workout.id, menuExercise.id, !menuExercise.skipped), setExMenu(null))}>
+              {menuExercise.skipped ? 'Übung doch machen' : 'Übung überspringen'}
+            </Button>
+          </div>
+        )}
+      </Sheet>
+
+      <ExercisePicker
+        open={!!picker}
+        title={picker?.mode === 'replace' ? 'Übung ersetzen' : 'Übung hinzufügen'}
+        onClose={() => setPicker(null)}
+        onPick={(id) => {
+          if (picker?.mode === 'replace') replaceExercise(workout.id, picker.exerciseEntryId, id);
+          else addExerciseToWorkout(workout.id, id, isTimed(id) ? { sets: 1, repMin: 0, repMax: 0, durationMin: 20, restSec: 60 } : undefined);
+          setPicker(null);
+        }}
+        top={
+          replacing && (
+            <div className={styles.alternatives}>
+              <p className={styles.planLabel}>Trainiert dasselbe</p>
+              {alternativesFor(replacing.exerciseId, equipment)
+                .slice(0, 4)
+                .map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className={styles.altRow}
+                    onClick={() => {
+                      replaceExercise(workout.id, replacing.id, a.id);
+                      setPicker(null);
+                    }}
+                  >
+                    <strong>{a.name}</strong>
+                    <span>{EQUIPMENT_LABEL[a.equipment]}</span>
+                  </button>
+                ))}
+              <p className={styles.planLabel}>Oder aus allen Übungen</p>
+            </div>
+          )
+        }
+      />
+
+      <ExerciseSheet exerciseId={info} onClose={() => setInfo(null)} />
+
       <Sheet
         open={confirm === 'finish'}
         onClose={() => setConfirm(null)}
         title={done === 0 ? 'Noch keine Sätze erledigt' : done < total ? `${total - done} Sätze noch offen` : 'Training abschließen?'}
-        subtitle={done === 0 ? 'Ohne erledigte Sätze wird nichts gespeichert.' : 'Nur erledigte Sätze werden gespeichert.'}
+        subtitle={done === 0 ? 'Ohne erledigte Sätze wird nichts gespeichert.' : 'Nur erledigte Sätze werden gespeichert – offene zählen als ausgelassen.'}
         footer={
           done === 0 ? (
             <>
               <Button variant="secondary" block onClick={() => setConfirm(null)}>
                 Weiter trainieren
               </Button>
-              <Button
-                variant="danger"
-                block
-                onClick={() => {
-                  discardWorkout(workout.id);
-                  navigate('training', undefined, { replace: true });
-                }}
-              >
+              <Button variant="danger" block onClick={discard}>
                 Verwerfen
               </Button>
             </>
@@ -139,14 +298,7 @@ export function SessionScreen() {
             <Button variant="secondary" block onClick={() => setConfirm(null)}>
               Abbrechen
             </Button>
-            <Button
-              variant="danger"
-              block
-              onClick={() => {
-                discardWorkout(workout.id);
-                navigate('training', undefined, { replace: true });
-              }}
-            >
+            <Button variant="danger" block onClick={discard}>
               Verwerfen
             </Button>
           </>
@@ -158,6 +310,39 @@ export function SessionScreen() {
   );
 }
 
+/**
+ * A real record the moment it happens – against earlier completed workouts
+ * only (a first time is never a record). Returns true when something was
+ * celebrated. Warm-ups never count.
+ */
+function celebrateRecord(workout: Workout, exercise: WorkoutExercise, set: WorkoutSet, seen: Set<string>): boolean {
+  if (set.type === 'warmup' || isTimed(exercise.exerciseId)) return false;
+  const bests = exerciseBests(getState().workouts, exercise.exerciseId, { excludeId: workout.id });
+  if (!bests) return false;
+  const value = { weightKg: set.weightKg, reps: set.reps ?? exercise.repMax };
+  const withThis = exercise.sets.map((s) => (s.id === set.id ? { ...s, ...value, done: true } : s));
+  const record = setRecord(exercise.exerciseId, value, bests) ?? volumeRecord({ exerciseId: exercise.exerciseId, sets: withThis }, bests);
+  const key = record && `${exercise.id}|${record.kind}`;
+  if (!record || seen.has(key!)) return false;
+  seen.add(key!);
+  const text = recordText(record);
+  celebrate({ kind: 'power', icon: text.icon, title: text.title, detail: text.detail, level: 3 });
+  return true;
+}
+
+/** The next open set of the session – shown in the rest timer. */
+function nextSetText(w: Workout): string | undefined {
+  for (const ex of w.exercises) {
+    if (ex.skipped) continue;
+    const i = ex.sets.findIndex((s) => !s.done && !s.skipped);
+    if (i < 0) continue;
+    const s = ex.sets[i]!;
+    const value = s.durationMin ? `${formatKg(s.durationMin)} min` : s.weightKg || s.reps ? formatSet(s) : undefined;
+    return [getExercise(ex.exerciseId)?.name, `Satz ${i + 1}`, value].filter(Boolean).join(' · ');
+  }
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 
 interface ExerciseCardProps {
@@ -165,86 +350,125 @@ interface ExerciseCardProps {
   exercise: WorkoutExercise;
   history: Workout[];
   onSetDone: (set: WorkoutSet) => void;
+  onSetMenu: (setId: string) => void;
+  onMenu: () => void;
+  onInfo: () => void;
 }
 
-function ExerciseCard({ workout, exercise, history, onSetDone }: ExerciseCardProps) {
+function ExerciseCard({ workout, exercise, history, onSetDone, onSetMenu, onMenu, onInfo }: ExerciseCardProps) {
   const info = getExercise(exercise.exerciseId);
+  const timed = isTimed(exercise.exerciseId);
   const last = lastSetsFor(history, exercise.exerciseId, workout.id);
-  const suggestion = progressionSuggestion(last, exercise.repMax, exercise.exerciseId);
-  const allDone = exercise.sets.every((s) => s.done);
+  const best = timed ? undefined : bestSet(history.filter((w) => w.id !== workout.id), exercise.exerciseId);
+  const target = exercise.sets.find((s) => s.target)?.target;
+  const targetDiffers = target && last && (target.weightKg !== last[0]?.weightKg || target.reps !== last[0]?.reps);
+  const allDone = exercise.sets.every((s) => s.done || s.skipped) && exercise.sets.some((s) => s.done);
+  const replacedFrom = exercise.replacedFrom ? getExercise(exercise.replacedFrom)?.name : undefined;
+  let workIndex = 0;
 
   return (
-    <section className={allDone ? `${styles.exerciseCard} ${styles.exerciseDone}` : styles.exerciseCard} aria-label={info?.name}>
+    <section
+      className={[styles.exerciseCard, allDone && styles.exerciseDone, exercise.skipped && styles.exerciseSkipped].filter(Boolean).join(' ')}
+      aria-label={info?.name}
+      data-state={exercise.skipped ? 'skipped' : allDone ? 'done' : 'open'}
+    >
       <header className={styles.exerciseHeader}>
-        <div>
-          <h2>{info?.name ?? 'Übung'}</h2>
+        <div className={styles.exerciseHeading}>
+          {(exercise.supersetGroup || replacedFrom || exercise.extra) && (
+            <div className={styles.badges}>
+              {exercise.supersetGroup && <span className={styles.badge}>Superset {exercise.supersetGroup}</span>}
+              {replacedFrom && <span className={styles.badge}>Ersetzt · statt {replacedFrom}</span>}
+              {exercise.extra && !replacedFrom && <span className={styles.badge}>Zusätzlich</span>}
+            </div>
+          )}
+          <button type="button" className={styles.exerciseName} onClick={onInfo} aria-label={`${info?.name ?? 'Übung'} – Anleitung`}>
+            {info?.name ?? 'Übung'}
+          </button>
           <p className={styles.muted}>
-            {info?.muscle} · Ziel {exercise.repMin}–{exercise.repMax} Wdh.
+            {info?.muscle}
+            {timed ? (exercise.planned?.durationMin ? ` · Ziel ${exercise.planned.durationMin} min` : '') : ` · Ziel ${exercise.repMin}–${exercise.repMax} Wdh.`}
           </p>
         </div>
         {allDone && <Icon name="check" size={20} className={styles.accentText} strokeWidth={2.4} />}
+        <IconButton icon="more" label={`Optionen für ${info?.name ?? 'Übung'}`} onClick={onMenu} />
       </header>
 
-      {last ? (
-        <p className={styles.lastTime}>
-          Letztes Mal: {last.map((s) => formatSet(s)).join(', ')}
-          {suggestion && <span className={styles.hint}> · Heute {String(suggestion).replace('.', ',')} kg versuchen</span>}
-        </p>
+      {exercise.skipped ? (
+        <p className={styles.lastTime}>Ausgelassen – zählt nicht in dieses Training. Über „…“ kannst du sie doch machen.</p>
       ) : (
-        <p className={styles.lastTime}>Erstes Mal – wähle ein Gewicht, mit dem du {exercise.repMax} saubere Wiederholungen schaffst.</p>
-      )}
+        <>
+          {last ? (
+            <p className={styles.lastTime}>
+              Letztes Training: {last.map((s) => formatSet(s)).join(', ')}
+              {best && (
+                <>
+                  <br />
+                  Bestleistung: {formatSet(best)}
+                </>
+              )}
+              {targetDiffers && <span className={styles.hint}> · Heute: {formatSet(target)}</span>}
+            </p>
+          ) : (
+            <p className={styles.lastTime}>{timed ? 'Trag die Minuten ein, die du machst.' : `Erstes Mal – wähle ein Gewicht, mit dem du ${exercise.repMax} saubere Wiederholungen schaffst.`}</p>
+          )}
 
-      <div className={styles.setTable} role="table" aria-label={`Sätze ${info?.name ?? ''}`}>
-        <div className={styles.setHead} role="row">
-          <span role="columnheader">Satz</span>
-          <span role="columnheader">{info?.bodyweight ? '+ kg' : 'kg'}</span>
-          <span role="columnheader">Wdh.</span>
-          <span role="columnheader" className="visually-hidden">
-            Erledigt
-          </span>
-        </div>
-        {exercise.sets.map((set, i) => (
-          <div key={set.id} className={set.done ? styles.setRowDone : styles.setRow} role="row">
-            <span className={styles.setIndex} role="cell">
-              {i + 1}
-            </span>
-            <NumberCell
-              value={set.weightKg}
-              placeholder={info?.bodyweight ? '0' : '–'}
-              label={`Gewicht Satz ${i + 1}`}
-              onCommit={(v) => updateSet(workout.id, exercise.id, set.id, { weightKg: v })}
-            />
-            <NumberCell
-              value={set.reps}
-              placeholder={String(exercise.repMax)}
-              integer
-              label={`Wiederholungen Satz ${i + 1}`}
-              onCommit={(v) => updateSet(workout.id, exercise.id, set.id, { reps: v })}
-            />
-            <span role="cell">
-              <button
-                type="button"
-                className={set.done ? styles.setCheckDone : styles.setCheck}
-                aria-pressed={set.done}
-                aria-label={`Satz ${i + 1} ${set.done ? 'nicht erledigt' : 'erledigt'}`}
-                onClick={() => onSetDone(set)}
-              >
-                <Icon name="check" size={20} strokeWidth={2.6} />
-              </button>
-            </span>
+          <div className={styles.setTable} role="table" aria-label={`Sätze ${info?.name ?? ''}`}>
+            <div className={styles.setHead} role="row">
+              <span role="columnheader">Satz</span>
+              <span role="columnheader">Vorher</span>
+              <span role="columnheader">{timed ? 'Min' : info?.bodyweight ? '+ kg' : 'kg'}</span>
+              <span role="columnheader">{timed ? 'km' : 'Wdh.'}</span>
+              <span role="columnheader" className="visually-hidden">
+                Erledigt
+              </span>
+            </div>
+            {exercise.sets.map((set, i) => {
+              const label = set.type === 'working' ? String(++workIndex) : SET_TYPE_SHORT[set.type];
+              const prev = last?.[Math.min(i, last.length - 1)];
+              return (
+                <div key={set.id} className={set.skipped ? styles.setRowSkipped : set.done ? styles.setRowDone : styles.setRow} role="row" data-type={set.type}>
+                  <span role="cell">
+                    <button type="button" className={styles.setIndex} data-type={set.type} aria-label={`Satz ${i + 1}: ${SET_TYPE_LABEL[set.type]}${set.skipped ? ', übersprungen' : ''} – Optionen`} onClick={() => onSetMenu(set.id)}>
+                      {label}
+                    </button>
+                  </span>
+                  <span role="cell" className={styles.prev}>
+                    {prev ? (timed ? formatSet(prev) : prev.weightKg ? `${formatKg(prev.weightKg)}×${prev.reps ?? 0}` : `${prev.reps ?? 0}`) : '–'}
+                  </span>
+                  {timed ? (
+                    <>
+                      <NumberCell value={set.durationMin ?? null} placeholder={String(exercise.planned?.durationMin ?? 20)} label={`Minuten Satz ${i + 1}`} disabled={set.skipped} onCommit={(v) => updateSet(workout.id, exercise.id, set.id, { durationMin: v })} />
+                      <NumberCell value={set.distanceKm ?? null} placeholder="–" label={`Kilometer Satz ${i + 1}`} disabled={set.skipped} onCommit={(v) => updateSet(workout.id, exercise.id, set.id, { distanceKm: v })} />
+                    </>
+                  ) : (
+                    <>
+                      <NumberCell value={set.weightKg} placeholder={info?.bodyweight ? '0' : '–'} label={`Gewicht Satz ${i + 1}`} disabled={set.skipped} onCommit={(v) => updateSet(workout.id, exercise.id, set.id, { weightKg: v })} />
+                      <NumberCell value={set.reps} placeholder={String(exercise.repMax)} integer label={`Wiederholungen Satz ${i + 1}`} disabled={set.skipped} onCommit={(v) => updateSet(workout.id, exercise.id, set.id, { reps: v })} />
+                    </>
+                  )}
+                  <span role="cell">
+                    <button
+                      type="button"
+                      className={set.done ? styles.setCheckDone : styles.setCheck}
+                      aria-pressed={set.done}
+                      aria-label={`Satz ${i + 1} ${set.done ? 'nicht erledigt' : 'erledigt'}`}
+                      disabled={set.skipped}
+                      onClick={() => onSetDone(set)}
+                    >
+                      <Icon name={set.skipped ? 'minus' : 'check'} size={20} strokeWidth={2.6} />
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
-      <div className={styles.setActions}>
-        <Button variant="ghost" size="sm" icon="plus" onClick={() => addSet(workout.id, exercise.id)}>
-          Satz
-        </Button>
-        {exercise.sets.length > 1 && !exercise.sets[exercise.sets.length - 1]!.done && (
-          <Button variant="ghost" size="sm" icon="minus" onClick={() => removeLastSet(workout.id, exercise.id)}>
-            Satz
-          </Button>
-        )}
-      </div>
+          <div className={styles.setActions}>
+            <Button variant="ghost" size="sm" icon="plus" onClick={() => addSet(workout.id, exercise.id)}>
+              Satz
+            </Button>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -254,11 +478,12 @@ interface NumberCellProps {
   placeholder: string;
   label: string;
   integer?: boolean;
+  disabled?: boolean;
   onCommit: (v: number | null) => void;
 }
 
 /** Keeps a local draft so typing "82," works; commits valid numbers immediately. */
-function NumberCell({ value, placeholder, label, integer, onCommit }: NumberCellProps) {
+function NumberCell({ value, placeholder, label, integer, disabled, onCommit }: NumberCellProps) {
   const [draft, setDraft] = useState(value === null ? '' : String(value).replace('.', ','));
 
   useEffect(() => {
@@ -278,6 +503,7 @@ function NumberCell({ value, placeholder, label, integer, onCommit }: NumberCell
         aria-label={label}
         placeholder={placeholder}
         value={draft}
+        disabled={disabled}
         onFocus={(e) => e.target.select()}
         onChange={(e) => {
           const next = e.target.value.replace(/[^\d.,]/g, '');
@@ -293,6 +519,7 @@ function NumberCell({ value, placeholder, label, integer, onCommit }: NumberCell
 
 // ---------------------------------------------------------------------------
 
+/** Starts by itself after a set; −30 / +30 s adjust it, "Überspringen" ends it. */
 function RestTimer({ rest, now, onChange }: { rest: Rest; now: number; onChange: (r: Rest | null) => void }) {
   const remaining = Math.ceil((rest.endsAt - now) / 1000);
   const over = remaining <= 0;
@@ -307,19 +534,30 @@ function RestTimer({ rest, now, onChange }: { rest: Rest; now: number; onChange:
     return () => window.clearTimeout(id);
   }, [over, onChange]);
 
+  const shift = (sec: number) => onChange({ ...rest, endsAt: rest.endsAt + sec * 1000, total: Math.max(1, rest.total + sec) });
   return (
-    <div className={over ? `${styles.rest} ${styles.restOver}` : styles.rest} role="timer" aria-live="off">
-      <div className={styles.restFill} style={{ width: `${over ? 100 : (1 - remaining / rest.total) * 100}%` }} />
-      <span className={styles.restLabel}>{over ? 'Pause vorbei – weiter geht’s' : 'Pause'}</span>
-      {!over && <strong className={styles.restTime}>{formatClock(remaining)}</strong>}
-      {!over && (
-        <button type="button" className={styles.restBtn} onClick={() => onChange({ ...rest, endsAt: rest.endsAt + 30_000, total: rest.total + 30 })}>
-          +30 s
+    <div className={over ? `${styles.rest} ${styles.restOver}` : styles.rest} role="timer" aria-live="off" aria-label="Pause">
+      <div className={styles.restFill} style={{ width: `${over ? 100 : Math.min(100, (1 - remaining / rest.total) * 100)}%` }} />
+      <div className={styles.restTop}>
+        <span className={styles.restLabel}>{over ? 'Pause vorbei – weiter geht’s' : 'Pause'}</span>
+        {rest.next && <span className={styles.restNext}>Als Nächstes: {rest.next}</span>}
+      </div>
+      <div className={styles.restControls}>
+        {!over && <strong className={styles.restTime}>{formatClock(remaining)}</strong>}
+        {!over && (
+          <button type="button" className={styles.restBtn} aria-label="30 Sekunden weniger" onClick={() => shift(-30)}>
+            −30
+          </button>
+        )}
+        {!over && (
+          <button type="button" className={styles.restBtn} aria-label="30 Sekunden mehr" onClick={() => shift(30)}>
+            +30
+          </button>
+        )}
+        <button type="button" className={styles.restBtn} onClick={() => onChange(null)}>
+          {over ? 'OK' : 'Überspringen'}
         </button>
-      )}
-      <button type="button" className={styles.restBtn} onClick={() => onChange(null)}>
-        {over ? 'OK' : 'Überspringen'}
-      </button>
+      </div>
     </div>
   );
 }

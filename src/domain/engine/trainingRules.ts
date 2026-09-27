@@ -2,8 +2,8 @@ import { getExercise, getProgram, PROGRAMS } from '../../data/exercises';
 import { fmt, weekdayLong } from '../../lib/format';
 import { addDays, weekdayIndex } from '../dates';
 import { appStartDate } from '../progress';
-import { activeWorkouts, estimateMinutes, estimateOneRepMax, fitTemplateToTime, scheduleForWeek } from '../training';
-import type { Experience, ISODate, Workout, WorkoutTemplate } from '../types';
+import { activeWorkouts, estimateMinutes, estimateOneRepMax, fitTemplateToTime, isWorkSet, scheduleForWeek } from '../training';
+import type { Experience, ISODate, MuscleGroup, Workout, WorkoutTemplate } from '../types';
 import type { EngineContext } from './context';
 import type { EngineAction, Recommendation } from './types';
 
@@ -72,8 +72,44 @@ export type RegionSets = Record<Region, number>;
 
 const emptyRegions = (): RegionSets => ({ legs: 0, chest: 0, back: 0, shoulders: 0, arms: 0, core: 0 });
 
+/** Library muscle group → coarse region of the engine (cardio counts for none). */
+const GROUP_REGION: Record<MuscleGroup, Region | undefined> = {
+  chest: 'chest',
+  back: 'back',
+  shoulders: 'shoulders',
+  biceps: 'arms',
+  triceps: 'arms',
+  forearms: 'arms',
+  quads: 'legs',
+  hamstrings: 'legs',
+  glutes: 'legs',
+  calves: 'legs',
+  core: 'core',
+  cardio: undefined,
+};
+
+/**
+ * Effective sets per region of an exercise: the tuned table above for the
+ * original exercises, otherwise derived from the library (primary 1,
+ * secondary 0.5 – calves count half for "legs"). Cardio and mobility add none.
+ */
+export function exerciseRegions(exerciseId: string): Partial<Record<Region, number>> {
+  const known = EXERCISE_REGIONS[exerciseId];
+  if (known) return known;
+  const ex = getExercise(exerciseId);
+  if (!ex || ex.type !== 'strength') return {};
+  const out: Partial<Record<Region, number>> = {};
+  const add = (g: MuscleGroup, f: number) => {
+    const r = GROUP_REGION[g];
+    if (r) out[r] = Math.max(out[r] ?? 0, g === 'calves' ? f / 2 : f);
+  };
+  for (const g of ex.secondary) add(g, 0.5);
+  add(ex.primary, 1);
+  return out;
+}
+
 function addRegions(target: RegionSets, exerciseId: string, sets: number) {
-  for (const [region, factor] of Object.entries(EXERCISE_REGIONS[exerciseId] ?? {})) {
+  for (const [region, factor] of Object.entries(exerciseRegions(exerciseId))) {
     target[region as Region] += sets * (factor ?? 0);
   }
 }
@@ -86,7 +122,7 @@ export function templateRegions(t: Pick<WorkoutTemplate, 'exercises'>): RegionSe
 
 export function workoutRegions(w: Workout): RegionSets {
   const r = emptyRegions();
-  for (const e of w.exercises) addRegions(r, e.exerciseId, e.sets.filter((s) => s.done && s.type === 'working').length);
+  for (const e of w.exercises) addRegions(r, e.exerciseId, e.sets.filter(isWorkSet).length);
   return r;
 }
 
@@ -128,7 +164,7 @@ export function weeklyCap(region: Region, experience: Experience): number {
 export function reduceRegion(template: WorkoutTemplate, region: Region): WorkoutTemplate {
   let keptMain = false;
   const exercises = template.exercises.filter((e) => {
-    const share = EXERCISE_REGIONS[e.exerciseId]?.[region] ?? 0;
+    const share = exerciseRegions(e.exerciseId)[region] ?? 0;
     if (share < 1) return true;
     if (!keptMain) return (keptMain = true);
     return false;
@@ -359,7 +395,7 @@ export function stallRule(ctx: EngineContext): Recommendation[] {
     if (getExercise(exerciseId)?.bodyweight) continue;
     const bests = completed
       .map((w) => {
-        const sets = w.exercises.filter((e) => e.exerciseId === exerciseId).flatMap((e) => e.sets.filter((s) => s.done && s.type === 'working'));
+        const sets = w.exercises.filter((e) => e.exerciseId === exerciseId).flatMap((e) => e.sets.filter(isWorkSet));
         return Math.max(0, ...sets.map((s) => estimateOneRepMax(s.weightKg ?? 0, s.reps ?? 0)));
       })
       .filter((v) => v > 0);

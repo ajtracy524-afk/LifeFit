@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { formatChf } from '../../domain/costs';
-import { PROGRAMS, getProgram } from '../../data/exercises';
+import { getProgram, personalPrograms } from '../../data/exercises';
+import { programsFor } from '../../domain/programs';
 import { today, weekStart } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
 import { currentWeight } from '../../domain/progress';
 import { slotsFor } from '../../domain/planner';
-import type { ActivityLevel, Allergen, DietType, GoalType, Macros, MealStyle, PlanPriority } from '../../domain/types';
+import type { ActivityLevel, Allergen, DietType, GoalType, Macros, MealStyle, PlanPriority, TrainingSetup } from '../../domain/types';
 import { getFood } from '../../data/foods';
 import { learnedInsights } from '../../domain/explain';
 import { trainingTimeFor } from '../../domain/schedule';
@@ -508,13 +509,13 @@ function TrainingSheet({ open, onClose }: { open: boolean; onClose: () => void }
 
 function TrainingForm({ onDone }: { onDone: () => void }) {
   const state = useAppState();
-  const current = state.training ?? { programId: 'full-body', weekdays: [0, 2, 4] };
+  const current: TrainingSetup = state.training ?? { programId: 'full-body', weekdays: [0, 2, 4] };
   const [programId, setProgramId] = useState(current.programId);
   const [weekdays, setWeekdays] = useState<number[]>(current.weekdays);
 
   return (
     <SheetForm>
-      {PROGRAMS.map((p) => (
+      {[...programsFor(current.equipment), ...personalPrograms()].map((p) => (
         <OptionCard key={p.id} title={p.name} description={p.description} selected={programId === p.id} onClick={() => setProgramId(p.id)} />
       ))}
       <p className={styles.label}>Trainingstage</p>

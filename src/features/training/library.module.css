@@ -1,0 +1,319 @@
+/* ---------- Body map ---------- */
+.bodyMap {
+  width: 150px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.bodyMapSm {
+  width: 44px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.zone {
+  fill: var(--surface-2);
+  transition: fill 0.3s ease;
+}
+
+.zone[data-level='secondary'] {
+  fill: color-mix(in srgb, var(--accent) 38%, var(--surface-2));
+}
+
+.zone[data-level='primary'] {
+  fill: var(--accent);
+}
+
+.mapCaption {
+  font-size: 11px;
+  fill: var(--text-3);
+}
+
+.bodyMapSm .mapCaption {
+  display: none;
+}
+
+/* ---------- Browser (library + picker) ---------- */
+.browser {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text-3);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  color: var(--text);
+  outline: none;
+}
+
+/* Muscle chips: one scrollable row – the fastest way on the phone. */
+.chipRow {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  margin: 0 -2px;
+  scrollbar-width: none;
+}
+
+.chipRow::-webkit-scrollbar {
+  display: none;
+}
+
+.chipRow > * {
+  flex-shrink: 0;
+}
+
+.chipWrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filterToggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+
+.flip {
+  transform: rotate(180deg);
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.filterLabel {
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+
+.count {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.listCompact {
+  box-shadow: none;
+  background: var(--surface-2);
+}
+
+.row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  text-align: left;
+  min-height: 60px;
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rowText strong {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.rowText span {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.level {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-3);
+}
+
+.level[data-level='advanced'] {
+  color: var(--carbs);
+}
+
+/* ---------- Detail ---------- */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.detailHero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.muscles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.detailLabel {
+  display: block;
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+
+.musclePrimary {
+  font-size: 18px;
+  font-weight: 750;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.muscleList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.muscleSecondary {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.detailLead {
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.personal {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
+.personal strong {
+  font-size: 15px;
+}
+
+.detailHeading {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.steps,
+.tips {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.tips {
+  color: var(--text-2);
+}
+
+.altList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.altChip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-weight: 650;
+  font-size: 14px;
+  text-align: left;
+}
+
+.altChip span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+/* ---------- Mini chart ---------- */
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chartLine {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chartDot {
+  fill: var(--accent);
+}
+
+.chartGrid {
+  stroke: var(--border);
+}
+
+.chartAxis {
+  font-size: 10px;
+  fill: var(--text-3);
+}

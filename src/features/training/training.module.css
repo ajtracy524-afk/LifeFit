@@ -243,11 +243,12 @@
 
 .setHead,
 .setRow,
-.setRowDone {
+.setRowDone,
+.setRowSkipped {
   display: grid;
-  grid-template-columns: 40px 1fr 1fr 52px;
+  grid-template-columns: 34px minmax(44px, 0.8fr) 1fr 1fr 48px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .setHead {
@@ -260,25 +261,166 @@
 }
 
 .setHead span:nth-child(2),
-.setHead span:nth-child(3) {
+.setHead span:nth-child(3),
+.setHead span:nth-child(4) {
   text-align: center;
 }
 
 .setRow,
-.setRowDone {
+.setRowDone,
+.setRowSkipped {
   padding: 4px;
   border-radius: 14px;
   transition: background-color 0.2s ease;
+}
+
+.setRowSkipped {
+  opacity: 0.5;
+}
+
+.setRowSkipped .setInput {
+  text-decoration: line-through;
 }
 
 .setRowDone {
   background: var(--accent-soft);
 }
 
+/* The set number is a button: set type (W / D / F / A), skip, remove. */
 .setIndex {
-  text-align: center;
-  font-weight: 650;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
   color: var(--text-2);
+  background: transparent;
+}
+
+.setIndex:active {
+  background: var(--surface-2);
+}
+
+.setIndex[data-type='warmup'] {
+  color: var(--carbs);
+}
+
+.setIndex[data-type='drop'],
+.setIndex[data-type='failure'],
+.setIndex[data-type='amrap'] {
+  color: var(--accent);
+}
+
+.prev {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.setCheck:disabled {
+  opacity: 0.5;
+}
+
+.exerciseSkipped {
+  opacity: 0.6;
+}
+
+.exerciseHeading {
+  flex: 1;
+  min-width: 0;
+}
+
+.exerciseName {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  text-align: left;
+  padding: 0;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 650;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.typeGrid {
+  display: grid;
+  gap: 6px;
+}
+
+.typeOption,
+.typeOptionActive {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  text-align: left;
+  font-weight: 600;
+}
+
+.typeOptionActive {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.typeBadge {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  font-weight: 750;
+}
+
+.alternatives {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.altRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  text-align: left;
+}
+
+.altRow span {
+  font-size: 13px;
+  color: var(--text-2);
+  flex-shrink: 0;
 }
 
 .setInput {
@@ -341,9 +483,9 @@
   margin: 0 auto;
   z-index: 20;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 10px 10px 18px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 10px 16px;
   border-radius: 18px;
   background: #1d201f;
   color: #f2f4f3;
@@ -365,18 +507,41 @@
   pointer-events: none;
 }
 
+.restTop {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.restNext {
+  font-size: 13px;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.restControls {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .restLabel {
   position: relative;
-  flex: 1;
   font-size: 14px;
   font-weight: 600;
 }
 
 .restTime {
   position: relative;
+  margin-right: auto;
   font-size: 22px;
   font-weight: 750;
-  margin-right: 6px;
+  font-variant-numeric: tabular-nums;
 }
 
 .restBtn {
@@ -507,4 +672,256 @@
   flex-direction: column;
   gap: 8px;
   margin-top: 4px;
+}
+
+/* ---------- Summary: plan vs. reality ---------- */
+.planLine {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.summaryHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.planRow {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.statusTag {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.statusTag[data-status='more'],
+.statusTag[data-status='extra'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.summaryList li[data-status='skipped'] strong {
+  color: var(--text-2);
+}
+
+.recordList li {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+/* ---------- Muscle groups this week ---------- */
+.muscleBars {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.muscleBars li {
+  display: grid;
+  grid-template-columns: 76px 1fr 32px;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.muscleBars strong {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.muscleTrack {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.muscleTrack span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transform-origin: left;
+  animation: barIn 0.6s var(--ease-out);
+}
+
+@keyframes barIn {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .muscleTrack span {
+    animation: none;
+  }
+}
+
+/* ---------- Overview: links, routines ---------- */
+.links {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.linkTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 6px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.linkTile svg {
+  color: var(--accent);
+}
+
+.templateItem {
+  display: flex;
+  align-items: center;
+  padding-right: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.templateItem:first-child {
+  border-top: 0;
+}
+
+.templateItem .templateRow {
+  flex: 1;
+  min-width: 0;
+  border-top: 0;
+}
+
+/* ---------- Routine editor ---------- */
+.editorList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editorItem {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 12px 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editorHead {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.editorHead strong {
+  display: block;
+  font-size: 16px;
+}
+
+.up svg {
+  transform: rotate(180deg);
+}
+
+.editorFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  gap: 8px;
+}
+
+.smallNumber {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-3);
+}
+
+.smallNumber input {
+  height: 42px;
+  width: 100%;
+  border-radius: 10px;
+  border: 1.5px solid transparent;
+  background: var(--surface-2);
+  text-align: center;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--text);
+  outline: none;
+}
+
+.smallNumber input:focus {
+  border-color: var(--accent);
+}
+
+.linkButton {
+  align-self: flex-start;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--accent);
+  padding: 4px 0;
+}
+
+.errorText {
+  color: var(--danger);
+  font-size: 14px;
+}
+
+/* ---------- Programs ---------- */
+.programHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.programText {
+  font-size: 14px;
+  color: var(--text-2);
+  margin: 6px 0 0;
+  line-height: 1.4;
+}
+
+.previewWeeks {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.previewWeeks li {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+.previewWeeks span {
+  color: var(--text-2);
 }
