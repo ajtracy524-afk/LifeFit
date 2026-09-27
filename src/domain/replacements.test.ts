@@ -66,7 +66,7 @@ describe('cost ranges – rough, never invented', () => {
   it('a recipe with priced ingredients gets a rounded range', () => {
     const r = recipeCostRange(getRecipe('chili')!, 1)!;
     expect(r.lowChf).toBeLessThan(r.highChf);
-    expect(formatCostRange(r)).toMatch(/^ca\. [\d.]+–[\d.]+ CHF$/);
+    expect(formatCostRange(r)).toMatch(/^ca\. CHF [\d.]+–[\d.]+$/);
   });
 
   it(`below ${MIN_PRICED_SHARE * 100} % priced weight no number is shown`, () => {
@@ -85,7 +85,7 @@ describe('cost ranges – rough, never invented', () => {
   });
 
   it('small amounts read honestly', () => {
-    expect(formatCostRange({ lowChf: 0.5, highChf: 1 })).toBe('unter 1 CHF');
-    expect(formatCostRange({ lowChf: 2, highChf: 3 })).toBe('ca. 2–3 CHF');
+    expect(formatCostRange({ lowChf: 0.5, highChf: 1 })).toBe('unter CHF 1.–');
+    expect(formatCostRange({ lowChf: 2, highChf: 3 })).toBe('ca. CHF 2–3');
   });
 });

@@ -50,6 +50,8 @@ export interface Food {
   estPricePerKg?: number;
   /** Optional micronutrients per 100 g – only what is known (prepared for more). */
   micros?: Partial<Record<MicroNutrient, number>>;
+  /** Own foods only: vegan / vegetarian is not known (the flags above are then not a statement). */
+  dietUnknown?: { vegan?: true; vegetarian?: true };
 }
 
 /**
@@ -264,6 +266,12 @@ export interface Product {
   /** Whole package in `unit`, if the source states it. */
   packageSize?: number;
   imageUrl?: string;
+  /** Declared allergens (Open Food Facts `allergens_tags`, or set by the user) – known present. */
+  allergens?: Allergen[];
+  /** Known diet facts: true/false only when the source (or the user) states it – missing = unknown. */
+  diet?: { vegan?: boolean; vegetarian?: boolean };
+  /** Set when the user corrected the nutrients (the source stays in `source`): ISO time of the last correction. */
+  nutrientsEdited?: string;
   /** openfoodfacts = found by barcode; manual = created by the user in "Meine Produkte". */
   source: 'openfoodfacts' | 'manual';
   fetchedAt: string;

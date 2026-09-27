@@ -1,6 +1,15 @@
 import { FROM_GRAMS, NUTRIENTS } from '../data/nutrients';
 import { consistentMicros, roundMicro, VITAL_NUTRIENTS } from '../domain/nutrition';
-import type { Micros, Product } from '../domain/types';
+import type { Allergen, Micros, Product } from '../domain/types';
+
+/** Open Food Facts allergen tags → the exclusions LifeFit knows (others are not mapped, never guessed). */
+const OFF_ALLERGEN: Record<string, Allergen> = {
+  'en:milk': 'lactose',
+  'en:gluten': 'gluten',
+  'en:nuts': 'nuts',
+  'en:peanuts': 'nuts',
+  'en:fish': 'fish',
+};
 
 /**
  * Barcode → ProductLookupService → source (Open Food Facts) → normalized Product.
@@ -54,6 +63,10 @@ const OFF_FIELDS = [
   // Without it OFF sometimes omits product_quantity; also the text fallback below.
   'quantity',
   'image_front_small_url',
+  // Declared allergens and OFF's ingredient analysis – for hard exclusions (only definite values are used).
+  'allergens_tags',
+  'ingredients_analysis_tags',
+  'labels_tags',
 ].join(',');
 
 interface OffNutriments {
@@ -74,6 +87,9 @@ export interface OffProduct {
   product_quantity_unit?: string;
   quantity?: string;
   image_front_small_url?: string;
+  allergens_tags?: string[];
+  ingredients_analysis_tags?: string[];
+  labels_tags?: string[];
 }
 
 /** "400.0 g", "1,5 l", "30 g" → value + unit. Anything less clear ("2 x 125 g") is not guessed. */
@@ -137,6 +153,14 @@ export function normalizeOffProduct(barcode: string, raw: OffProduct, now: Date 
   const servingSize = inUnit(raw.serving_quantity, raw.serving_quantity_unit) ?? (servingText && inUnit(servingText.value, servingText.unit));
   const packageSize = inUnit(raw.product_quantity, raw.product_quantity_unit) ?? (quantityText && inUnit(quantityText.value, quantityText.unit));
 
+  // Allergens as declared, mapped to the app's exclusions; diet only where OFF is definite ("maybe-…" stays unknown).
+  const allergens = [...new Set((raw.allergens_tags ?? []).map((t) => OFF_ALLERGEN[t]).filter((a): a is Allergen => !!a))];
+  const tags = new Set([...(raw.ingredients_analysis_tags ?? []), ...(raw.labels_tags ?? [])]);
+  const diet: NonNullable<Product['diet']> = {};
+  if (tags.has('en:vegan')) diet.vegan = true;
+  else if (tags.has('en:non-vegan')) diet.vegan = false;
+  if (tags.has('en:vegetarian') || diet.vegan) diet.vegetarian = true;
+  else if (tags.has('en:non-vegetarian')) diet.vegetarian = false;
   // Crowd data: a sugar value above the declared carbs is a data error → unknown.
   const checked = consistentMicros(per100, micros100) ?? {};
   return {
@@ -149,6 +173,8 @@ export function normalizeOffProduct(barcode: string, raw: OffProduct, now: Date 
     ...(servingSize ? { servingSize, ...(raw.serving_size ? { servingLabel: raw.serving_size } : {}) } : {}),
     ...(packageSize ? { packageSize } : {}),
     ...(raw.image_front_small_url?.startsWith('https://') ? { imageUrl: raw.image_front_small_url } : {}),
+    ...(allergens.length ? { allergens } : {}),
+    ...(Object.keys(diet).length ? { diet } : {}),
     source: 'openfoodfacts',
     fetchedAt: now.toISOString(),
   };

@@ -39,7 +39,6 @@ import { CookSheet } from './CookSheet';
 import { DishEditorSheet } from './Dishes';
 import { draftFromEntries, type DishDraft } from '../../domain/dishes';
 import { newId } from '../../lib/id';
-import { showToast } from '../../lib/toast';
 import { CalorieStatusBadge } from './CalorieStatusBadge';
 import styles from './nutrition.module.css';
 
@@ -111,11 +110,10 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
 
   const go = (d: ISODate) => navigate('nutrition', { view: 'day', date: d === today() ? undefined : d }, { replace: true });
   const [cooking, setCooking] = useState(false);
-  const [dishDraft, setDishDraft] = useState<DishDraft | null>(null);
+  const [dishDraft, setDishDraft] = useState<{ draft: DishDraft; skipped: string[] } | null>(null);
   const saveAsDish = (slot: MealSlot) => {
     const { draft, skipped } = draftFromEntries(state.logEntries.filter((e) => e.date === date && e.slot === slot), state, newId);
-    if (skipped.length) showToast(`Nicht übernommen (ohne Mengenangabe): ${skipped.join(', ')}`);
-    setDishDraft({ ...draft, slots: [slot] });
+    setDishDraft({ draft: { ...draft, slots: [slot] }, skipped });
   };
 
   return (
@@ -173,7 +171,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
         </Button>
       )}
       <CookSheet date={date} open={cooking} onClose={() => setCooking(false)} />
-      {dishDraft && <DishEditorSheet initial={dishDraft} onSaved={() => setDishDraft(null)} onCancel={() => setDishDraft(null)} onClose={() => setDishDraft(null)} />}
+      {dishDraft && <DishEditorSheet initial={dishDraft.draft} skipped={dishDraft.skipped} onSaved={() => setDishDraft(null)} onCancel={() => setDishDraft(null)} onClose={() => setDishDraft(null)} />}
 
       {slots.map((slot) => {
         const slotMeals = meals.filter((m) => m.slot === slot);

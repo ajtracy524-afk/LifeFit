@@ -33,10 +33,13 @@ function productFood(p: Product): Food | undefined {
     name: p.brand ? `${p.name} (${p.brand})` : p.name,
     category: 'pantry',
     per100: macrosOrZero(p.per100),
-    // Unknown for a product: diet checks treat own foods as the user's own choice (see recipeAllowed).
-    vegan: false,
-    vegetarian: false,
-    allergens: [],
+    // Only what is known: declared allergens and stated diet; the rest is marked unknown (see recipeAllowed).
+    vegan: p.diet?.vegan === true,
+    vegetarian: p.diet?.vegetarian === true,
+    allergens: p.allergens ?? [],
+    ...(p.diet?.vegan === undefined || p.diet?.vegetarian === undefined
+      ? { dietUnknown: { ...(p.diet?.vegan === undefined ? { vegan: true as const } : {}), ...(p.diet?.vegetarian === undefined ? { vegetarian: true as const } : {}) } }
+      : {}),
     ...(p.packageSize ? { packageG: p.packageSize } : {}),
     // A real price the user entered (CHF per pack) – priced exactly via priceLookup, here for package rounding.
     ...(p.price && p.price.amount > 0 ? { estPricePerKg: (p.price.chf / p.price.amount) * 1000 } : {}),
@@ -53,6 +56,7 @@ function ingredientFood(i: DishIngredient): Food {
     vegan: false,
     vegetarian: false,
     allergens: [],
+    dietUnknown: { vegan: true, vegetarian: true },
     ...(i.micros100 && Object.keys(i.micros100).length ? { micros: i.micros100 } : {}),
   };
 }
@@ -83,9 +87,12 @@ export function syncPersonal(state: Pick<AppState, 'customDishes' | 'products'>)
   if (last && last.dishes === state.customDishes && last.products === state.products) return;
   last = { dishes: state.customDishes, products: state.products };
   const foods = new Map<string, Food>();
+  // Products whose CURRENT values lack a macro: a dish using them is not planned (unknown is not 0).
+  const incomplete = new Set<string>();
   for (const p of Object.values(state.products ?? {})) {
     const f = productFood(p);
     if (f) foods.set(f.id, f);
+    if (p.per100.kcal === undefined || p.per100.protein === undefined || p.per100.carbs === undefined || p.per100.fat === undefined) incomplete.add(productFoodId(p.barcode));
   }
   const recipes = new Map<string, Recipe>();
   const candidates: Recipe[] = [];
@@ -97,7 +104,7 @@ export function syncPersonal(state: Pick<AppState, 'customDishes' | 'products'>)
     }
     const recipe = dishAsRecipe(dish);
     recipes.set(recipe.id, recipe);
-    if (isPlannable(dish)) candidates.push(recipe);
+    if (isPlannable(dish) && !recipe.ingredients.some((i) => incomplete.has(i.foodId))) candidates.push(recipe);
   }
   setPersonal(foods, recipes, candidates);
 }

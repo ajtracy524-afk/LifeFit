@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { formatChf } from '../../domain/costs';
 import { PROGRAMS, getProgram } from '../../data/exercises';
 import { today, weekStart } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
@@ -109,7 +110,7 @@ export function ProfileScreen() {
           <Row
             icon="cart"
             label="Budget & Schwerpunkt"
-            value={`${PRIORITY_LABEL[state.plannerSettings.priority]}${state.plannerSettings.weeklyBudgetChf ? ` · ${state.plannerSettings.weeklyBudgetChf} CHF pro Woche` : ' · kein Budget'}`}
+            value={`${PRIORITY_LABEL[state.plannerSettings.priority]}${state.plannerSettings.weeklyBudgetChf ? ` · ${formatChf(state.plannerSettings.weeklyBudgetChf)} pro Woche` : ' · kein Budget'}`}
             onClick={() => setPanel('budget')}
           />
           <Row
@@ -209,7 +210,7 @@ function BudgetSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
           suffix="CHF"
           placeholder="kein Budget"
           value={budget}
-          error={valid ? undefined : 'Bitte einen Betrag zwischen 10 und 1000 CHF angeben.'}
+          error={valid ? undefined : `Bitte einen Betrag zwischen ${formatChf(10)} und ${formatChf(1000)} angeben.`}
           onChange={(e) => setBudget(e.target.value)}
         />
         <Segmented<PlanPriority>

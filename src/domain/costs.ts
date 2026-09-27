@@ -120,19 +120,27 @@ export function ingredientCostRange(items: CostItem[], price: PriceLookup = cata
 /** Swiss number format: 4.95, 1’250. */
 const chfNumber = (v: number, digits: number) => v.toLocaleString('de-CH', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-/** An exact amount (e.g. a price the user entered): "4.95 CHF". */
+/**
+ * THE CHF format of LifeFit (Swiss style, currency first):
+ * "CHF 4.49", whole francs "CHF 80.–", "CHF 1’250.–". Never "CHF 0.00" for a
+ * tiny but real amount ("unter CHF 0.05"). Every amount on screen goes through
+ * here or formatCostRange – no other currency, no conversion.
+ */
 export function formatChf(v: number): string {
-  // Never "0.00 CHF" for a tiny but real amount.
-  if (v > 0 && v < 0.05) return 'unter 0.05 CHF';
-  return `${chfNumber(v, 2)} CHF`;
+  if (v > 0 && v < 0.05) return 'unter CHF 0.05';
+  const rappen = Math.round(v * 100);
+  return rappen % 100 === 0 ? `CHF ${chfNumber(rappen / 100, 0)}.–` : `CHF ${chfNumber(rappen / 100, 2)}`;
 }
 
-/** "ca. 2–3 CHF", "ca. 1.5–2 CHF", "unter 1 CHF". */
+/** An estimate as a range, same style: "ca. CHF 2–3", "ca. CHF 1.5–2", "unter CHF 1.–". */
 export function formatCostRange(r: CostRange): string {
   const n = (v: number) => chfNumber(v, Number.isInteger(v) ? 0 : 1);
-  if (r.highChf <= 1) return 'unter 1 CHF';
-  return `ca. ${n(r.lowChf)}–${n(r.highChf)} CHF`;
+  if (r.highChf <= 1) return 'unter CHF 1.–';
+  return `ca. CHF ${n(r.lowChf)}–${n(r.highChf)}`;
 }
+
+/** The allowed range for a typed price, in the same format: "zwischen CHF 0.05 und CHF 1’000.–". */
+export const PRICE_RANGE_TEXT = `zwischen ${formatChf(0.05)} und ${formatChf(1000)}`;
 
 /** Rough cost of one planned portion of a recipe (undefined without reliable prices). */
 export function recipeCostRange(recipe: Recipe, servings: number, price: PriceLookup = catalogPrice): CostRange | undefined {

@@ -917,7 +917,7 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     const card = () => container.querySelector('[aria-label="Nächste Aktion"]')!;
     expect(card().textContent).toMatch(/Jetzt · 12:30/);
     expect(card().textContent).toMatch(/Mittagessen: Vollkorn-Pasta Bolognese/);
-    expect(card().textContent).toMatch(/kcal · \d+ g P · \d+ g KH · \d+ g F · ca\. [\d.]+–[\d.]+ CHF/);
+    expect(card().textContent).toMatch(/kcal · \d+ g P · \d+ g KH · \d+ g F · ca\. CHF [\d.]+–[\d.]+/);
     const btn = (label: string) => [...card().querySelectorAll('button')].find((b) => b.textContent?.trim() === label)!;
     await act(async () => btn('Ersetzen').click());
     expect(container.querySelector('dialog[open]')!.textContent).toMatch(/Vollkorn-Pasta Bolognese ersetzen[\s\S]*Passend zu deinem Plan/);
@@ -998,7 +998,7 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     localStorage.setItem(KEY, JSON.stringify(s));
     window.history.replaceState(null, '', '/#/today');
     await startApp();
-    expect(text()).toMatch(/Diese Woche ca\. [\d.]+–[\d.]+ CHF von 55 CHF/);
+    expect(text()).toMatch(/Diese Woche ca\. CHF [\d.]+–[\d.]+ von CHF 55\.–/);
     expect(text()).not.toMatch(/€/);
   });
 
@@ -1022,14 +1022,14 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     window.history.replaceState(null, '', '/#/today');
     await startApp();
     // Breakfast (overnight oats) is eaten → a "bisher" value; the rest of the budget is free.
-    expect(text()).toMatch(/bisher gegessen ca\. [\d.]+–[\d.]+ CHF · frei ca\. [\d.]+–[\d.]+ CHF/);
+    expect(text()).toMatch(/bisher gegessen ca\. CHF [\d.]+–[\d.]+ · frei ca\. CHF [\d.]+–[\d.]+/);
 
     await act(async () => root?.unmount());
     root = undefined;
     localStorage.setItem(KEY, JSON.stringify({ ...withLog(), plannerSettings: settings(10) }));
     await startApp();
-    expect(text()).toMatch(/von 10 CHF – über Budget/);
-    expect(text()).toMatch(/ca\. [\d.]+–[\d.]+ CHF über Budget/);
+    expect(text()).toMatch(/von CHF 10\.– – über Budget/);
+    expect(text()).toMatch(/ca\. CHF [\d.]+–[\d.]+ über Budget/);
   });
 
   it('Ernährung day view shows the same budget line as Heute (one calculation, one store)', async () => {
@@ -1037,7 +1037,7 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     localStorage.setItem(KEY, JSON.stringify({ ...withLog(), plannerSettings: settings }));
     window.history.replaceState(null, '', '/#/today');
     await startApp();
-    const line = () => text().match(/Diese Woche ca\. [\d.]+–[\d.]+ CHF von 55 CHFbisher gegessen ca\. [\d.]+–[\d.]+ CHF · frei ca\. [\d.]+–[\d.]+ CHF/)?.[0];
+    const line = () => text().match(/Diese Woche ca\. CHF [\d.]+–[\d.]+ von CHF 55.–bisher gegessen ca\. CHF [\d.]+–[\d.]+ · frei ca\. CHF [\d.]+–[\d.]+/)?.[0];
     const onToday = line();
     expect(onToday).toBeDefined();
     await act(async () => {
@@ -1115,10 +1115,10 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
     window.history.replaceState(null, '', '/#/today');
     await startApp();
     const items = [...container.querySelectorAll<HTMLButtonElement>('ol button')].map((b) => b.textContent ?? '');
-    expect(items[0]).toMatch(/Frühstück · gegessen[\s\S]*Skyr[\s\S]*2\.50 CHF · statt Protein Overnight Oats/);
-    expect(items[1]).toMatch(/Mittagessen · als Nächstes[\s\S]*ca\. [\d.]+–[\d.]+ CHF/);
+    expect(items[0]).toMatch(/Frühstück · gegessen[\s\S]*Skyr[\s\S]*CHF 2\.50 · statt Protein Overnight Oats/);
+    expect(items[1]).toMatch(/Mittagessen · als Nächstes[\s\S]*ca\. CHF [\d.]+–[\d.]+/);
     expect(items[2]).toMatch(/Abendessen · später/);
-    expect(text()).not.toMatch(/0\.00 CHF|€/);
+    expect(text()).not.toMatch(/CHF 0\.00|€/);
   });
 
   it('Heute: a day without micronutrient data says so in the report instead of showing zeros', async () => {
@@ -1154,7 +1154,7 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
     expect(text()).toContain('Poulet-Brust');
     await type('Menge in g', '200');
     await type('Packungspreis (400 g) – optional', '4.95');
-    expect(text()).toMatch(/Deine Menge \(200 g\) ≈ 2\.48 CHF/);
+    expect(text()).toMatch(/Deine Menge \(200 g\) ≈ CHF 2\.48/);
     await click('Hinzufügen');
 
     const s = store.getState();
@@ -1177,11 +1177,11 @@ describe('phase 2: micronutrients, CHF prices, camera (Heute + Ernährung)', () 
     await click('Produkt suchen');
     await settle();
     await type('Packungspreis (1 kg) – optional', 'abc');
-    expect(text()).toContain('Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.');
+    expect(text()).toMatch(/Bitte einen Preis zwischen CHF 0.05 und CHF 1.000.– angeben./);
     expect([...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === 'Hinzufügen')!.disabled).toBe(true);
     await act(async () => window.location.assign('#/nutrition?view=week'));
     await settle();
-    expect(text()).toMatch(/Diese Woche ca\. [\d.]+–[\d.]+ CHF von 55 CHF/);
+    expect(text()).toMatch(/Diese Woche ca\. CHF [\d.]+–[\d.]+ von CHF 55\.–/);
   });
 });
 
@@ -1247,8 +1247,8 @@ describe('polish: barcode loading, remembered price, manual price', () => {
     window.history.replaceState(null, '', '/#/nutrition?view=week');
     const store = await startApp();
     if (weekFoodCost(store.getState(), '2026-09-21')) throw new Error('fixture has reliable prices – adjust');
-    expect(text()).toMatch(/Diese Woche: Preis nicht verfügbar – zu wenig Preisdaten · Budget 55 CHF/);
-    expect(text()).not.toMatch(/0 CHF von|0\.00 CHF/);
+    expect(text()).toMatch(/Diese Woche: Preis nicht verfügbar – zu wenig Preisdaten · Budget CHF 55\.–/);
+    expect(text()).not.toMatch(/CHF 0\.– von|CHF 0\.00/);
   });
 
   it('manual entry with a price: cost on the entry, CHF only', async () => {
@@ -1261,7 +1261,7 @@ describe('polish: barcode loading, remembered price, manual price', () => {
     await type('Kalorien', '420');
     await type('Preis (optional)', '-3');
     await act(async () => dialogButton('Hinzufügen').click());
-    expect(text()).toContain('Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.');
+    expect(text()).toMatch(/Bitte einen Preis zwischen CHF 0.05 und CHF 1.000.– angeben./);
     expect(store.getState().logEntries).toHaveLength(0);
     await type('Preis (optional)', '6.90');
     await act(async () => dialogButton('Hinzufügen').click());
@@ -1852,7 +1852,7 @@ describe('personal products, CHF prices and own dishes in the planner (UI)', () 
     await click('Lebensmittel hinzufügen');
     await click('Manuell');
     const library = document.querySelector('dialog[open] [aria-label="Meine Produkte"]')!;
-    expect(library.textContent).toMatch(/Haferflocken feinM-Classic · 500 g · 4\.49 CHF/);
+    expect(library.textContent).toMatch(/Haferflocken feinM-Classic · 500 g · CHF 4\.49/);
     expect(library.textContent).not.toMatch(/€|EUR|USD/);
     await byLabel('Haferflocken fein bearbeiten');
     await setField('Packungspreis', '3.95');
@@ -1872,7 +1872,7 @@ describe('personal products, CHF prices and own dishes in the planner (UI)', () 
     await click('Produkt suchen');
     await settle();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('dialog[open]')!.textContent).toMatch(/✓ Bekanntes Produkt · M-Classic · 500 g · 3\.95 CHF/);
+    expect(document.querySelector('dialog[open]')!.textContent).toMatch(/✓ Bekanntes Produkt · M-Classic · 500 g · CHF 3\.95/);
   });
 
   it('removing the price and deleting a product; eaten entries keep their values', async () => {
@@ -1946,5 +1946,80 @@ describe('personal products, CHF prices and own dishes in the planner (UI)', () 
     await type('Name', 'Bananen-Snack');
     await clickInDialog('Speichern');
     expect(Object.values(store.getState().customDishes)[0]).toMatchObject({ name: 'Bananen-Snack', slots: ['breakfast'], ingredients: [{ name: 'Bananen', grams: 120, foodId: 'banana' }] });
+  });
+});
+
+describe('hardening: product corrections, origin, skipped parts (UI)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 9, 0));
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+  const setField = async (labelStart: string, value: string) => {
+    const lbl = [...document.querySelectorAll('dialog[open] label')].find((l) => l.textContent?.startsWith(labelStart));
+    const input = (lbl && (document.getElementById((lbl as HTMLLabelElement).htmlFor) as HTMLInputElement | null)) ?? lbl?.querySelector('input');
+    if (!input) throw new Error(`Field ${labelStart} not found`);
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      set.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const skyr = { barcode: '7610900016099', name: 'Skyr', brand: 'Emmi', per100: { kcal: 63, protein: 10, carbs: 4, fat: 0.2 }, micros100: { sugar: 4, calcium: 110 }, unit: 'g', packageSize: 500, source: 'openfoodfacts', fetchedAt: '2026-09-20T08:00:00Z' };
+  const dishWithSkyr = { id: 'd', name: 'Skyr-Frühstück', portions: 1, ingredients: [{ id: 'i', name: 'Skyr (Emmi)', grams: 200, source: 'product', ref: '7610900016099', per100: skyr.per100, micros100: skyr.micros100 }], createdAt: 'x', updatedAt: 'x' };
+  const eaten = { id: 'e', date: '2026-09-21', slot: 'breakfast', loggedAt: '2026-09-21T08:00:00Z', name: 'Skyr', barcode: '7610900016099', grams: 150, method: 'barcode', macros: { kcal: 95, protein: 15, carbs: 6, fat: 0.3 } };
+
+  it('nutrients of a scanned product can be corrected later: origin stays, the correction is marked, empty = unknown, dishes follow, eaten entries stay', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), products: { [skyr.barcode]: skyr }, customDishes: { d: dishWithSkyr }, logEntries: [eaten] }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    await act(async () => document.querySelector<HTMLButtonElement>('dialog[open] button[aria-label="Skyr bearbeiten"]')!.click());
+    expect(document.querySelector('dialog[open]')!.textContent).toMatch(/Nährwerte: Open Food Facts · Preis: deine Angabe/);
+    await setField('Protein', '11');
+    await setField('Zucker', ''); // unknown, not 0
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('dialog[open] [aria-label="Enthält"] button')].find((b) => b.textContent?.includes('Laktose'))!.click());
+    await clickInDialog('Speichern');
+    const p = store.getState().products[skyr.barcode]!;
+    expect(p).toMatchObject({ source: 'openfoodfacts', per100: { kcal: 63, protein: 11, carbs: 4, fat: 0.2 }, allergens: ['lactose'] });
+    expect(p.nutrientsEdited).toBeDefined();
+    expect(p.micros100).toEqual({ calcium: 110 }); // sugar unknown now, the source's calcium kept
+    expect(store.getState().customDishes.d!.ingredients[0]).toMatchObject({ per100: { protein: 11 }, micros100: { calcium: 110 } });
+    expect(store.getState().logEntries[0]).toEqual(eaten);
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    await act(async () => document.querySelector<HTMLButtonElement>('dialog[open] button[aria-label="Skyr bearbeiten"]')!.click());
+    expect(document.querySelector('dialog[open]')!.textContent).toMatch(/Nährwerte: Open Food Facts · von dir korrigiert/);
+  });
+
+  it('invalid nutrient input is refused with a clear message – nothing saved', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), products: { [skyr.barcode]: skyr } }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    await act(async () => document.querySelector<HTMLButtonElement>('dialog[open] button[aria-label="Skyr bearbeiten"]')!.click());
+    await setField('Fett', 'viel');
+    await clickInDialog('Speichern');
+    expect(document.querySelector('dialog[open] [role="alert"]')!.textContent).toMatch(/nur Zahlen ab 0/);
+    expect(store.getState().products[skyr.barcode]).toEqual(skyr);
+  });
+
+  it('"Als Gericht speichern": parts without an amount are named in the editor, the rest is editable', async () => {
+    const manual = { id: 'm', date: '2026-09-21', slot: 'breakfast', loggedAt: '2026-09-21T08:05:00Z', name: 'Kaffee mit Milch', amount: 1, unit: 'portion', method: 'manual', macros: { kcal: 40, protein: 2, carbs: 3, fat: 2 } };
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), products: { [skyr.barcode]: skyr }, logEntries: [eaten, manual] }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    await click('Als Gericht speichern');
+    const dlg = document.querySelector('dialog[open]')!;
+    expect(dlg.textContent).toMatch(/Nicht übernommen \(ohne Mengenangabe\): Kaffee mit Milch/);
+    expect(dlg.querySelector('[aria-label="Zutaten"]')!.textContent).toMatch(/Skyr \(Emmi\)/);
   });
 });

@@ -197,8 +197,16 @@ export function targetForDate(targets: NutritionTarget[], date: ISODate): Nutrit
 export function recipeAllowed(recipe: Recipe, profile: NutritionProfile | null): boolean {
   if (!profile) return true;
   return recipe.ingredients.every((ing) => {
-    // An own dish's own products/ingredients are the user's choice; its catalog foods are checked like any recipe.
-    if (recipe.personal && isPersonalFoodId(ing.foodId)) return true;
+    // Own products / ingredients of an own dish: KNOWN facts (declared allergens, stated diet) are hard exclusions;
+    // what is unknown stays the user's own choice – nothing is guessed from a name.
+    if (recipe.personal && isPersonalFoodId(ing.foodId)) {
+      const own = getFood(ing.foodId);
+      if (!own) return true;
+      if (own.allergens.some((a) => profile.excluded.includes(a))) return false;
+      if (profile.diet === 'vegan' && !own.vegan && !own.dietUnknown?.vegan) return false;
+      if (profile.diet === 'vegetarian' && !own.vegetarian && !own.dietUnknown?.vegetarian) return false;
+      return true;
+    }
     const food = getFood(ing.foodId);
     return !!food && foodAllowed(food, profile);
   });

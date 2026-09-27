@@ -136,6 +136,7 @@ export function DishPortionSheet({
 export function DishEditorSheet({
   dish,
   initial,
+  skipped = [],
   onSaved,
   onCancel,
   onClose,
@@ -143,6 +144,8 @@ export function DishEditorSheet({
   dish?: CustomDish;
   /** Prefilled new dish (e.g. "Als Gericht speichern" from an eaten meal). */
   initial?: DishDraft;
+  /** Parts of an eaten meal that could not become ingredients (no amount) – named, never guessed. */
+  skipped?: string[];
   onSaved: (dishId: string | undefined) => void;
   onCancel: () => void;
   onClose: () => void;
@@ -203,6 +206,11 @@ export function DishEditorSheet({
       }
     >
       <div className={styles.quickForm}>
+        {skipped.length > 0 && (
+          <p className={styles.sourceNote} role="status">
+            Nicht übernommen (ohne Mengenangabe): {skipped.join(', ')} – bei Bedarf unten als Zutat hinzufügen.
+          </p>
+        )}
         <Field label="Name" placeholder="z. B. Melonen-Sandwich" value={name} error={errors.name} onChange={(e) => (setName(e.target.value), setErrors({}))} />
         <Stepper label="Ergibt" value={portions} onChange={setPortions} step={0.5} min={0.5} max={12} format={(v) => fmt.servings(v)} />
 

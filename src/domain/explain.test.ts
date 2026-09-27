@@ -151,7 +151,7 @@ describe('estimated costs on the shopping list', () => {
 describe('budget note', () => {
   it('says plainly whether the week fits and what would help', () => {
     expect(budgetNote(50, undefined, 'save')).toBeUndefined();
-    expect(budgetNote(50, 60, 'balanced')).toBe('Passt in dein Budget von 60 CHF.');
+    expect(budgetNote(50, 60, 'balanced')).toBe('Passt in dein Budget von CHF 60.–.');
     expect(budgetNote(80, 60, 'balanced')).toMatch(/Sparen/);
     expect(budgetNote(80, 60, 'save')).toMatch(/Kalorien und Protein haben Vorrang/);
   });

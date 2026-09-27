@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { formatChf } from '../../domain/costs';
+import { formatChf, PRICE_RANGE_TEXT } from '../../domain/costs';
 import { today, weekStart } from '../../domain/dates';
 import { productFoodId } from '../../domain/dishes';
-import type { Product } from '../../domain/types';
+import type { Allergen, Product } from '../../domain/types';
 import { celebrate } from '../../lib/celebrate';
 import { fmt, formatGrams } from '../../lib/format';
 import { applyWithUndo, withUndo } from '../../lib/undo';
@@ -10,12 +10,12 @@ import { matchesQuery } from '../../services/foodDatabase';
 import { createProduct, deleteProduct, updateProduct } from '../../store/actions';
 import { getState, useAppState } from '../../store/store';
 import { Button, IconButton } from '../../components/ui/Button';
-import { Field, Segmented, parseNumber } from '../../components/ui/Controls';
+import { Chip, Field, Segmented, parseNumber } from '../../components/ui/Controls';
 import { Icon } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
 import styles from './nutrition.module.css';
 
-/** "500 g · 1.19 CHF" – pack and the user's own price (never a price from the product source). */
+/** "500 g · CHF 1.19" – pack and the user's own price (never a price from the product source). */
 export function productMeta(p: Product): string {
   const u = p.unit;
   const pack = p.packageSize ? `${p.packageSize >= 1000 ? formatGrams(p.packageSize).replace(' kg', u === 'ml' ? ' L' : ' kg') : `${fmt.int(p.packageSize)} ${u}`}` : undefined;
@@ -72,6 +72,38 @@ export function ProductList({ onPick, onEdit, onCreate }: { onPick: (p: Product)
 }
 
 const num = (text: string) => (text.trim() ? parseNumber(text) : undefined);
+
+const ALLERGENS: { id: Allergen; label: string }[] = [
+  { id: 'lactose', label: 'Laktose' },
+  { id: 'gluten', label: 'Gluten' },
+  { id: 'nuts', label: 'Nüsse' },
+  { id: 'fish', label: 'Fisch' },
+];
+type DietChoice = 'unknown' | 'vegan' | 'vegetarian' | 'meat';
+const DIET_OPTIONS: { value: DietChoice; label: string }[] = [
+  { value: 'unknown', label: 'Unbekannt' },
+  { value: 'vegan', label: 'Vegan' },
+  { value: 'vegetarian', label: 'Vegetarisch' },
+  { value: 'meat', label: 'Fleisch/Fisch' },
+];
+/** What the choice states – "Unbekannt" states nothing (no guessing from the name). */
+const DIET: Record<DietChoice, NonNullable<Product['diet']>> = {
+  unknown: {},
+  vegan: { vegan: true, vegetarian: true },
+  vegetarian: { vegan: false, vegetarian: true },
+  meat: { vegan: false, vegetarian: false },
+};
+function currentDiet(p: Product | undefined): DietChoice {
+  if (p?.diet?.vegan) return 'vegan';
+  if (p?.diet?.vegetarian) return 'vegetarian';
+  if (p?.diet?.vegetarian === false) return 'meat';
+  return 'unknown';
+}
+/** Where the values come from – the origin stays visible after a correction. */
+function origin(p: Product): string {
+  const src = p.source === 'openfoodfacts' ? 'Nährwerte: Open Food Facts' : 'Eigenes Produkt';
+  return p.nutrientsEdited ? `${src} · von dir korrigiert` : `${src} · Preis: deine Angabe`;
+}
 const validPrice = (v: number | undefined) => v === undefined || (Number.isFinite(v) && v >= 0.05 && v <= 1000);
 
 /**
@@ -80,14 +112,39 @@ const validPrice = (v: number | undefined) => v === undefined || (Number.isFinit
  * Without `product` it creates an own product (values per 100 g/ml from the
  * pack – kcal required, the rest optional and otherwise unknown, never 0).
  */
-export function ProductEditSheet({ product, onDone, onCancel, onClose }: { product?: Product; onDone: (barcode: string | undefined) => void; onCancel: () => void; onClose: () => void }) {
+export function ProductEditSheet({
+  product,
+  onDone,
+  onCancel,
+  onClose,
+}: {
+  product?: Product;
+  onDone: (barcode: string | undefined) => void;
+  onCancel: () => void;
+  onClose: () => void;
+}) {
   const isNew = !product;
   const [name, setName] = useState(product?.name ?? '');
   const [brand, setBrand] = useState(product?.brand ?? '');
   const [unit, setUnit] = useState<Product['unit']>(product?.unit ?? 'g');
   const [pack, setPack] = useState(product?.packageSize ? String(product.packageSize) : '');
   const [price, setPrice] = useState(product?.price && product.price.amount === product.packageSize ? String(product.price.chf) : '');
-  const [values, setValues] = useState({ kcal: '', protein: '', carbs: '', fat: '', fiber: '', sugar: '', salt: '' });
+  // Nutrients per 100 g/ml as text – prefilled with what is known; an empty field is "unknown", never 0.
+  const initialValues = useMemo(() => {
+    const t = (v: number | undefined) => (v === undefined ? '' : String(v));
+    return {
+      kcal: t(product?.per100.kcal),
+      protein: t(product?.per100.protein),
+      carbs: t(product?.per100.carbs),
+      fat: t(product?.per100.fat),
+      fiber: t(product?.micros100.fiber),
+      sugar: t(product?.micros100.sugar),
+      salt: t(product?.micros100.salt),
+    };
+  }, [product]);
+  const [values, setValues] = useState(initialValues);
+  const [allergens, setAllergens] = useState<Allergen[]>(product?.allergens ?? []);
+  const [diet, setDiet] = useState<DietChoice | undefined>(undefined);
   const [error, setError] = useState<string | undefined>();
   const u = product?.unit ?? unit;
 
@@ -96,19 +153,24 @@ export function ProductEditSheet({ product, onDone, onCancel, onClose }: { produ
     const packPrice = num(price);
     if (!name.trim()) return setError('Bitte einen Namen angeben.');
     if (packSize !== undefined && !(packSize > 0 && packSize <= 100000)) return setError('Bitte eine gültige Packungsgrösse angeben.');
-    if (!validPrice(packPrice)) return setError('Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.');
+    if (!validPrice(packPrice)) return setError(`Bitte einen Preis ${PRICE_RANGE_TEXT} angeben.`);
     if (packPrice !== undefined && packSize === undefined) return setError('Für einen Packungspreis braucht es die Packungsgrösse.');
+    const kcal = num(values.kcal);
+    if (kcal === undefined || !(kcal >= 0 && kcal <= 900)) return setError('Kalorien pro 100 ' + u + ' sind nötig (0–900).');
+    const opt = (k: keyof typeof values) => {
+      const v = num(values[k]);
+      return v !== undefined && Number.isFinite(v) && v >= 0 ? v : undefined;
+    };
+    if ((['protein', 'carbs', 'fat', 'fiber', 'sugar', 'salt'] as const).some((k) => values[k].trim() && opt(k) === undefined))
+      return setError('Bitte nur Zahlen ab 0 eingeben – oder das Feld leer lassen (= unbekannt).');
+    const per100: Product['per100'] = { kcal: Math.round(kcal) };
+    for (const k of ['protein', 'carbs', 'fat'] as const) if (opt(k) !== undefined) per100[k] = opt(k);
+    // Vitamins/minerals of the source stay; only fiber, sugar and salt are edited here.
+    const { fiber: _f, sugar: _s, salt: _t, ...otherMicros } = product?.micros100 ?? {};
+    const micros100: Product['micros100'] = { ...otherMicros };
+    for (const k of ['fiber', 'sugar', 'salt'] as const) if (opt(k) !== undefined) micros100[k] = opt(k);
+    const nutrientsTouched = (Object.keys(values) as (keyof typeof values)[]).some((k) => values[k].trim() !== initialValues[k]);
     if (isNew) {
-      const kcal = num(values.kcal);
-      if (kcal === undefined || !(kcal >= 0 && kcal <= 900)) return setError('Kalorien pro 100 ' + unit + ' sind nötig (0–900).');
-      const opt = (k: keyof typeof values) => {
-        const v = num(values[k]);
-        return v !== undefined && Number.isFinite(v) && v >= 0 ? v : undefined;
-      };
-      const per100: Product['per100'] = { kcal: Math.round(kcal) };
-      for (const k of ['protein', 'carbs', 'fat'] as const) if (opt(k) !== undefined) per100[k] = opt(k);
-      const micros100: Product['micros100'] = {};
-      for (const k of ['fiber', 'sugar', 'salt'] as const) if (opt(k) !== undefined) micros100[k] = opt(k);
       let key: string | undefined;
       withUndo(`${name.trim()} angelegt`, () => {
         key = createProduct({
@@ -119,13 +181,24 @@ export function ProductEditSheet({ product, onDone, onCancel, onClose }: { produ
           unit,
           ...(packSize ? { packageSize: packSize } : {}),
           ...(packSize && packPrice ? { price: { chf: Math.round(packPrice * 100) / 100, amount: packSize, at: new Date().toISOString() } } : {}),
+          ...(allergens.length ? { allergens } : {}),
+          ...(diet && diet !== 'unknown' ? { diet: DIET[diet] } : {}),
         });
         return true;
       });
       celebrate({ kind: 'check', icon: '✓', title: 'Produkt gespeichert', detail: 'Für Einkauf, Budget und eigene Gerichte', level: 1 });
       return onDone(key);
     }
-    if (withUndo(`${name.trim()} gespeichert`, () => updateProduct(product.barcode, { name, brand, packageSize: packSize ?? null, ...(packPrice !== undefined ? { packPriceChf: packPrice } : {}) }))) {
+    const patch = {
+      name,
+      brand,
+      packageSize: packSize ?? null,
+      ...(packPrice !== undefined ? { packPriceChf: packPrice } : {}),
+      ...(nutrientsTouched ? { per100, micros100 } : {}),
+      allergens,
+      ...(diet ? { diet: DIET[diet] } : {}),
+    };
+    if (withUndo(`${name.trim()} gespeichert`, () => updateProduct(product.barcode, patch))) {
       celebrate({ kind: 'check', icon: '✓', title: 'Produkt gespeichert', detail: packPrice ? `${formatChf(packPrice)} pro Packung` : undefined, level: 1 });
     }
     onDone(product.barcode);
@@ -136,7 +209,7 @@ export function ProductEditSheet({ product, onDone, onCancel, onClose }: { produ
       open
       onClose={onClose}
       title={isNew ? 'Produkt anlegen' : 'Produkt bearbeiten'}
-      subtitle={isNew ? 'Werte von der Verpackung, pro 100 ' + unit : product.source === 'openfoodfacts' ? 'Nährwerte: Open Food Facts · Preis: deine Angabe' : 'Eigenes Produkt'}
+      subtitle={isNew ? 'Werte von der Verpackung, pro 100 ' + unit : origin(product)}
       footer={
         <>
           <Button variant="secondary" onClick={onCancel}>
@@ -151,12 +224,23 @@ export function ProductEditSheet({ product, onDone, onCancel, onClose }: { produ
       <div className={styles.quickForm}>
         <Field label="Name" value={name} onChange={(e) => (setName(e.target.value), setError(undefined))} />
         <Field label="Marke (optional)" value={brand} onChange={(e) => setBrand(e.target.value)} />
-        {isNew && <Segmented<Product['unit']> label="Einheit" value={unit} onChange={setUnit} options={[{ value: 'g', label: 'Gramm' }, { value: 'ml', label: 'Milliliter' }]} />}
+        {isNew && (
+          <Segmented<Product['unit']>
+            label="Einheit"
+            value={unit}
+            onChange={setUnit}
+            options={[
+              { value: 'g', label: 'Gramm' },
+              { value: 'ml', label: 'Milliliter' },
+            ]}
+          />
+        )}
         <div className={styles.formRow}>
           <Field label="Packungsgrösse" inputMode="decimal" suffix={u} value={pack} onChange={(e) => (setPack(e.target.value), setError(undefined))} />
           <Field label="Packungspreis" inputMode="decimal" suffix="CHF" value={price} onChange={(e) => (setPrice(e.target.value), setError(undefined))} />
         </div>
-        {isNew && (
+        <p className={styles.fieldLabel}>Nährwerte pro 100 {u} – leer = unbekannt</p>
+        {
           <div className={styles.formGrid}>
             {(['kcal', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'salt'] as const).map((k) => (
               <Field
@@ -169,7 +253,18 @@ export function ProductEditSheet({ product, onDone, onCancel, onClose }: { produ
               />
             ))}
           </div>
-        )}
+        }
+        <div>
+          <p className={styles.fieldLabel}>Enthält (für deine Ausschlüsse)</p>
+          <div className={styles.chipRow} role="group" aria-label="Enthält">
+            {ALLERGENS.map((a) => (
+              <Chip key={a.id} selected={allergens.includes(a.id)} onClick={() => setAllergens((list) => (list.includes(a.id) ? list.filter((x) => x !== a.id) : [...list, a.id]))}>
+                {a.label}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        <Segmented<DietChoice> label="Ernährungsform" value={diet ?? currentDiet(product)} onChange={setDiet} options={DIET_OPTIONS} />
         {error && (
           <p className={styles.fieldError} role="alert">
             {error}
@@ -194,7 +289,12 @@ export function ProductEditSheet({ product, onDone, onCancel, onClose }: { produ
               </Button>
             )}
             {product.price && (
-              <Button size="sm" variant="ghost" className={styles.tapTarget} onClick={() => withUndo('Preis entfernt', () => updateProduct(product.barcode, { packPriceChf: null })) && setPrice('')}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className={styles.tapTarget}
+                onClick={() => withUndo('Preis entfernt', () => updateProduct(product.barcode, { packPriceChf: null })) && setPrice('')}
+              >
                 Preis entfernen
               </Button>
             )}

@@ -123,10 +123,10 @@ export function formatChfEstimate(chf: number): string {
  */
 export function budgetNote(costChf: number, budgetChf: number | undefined, priority: PlanPriority): string | undefined {
   if (budgetChf === undefined || costChf <= 0) return undefined;
-  if (costChf <= budgetChf) return `Passt in dein Budget von ${budgetChf} CHF.`;
+  if (costChf <= budgetChf) return `Passt in dein Budget von ${formatChf(budgetChf)}.`;
   return priority === 'save'
-    ? `Über deinem Budget von ${budgetChf} CHF – günstige Rezepte sind schon bevorzugt, Kalorien und Protein haben Vorrang.`
-    : `Über deinem Budget von ${budgetChf} CHF – mit dem Schwerpunkt „Sparen“ (Profil) wird die Woche günstiger.`;
+    ? `Über deinem Budget von ${formatChf(budgetChf)} – günstige Rezepte sind schon bevorzugt, Kalorien und Protein haben Vorrang.`
+    : `Über deinem Budget von ${formatChf(budgetChf)} – mit dem Schwerpunkt „Sparen“ (Profil) wird die Woche günstiger.`;
 }
 
 /**

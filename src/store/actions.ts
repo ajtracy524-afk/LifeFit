@@ -324,12 +324,18 @@ export interface ProductPatch {
   packageSize?: number | null;
   /** CHF for the whole pack (packageSize) – null removes the price. */
   packPriceChf?: number | null;
+  /** Corrected values per 100 g/ml – a missing key means unknown (never 0). Marks the product as corrected. */
+  per100?: Product['per100'];
+  micros100?: Product['micros100'];
+  allergens?: Product['allergens'];
+  diet?: Product['diet'];
 }
 
 /**
- * Edits the user's data of a product: name, brand, pack size, price in CHF.
- * Nutrients stay as the source (or the user, for own products) gave them.
- * Log entries are snapshots and do not change.
+ * Edits the user's data of a product: name, brand, pack size, price in CHF,
+ * and – as a correction – nutrients, allergens and diet. The origin stays in
+ * `source`; a nutrient correction sets `nutrientsEdited`. Own dishes with
+ * this product follow the correction; log entries are snapshots and do not change.
  */
 export function updateProduct(barcode: string, patch: ProductPatch): boolean {
   const p = getState().products?.[barcode];
@@ -345,6 +351,27 @@ export function updateProduct(barcode: string, patch: ProductPatch): boolean {
     else if (patch.packageSize !== undefined && patch.packageSize > 0) d.packageSize = patch.packageSize;
     if (patch.packPriceChf === null) delete d.price;
     else if (patch.packPriceChf !== undefined && patch.packPriceChf > 0 && d.packageSize) d.price = { chf: Math.round(patch.packPriceChf * 100) / 100, amount: d.packageSize, at: new Date().toISOString() };
+    if (patch.allergens) {
+      if (patch.allergens.length) d.allergens = [...patch.allergens];
+      else delete d.allergens;
+    }
+    if (patch.diet) {
+      if (Object.keys(patch.diet).length) d.diet = { ...patch.diet };
+      else delete d.diet;
+    }
+    const nutrientsChanged = (patch.per100 && JSON.stringify(patch.per100) !== JSON.stringify(d.per100)) || (patch.micros100 && JSON.stringify(patch.micros100) !== JSON.stringify(d.micros100));
+    if (nutrientsChanged) {
+      if (patch.per100) d.per100 = { ...patch.per100 };
+      if (patch.micros100) d.micros100 = { ...patch.micros100 };
+      d.nutrientsEdited = new Date().toISOString();
+      // Own dishes use the corrected product from now on (logged entries keep their snapshot).
+      for (const dish of Object.values(s.customDishes ?? {}))
+        for (const ing of dish.ingredients)
+          if (ing.source === 'product' && ing.ref === barcode) {
+            ing.per100 = { ...d.per100 };
+            ing.micros100 = { ...d.micros100 };
+          }
+    }
     s.products[barcode] = d;
   });
   return true;

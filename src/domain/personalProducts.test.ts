@@ -9,7 +9,7 @@ import { explainMeal } from './explain';
 import { recipeAllowed, recipeMacros, recipeMicros } from './nutrition';
 import { dishAsRecipe, isPlannable, syncPersonal } from './personal';
 import type { AppState, CustomDish, LogEntry, PlannedMeal, Product } from './types';
-import { applyWeekChange, planMeals, weekFoodCost, weekShopping } from './week';
+import { applyWeekChange, planMeals, purchaseAmount, weekFoodCost, weekShopping } from './week';
 
 /**
  * Own products and own dishes join the EXISTING systems: getFood / getRecipe,
@@ -101,7 +101,7 @@ describe('prices in CHF: real product prices, per portion, no invented values', 
     const priced = dish({ ingredients: [ingredientFromProduct(oats, 160, 'a')!] });
     // 160 g of 500 g for 1.19 CHF = 0.38 CHF, exact → a narrow range.
     expect(dishCostRange(priced, 1, priceLookup(base().products))).toEqual({ lowChf: 0, highChf: 0.5 });
-    expect(formatChf(1.19)).toBe('1.19 CHF');
+    expect(formatChf(1.19)).toBe('CHF 1.19');
     // Without a price there is no cost – not a guess.
     const noPrice = { ...oats, price: undefined };
     expect(dishCostRange(dish({ ingredients: [ingredientFromProduct(noPrice, 160, 'a')!] }), 1, priceLookup({ [oats.barcode]: noPrice }))).toBeUndefined();
@@ -143,7 +143,7 @@ describe('planner: own dishes are candidates of the existing planner', () => {
     const meal: PlannedMeal = { id: 'm', date: MON, slot: 'breakfast', recipeId: 'dish:porridge', servings: 1, status: 'planned', source: 'suggest' };
     const reasons = explainMeal(s, meal, MON);
     expect(reasons[0]).toBe('Dein eigenes Gericht');
-    expect(reasons.some((r) => /CHF für diese Mahlzeit$/.test(r))).toBe(true);
+    expect(reasons.some((r) => /^ca\. CHF [\d.]+–[\d.]+ für diese Mahlzeit$|^unter CHF 1\.– für diese Mahlzeit$/.test(r))).toBe(true);
   });
 });
 
@@ -167,5 +167,76 @@ describe('"Als Gericht speichern" from what was really eaten', () => {
     // Logged as a dish again, the values match what was eaten (same sources, same scaling).
     const logged = dishEntry({ ...dish(), ...draft, id: 'new', name: 'Mein Frühstück' }, 1);
     expect(Math.abs(logged.macros.kcal - (getRecipe('skyr-bowl') ? recipeMacros(getRecipe('skyr-bowl')!).kcal + 112 + 222 : 0))).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('hardening: exclusions, completeness, pantry, shopping, unknown ≠ 0', () => {
+  const planned = (id: string, date: string, status: PlannedMeal['status'] = 'planned'): PlannedMeal => ({ id, date, slot: 'breakfast', recipeId: 'dish:porridge', servings: 1, status, source: 'user' });
+
+  it('Open Food Facts: declared allergens and a DEFINITE diet analysis are read; "maybe" stays unknown', async () => {
+    const { normalizeOffProduct } = await import('../services/productLookup');
+    const skyr = normalizeOffProduct('7610900016099', { product_name: 'Skyr', nutriments: { 'energy-kcal_100g': 60 }, allergens_tags: ['en:milk', 'en:celery'], ingredients_analysis_tags: ['en:non-vegan', 'en:maybe-vegetarian'] })!;
+    expect(skyr.allergens).toEqual(['lactose']); // celery is not an exclusion LifeFit knows – not mapped, not guessed
+    expect(skyr.diet).toEqual({ vegan: false });
+    const plain = normalizeOffProduct('1', { product_name: 'Etwas', nutriments: { 'energy-kcal_100g': 60 } })!;
+    expect(plain).not.toHaveProperty('allergens');
+    expect(plain).not.toHaveProperty('diet');
+  });
+
+  it('known facts are hard exclusions for own dishes; unknown is the user\'s choice (nothing guessed from the name)', () => {
+    const skyrProduct: Product = { ...oats, barcode: 's', name: 'Skyr', allergens: ['lactose'], diet: { vegan: false } };
+    const withSkyr = dish({ ingredients: [ingredientFromProduct(skyrProduct, 200, 'x')!] });
+    syncPersonal(base({ products: { s: skyrProduct }, customDishes: { porridge: withSkyr } }));
+    const r = getRecipe('dish:porridge')!;
+    expect(recipeAllowed(r, { diet: 'vegan', excluded: [], slots: ['breakfast'] })).toBe(false);
+    expect(recipeAllowed(r, { diet: 'omnivore', excluded: ['lactose'], slots: ['breakfast'] })).toBe(false);
+    expect(recipeAllowed(r, { diet: 'vegetarian', excluded: [], slots: ['breakfast'] })).toBe(true); // vegetarian is unknown → allowed
+    // The same product without any stated facts: allowed for everyone (the user's own product).
+    syncPersonal(base({ products: { s: { ...skyrProduct, allergens: undefined, diet: undefined } }, customDishes: { porridge: withSkyr } }));
+    expect(recipeAllowed(getRecipe('dish:porridge')!, { diet: 'vegan', excluded: ['lactose'], slots: ['breakfast'] })).toBe(true);
+  });
+
+  it('a product whose CURRENT values lack a macro takes its dishes out of the planner (unknown is not 0)', () => {
+    syncPersonal(base({ products: { [oats.barcode]: { ...oats, per100: { kcal: 370, carbs: 59, fat: 7 } } } }));
+    expect(allRecipes().some((r) => r.id === 'dish:porridge')).toBe(false);
+    syncPersonal(base());
+    expect(allRecipes().some((r) => r.id === 'dish:porridge')).toBe(true);
+  });
+
+  it('own recipe → shopping: pantry 20 g, need 80 g → 60 g open, bought as one real pack; one position even if two dishes use it', () => {
+    const second = dish({ id: 'second', name: 'Overnight Oats', slots: ['snack'] });
+    const s = base({
+      customDishes: { porridge: dish(), second },
+      pantry: { 'product:7610000000011': { foodId: 'product:7610000000011', quantityG: 20, updatedAt: `${MON}T07:00:00Z` } },
+      plannedMeals: [planned('m', MON), { ...planned('n', MON), slot: 'snack', recipeId: 'dish:second' }],
+    });
+    const items = weekShopping(s, MON, MON).filter((i) => i.foodId === 'product:7610000000011');
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ neededG: 160, remainingG: 140, state: 'open', quantity: '140 g' });
+    // Bought as whole packs: one 500 g pack, priced with the user's pack price (CHF 1.19).
+    expect(purchaseAmount(getFood('product:7610000000011')!, items[0]!.remainingG)).toBe(500);
+    expect(items[0]!.estCostChf).toBeCloseTo(1.19, 2);
+    const one = weekShopping({ ...s, customDishes: { porridge: dish() }, plannedMeals: [planned('m', MON)] }, MON, MON).find((i) => i.foodId === 'product:7610000000011')!;
+    expect(one).toMatchObject({ neededG: 80, remainingG: 60 });
+  });
+
+  it('own recipe planned and eaten → the pantry is used once (no double booking, no new stock)', async () => {
+    const { logFromMeal } = await import('./nutrition');
+    const { pantryEstimate } = await import('./week');
+    const s = base({ pantry: { 'product:7610000000011': { foodId: 'product:7610000000011', quantityG: 500, updatedAt: `${MON}T07:00:00Z` } } });
+    syncPersonal(s);
+    const eaten = planned('m', MON, 'eaten');
+    const entry = logFromMeal(eaten, `${MON}T08:00:00Z`);
+    expect(pantryEstimate({ ...s, logEntries: [entry] })['product:7610000000011']).toBe(420); // 500 − 80 g per portion
+    // The shopping list does not buy it again for the eaten meal.
+    expect(weekShopping({ ...s, plannedMeals: [eaten], logEntries: [entry] }, MON, MON).find((i) => i.foodId === 'product:7610000000011')).toBeUndefined();
+  });
+
+  it('a product without sugar data: the dish has no sugar value – never 0 g', () => {
+    const noSugar: Product = { ...oats, micros100: { fiber: 10 } };
+    const d = dish({ ingredients: [ingredientFromProduct(noSugar, 100, 'a')!, ingredientFromFood(getFood('banana')!, 120, 'b')] });
+    const n = dishPortionNutrition(d, 1);
+    expect(n.micros).not.toHaveProperty('sugar');
+    expect(n.micros.fiber).toBeGreaterThan(0);
   });
 });

@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
+import { formatChf } from '../../domain/costs';
 import { addDays, isoWeekNumber, today, weekStart } from '../../domain/dates';
 import { groupByCategory, shoppingRange, type ShoppingListItem } from '../../domain/shopping';
 import { formatChfEstimate } from '../../domain/explain';
@@ -98,7 +99,7 @@ export function ShoppingScreen() {
           {cost.totalChf > 0 && (
             <p className={styles.costLine}>
               {formatChfEstimate(cost.totalChf)} geschätzt
-              {budget !== undefined && week === thisWeek ? ` · Wochenbudget ${budget} CHF` : ''}
+              {budget !== undefined && week === thisWeek ? ` · Wochenbudget ${formatChf(budget)}` : ''}
               {cost.unpriced > 0 ? ` · ${cost.unpriced} Artikel ohne Preis` : ''}
             </p>
           )}

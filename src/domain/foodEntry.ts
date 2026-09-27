@@ -1,4 +1,5 @@
 import { FOODS } from '../data/foods';
+import { PRICE_RANGE_TEXT } from './costs';
 import { SALT_PER_SODIUM } from '../data/nutrients';
 import { BASIC_NUTRIENTS, roundMacros, scaleMicros } from './nutrition';
 import type { Food, FoodUnit, LogEntry, MacroKey, Macros, Micros, Product } from './types';
@@ -136,7 +137,7 @@ export function manualEntry(input: ManualInput): { ok: true; entry: EntryContent
     else values[key] = v;
   }
   const price = parse(input.price ?? '');
-  if (price !== undefined && (Number.isNaN(price) || price < 0.05 || price > 1000)) errors.price = 'Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.';
+  if (price !== undefined && (Number.isNaN(price) || price < 0.05 || price > 1000)) errors.price = `Bitte einen Preis ${PRICE_RANGE_TEXT} angeben.`;
   if (Object.keys(errors).length) return { ok: false, errors };
 
   const factor = per100 ? amount! / 100 : 1;

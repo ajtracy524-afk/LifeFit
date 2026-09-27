@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { getFood } from '../../data/foods';
-import { formatChf } from '../../domain/costs';
+import { formatChf, PRICE_RANGE_TEXT } from '../../domain/costs';
 import { productAmountOptions, productNutrients, suggestCatalogFoods } from '../../domain/foodEntry';
 import type { Macros, MacroKey, Micros, Product } from '../../domain/types';
 import { pantryEstimate } from '../../domain/week';
@@ -166,7 +166,7 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat', o
         suffix="CHF"
         placeholder="z. B. 4.95"
         value={priceText}
-        error={priceValid ? undefined : 'Bitte einen Preis zwischen 0.05 und 1000 CHF angeben.'}
+        error={priceValid ? undefined : `Bitte einen Preis ${PRICE_RANGE_TEXT} angeben.`}
         hint={
           typed && validAmount && purpose === 'eat' && typed.amount !== amount
             ? `Deine Menge (${fmt.int(amount)} ${u}) ≈ ${formatChf((typed.chf / typed.amount) * amount)}`

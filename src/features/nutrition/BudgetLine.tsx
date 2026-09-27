@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { formatCostRange, type CostRange } from '../../domain/costs';
+import { formatChf, formatCostRange, type CostRange } from '../../domain/costs';
 import { weekDays } from '../../domain/dates';
 import type { ISODate } from '../../domain/types';
 import { weekFoodCost } from '../../domain/week';
@@ -16,7 +16,7 @@ interface Props {
 }
 
 /**
- * "Diese Woche ca. 32–38 CHF von 55 CHF" – the estimated food value of the
+ * "Diese Woche ca. CHF 32–38 von CHF 55.–" – the estimated food value of the
  * week against the budget (CHF only), optionally with "bisher gegessen" and
  * "frei". Without enough price data no number is shown: with a budget set it
  * says so ("Preis nicht verfügbar"), otherwise the line stays away. Being over
@@ -41,7 +41,7 @@ export function BudgetLine({ week, label = 'Diese Woche', className, progressUnt
     if (budget === undefined || !hasFood) return null;
     return (
       <span className={[styles.budgetLine, className].filter(Boolean).join(' ')}>
-        {label}: Preis nicht verfügbar – zu wenig Preisdaten · Budget {budget} CHF
+        {label}: Preis nicht verfügbar – zu wenig Preisdaten · Budget {formatChf(budget)}
       </span>
     );
   }
@@ -51,7 +51,7 @@ export function BudgetLine({ week, label = 'Diese Woche', className, progressUnt
   return (
     <span className={[styles.budgetLine, over && styles.budgetOver, className].filter(Boolean).join(' ')} title="Schätzung aus Durchschnittspreisen und deinen eingegebenen Preisen">
       {label} {formatCostRange({ lowChf: Math.min(low, high), highChf: Math.max(low, high) })}
-      {budget !== undefined ? ` von ${budget} CHF` : ''}
+      {budget !== undefined ? ` von ${formatChf(budget)}` : ''}
       {over ? ' – über Budget' : ''}
       {progressUntil && budget !== undefined && (eaten || left) && (
         <span className={styles.budgetDetail}>
