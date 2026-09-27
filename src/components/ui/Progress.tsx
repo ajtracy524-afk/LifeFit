@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { CountUp } from './CountUp';
 import styles from './Progress.module.css';
 
 interface RingProps {
@@ -49,15 +50,7 @@ interface BarProps {
 export function ProgressBar({ value, max, color = 'var(--accent)', height = 8, label }: BarProps) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
-    <div
-      className={styles.bar}
-      style={{ height }}
-      role="progressbar"
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={Math.round(max)}
-      aria-valuenow={Math.round(value)}
-    >
+    <div className={styles.bar} style={{ height }} role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={Math.round(max)} aria-valuenow={Math.round(value)}>
       <div className={styles.barFill} style={{ width: `${pct}%`, background: color }} />
     </div>
   );
@@ -92,24 +85,37 @@ interface MacroStripProps {
   target: { protein: number; carbs: number; fat: number };
 }
 
-/** Protein · Kohlenhydrate · Fett side by side: value / target and a thin bar. No accordion. */
+/**
+ * Protein · Kohlenhydrate · Fett side by side: value / target and a thin bar.
+ * Values glide to new numbers; reaching the protein target gets a small check
+ * (a goal) – carbs and fat have no "reached" moment, they are budgets.
+ */
 export function MacroStrip({ protein, carbs, fat, target }: MacroStripProps) {
   const items = [
-    { label: 'Protein', value: protein, max: target.protein, color: 'var(--accent)' },
-    { label: 'Kohlenhydrate', value: carbs, max: target.carbs, color: 'var(--carbs)' },
-    { label: 'Fett', value: fat, max: target.fat, color: 'var(--fat)' },
+    { label: 'Protein', value: protein, max: target.protein, color: 'var(--accent)', goal: true },
+    { label: 'Kohlenhydrate', value: carbs, max: target.carbs, color: 'var(--carbs)', goal: false },
+    { label: 'Fett', value: fat, max: target.fat, color: 'var(--fat)', goal: false },
   ];
   return (
     <div className={styles.macroStrip} role="group" aria-label="Makros">
-      {items.map((m) => (
-        <div key={m.label} className={styles.macroCol}>
-          <span className={styles.macroColLabel}>{m.label}</span>
-          <span className={styles.macroColValue}>
-            <strong>{Math.round(m.value)}</strong> / {Math.round(m.max)} g
-          </span>
-          <ProgressBar value={m.value} max={m.max} color={m.color} height={5} label={m.label} />
-        </div>
-      ))}
+      {items.map((m) => {
+        const reached = m.goal && m.max > 0 && m.value >= m.max;
+        return (
+          <div key={m.label} className={reached ? `${styles.macroCol} ${styles.macroReached}` : styles.macroCol}>
+            <span className={styles.macroColLabel}>
+              {m.label}
+              {reached && <span aria-label=" – Ziel erreicht"> ✓</span>}
+            </span>
+            <span className={styles.macroColValue}>
+              <strong>
+                <CountUp value={m.value} />
+              </strong>{' '}
+              / {Math.round(m.max)} g
+            </span>
+            <ProgressBar value={m.value} max={m.max} color={m.color} height={5} label={m.label} />
+          </div>
+        );
+      })}
     </div>
   );
 }

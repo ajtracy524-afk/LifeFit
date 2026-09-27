@@ -10,6 +10,7 @@ import type { WorkoutTemplate } from '../../domain/types';
 import { fmt, SLOT_LABEL } from '../../lib/format';
 import { navigate } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
+import { mealLoggedMessage } from '../nutrition/logFeedback';
 import { markEaten } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Button } from '../../components/ui/Button';
@@ -64,7 +65,7 @@ export function NextActionCard({ action, onPlanWeek, onStart, onOpenMeal, onRepl
           }
           text={[fmt.kcal(macros.kcal), `${fmt.int(macros.protein)} g P · ${fmt.int(macros.carbs)} g KH · ${fmt.int(macros.fat)} g F`, cost && formatCostRange(cost)].filter(Boolean).join(' · ')}
         >
-          <Button icon="check" onClick={() => withUndo(`${slot} erfasst`, () => markEaten(action.meal.id))}>
+          <Button icon="check" onClick={() => withUndo(mealLoggedMessage(action.meal, `${slot} erfasst`), () => markEaten(action.meal.id))}>
             Gegessen
           </Button>
           <Button variant="secondary" icon="swap" onClick={() => onReplaceMeal(action.meal.id)}>

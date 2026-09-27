@@ -5,6 +5,7 @@ import { fmt } from '../../lib/format';
 import { withUndo } from '../../lib/undo';
 import { markEaten, unmarkEaten } from '../../store/actions';
 import { Icon } from '../../components/ui/Icon';
+import { mealLoggedMessage } from './logFeedback';
 import styles from './nutrition.module.css';
 
 interface MealRowProps {
@@ -26,7 +27,7 @@ export function MealRow({ meal, label, onOpen, highlight, checkable = true }: Me
     if (eaten) {
       withUndo('Markierung entfernt', () => unmarkEaten(meal.id));
     } else {
-      withUndo(`${recipe?.title ?? 'Mahlzeit'} erfasst`, () => markEaten(meal.id));
+      withUndo(mealLoggedMessage(meal, `${recipe?.title ?? 'Mahlzeit'} erfasst`), () => markEaten(meal.id));
       navigator.vibrate?.(10);
     }
   };

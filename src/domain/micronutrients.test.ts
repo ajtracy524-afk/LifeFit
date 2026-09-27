@@ -77,7 +77,7 @@ describe('micronutrients from eaten entries', () => {
 
   it('catalog values are copied from the source with their FoodData Central id; salt follows sodium × 2.5', () => {
     expect(FOOD_MICROS.broccoli).toMatchObject({ fdc: 170379, vitaminC: 89.2, calcium: 47 });
-    expect(getFood('broccoli')!.micros).toMatchObject({ vitaminC: 89.2, sodium: 33, salt: 0.08 });
+    expect(getFood('broccoli')!.micros).toMatchObject({ vitaminC: 89.2, sodium: 33, salt: 0.0825 });
     // Unknown in the source → left out, not 0 (oats list no vitamin E in SR Legacy).
     expect(getFood('oats')!.micros).not.toHaveProperty('vitaminE');
     expect(getFood('whey')!.micros).toBeUndefined();

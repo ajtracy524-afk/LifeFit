@@ -19,6 +19,7 @@ import { Segmented } from '../../components/ui/Controls';
 import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { MacroStrip } from '../../components/ui/Progress';
+import { CountUp } from '../../components/ui/CountUp';
 import { LogFoodSheet, type LogTarget } from './LogFoodSheet';
 import { MealRow } from './MealRow';
 import { MealSheet } from './MealSheet';
@@ -112,7 +113,9 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
         <Card>
           <div className={styles.dayTotals}>
             <div>
-              <span className={styles.bigNumber}>{fmt.int(totals.kcal)}</span>
+              <span className={styles.bigNumber}>
+                <CountUp value={totals.kcal} format={fmt.int} />
+              </span>
               <span className={styles.muted}> / {fmt.kcal(target.kcal)}</span>
             </div>
             <span className={styles.remaining}>
@@ -222,7 +225,7 @@ function OptionalNutrients({ summary }: { summary: NutritionSummary }) {
   );
 }
 
-const SOURCE_LABEL: Partial<Record<LogEntry['method'], string>> = { barcode: 'Barcode', manual: 'Manuell', quick: 'Manuell', food: 'Lebensmittel' };
+const SOURCE_LABEL: Partial<Record<LogEntry['method'], string>> = { barcode: 'Barcode', manual: 'Manuell', quick: 'Manuell', food: 'Lebensmittel', dish: 'Mein Gericht' };
 const UNIT_LABEL = { g: 'g', ml: 'ml', portion: 'Portion', piece: 'Stück' } as const;
 
 /** One logged food. `replaces`: the planned dish it was eaten instead of (shown like on Heute). */

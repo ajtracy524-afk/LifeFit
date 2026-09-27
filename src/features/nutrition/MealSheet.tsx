@@ -12,6 +12,7 @@ import { Chip } from '../../components/ui/Controls';
 import { Sheet } from '../../components/ui/Sheet';
 import { RecipeDetail } from './RecipeDetail';
 import { ReplacePanel } from './ReplacePanel';
+import { mealLoggedMessage } from './logFeedback';
 import styles from './nutrition.module.css';
 
 interface MealSheetProps {
@@ -74,7 +75,7 @@ export function MealSheet({ mealId, onClose, startReplacing = false }: MealSheet
                 block
                 icon="check"
                 onClick={() => {
-                  withUndo(`${recipe.title} erfasst`, () => markEaten(meal.id));
+                  withUndo(mealLoggedMessage(meal, `${recipe.title} erfasst`), () => markEaten(meal.id));
                   close();
                 }}
               >

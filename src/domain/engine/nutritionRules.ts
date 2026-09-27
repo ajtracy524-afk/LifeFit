@@ -7,6 +7,7 @@ import { recipesForSlot, servingsForSlot, swapOptions } from '../planner';
 import type { Macros, MealSlot, Recipe } from '../types';
 import { dayContextFor, pantryEstimate, weekFoodCost } from '../week';
 import { formatCostRange, priceLookup, recipeCostRange, type CostRange } from '../costs';
+import { dishCostRange, dishPortionNutrition } from '../dishes';
 import { plannerAffinity } from '../preferences';
 import { effectiveTimeBudget, TIME_BUDGETS } from '../timeBudget';
 import type { EngineContext } from './context';
@@ -380,6 +381,81 @@ export function leftoversRule(ctx: EngineContext): Recommendation[] {
             },
           ]
         : [],
+    },
+  ];
+}
+
+/** Portions an own dish is suggested in – halves only, like the portion picker. */
+const DISH_PORTIONS = [0.5, 1, 1.5, 2];
+
+/**
+ * "Dein Melon Sandwich passt heute gut": an own dish that fits what is still
+ * open today (after planned meals). Same room as the meal suggestions
+ * (maxMealShare, late snack), protein weighed the same way; dishes the user
+ * logs often win ties. Only when it really fits (±25 % of the meal size).
+ */
+export function ownDishRule(ctx: EngineContext): Recommendation[] {
+  const t = ctx.target;
+  const dishes = Object.values(ctx.state.customDishes ?? {});
+  if (!t || dishes.length === 0) return [];
+  const R = NUTRITION_RULES;
+  const open = { kcal: t.kcal - ctx.eaten.kcal - ctx.plannedOpenMacros.kcal, protein: t.protein - ctx.eaten.protein - ctx.plannedOpenMacros.protein };
+  if (open.kcal < R.minKcalGap) return [];
+  const late = ctx.hour >= R.lateHour;
+  const mealKcal = Math.min(open.kcal, t.kcal * (late ? R.lateMealShare : R.maxMealShare));
+  const slot: MealSlot = late || ctx.freeSlots.length === 0 ? 'snack' : ctx.freeSlots[0]!;
+  const trainingDay = !!ctx.todaysSession || ctx.trainedToday;
+  const since = addDays(ctx.date, -30);
+  const uses = (id: string) => ctx.state.logEntries.filter((e) => e.dishId === id && e.date >= since).length;
+
+  const best = dishes
+    .map((dish) => {
+      const perPortion = dishPortionNutrition(dish, 1).macros;
+      if (!(perPortion.kcal > 0)) return undefined;
+      const portions = DISH_PORTIONS.reduce((a, b) => (Math.abs(perPortion.kcal * b - mealKcal) < Math.abs(perPortion.kcal * a - mealKcal) ? b : a));
+      const macros = dishPortionNutrition(dish, portions).macros;
+      const kcalError = Math.abs(macros.kcal - mealKcal) / mealKcal;
+      const proteinWanted = Math.max(0, open.protein) * (mealKcal / open.kcal);
+      const proteinShort = proteinWanted > 0 ? Math.max(0, proteinWanted - macros.protein) / proteinWanted : 0;
+      const used = uses(dish.id);
+      const score = kcalError + (trainingDay ? R.proteinWeightTraining : R.proteinWeight) * proteinShort * 0.5 - 0.03 * Math.min(used, 5);
+      return { dish, portions, macros, kcalError, proteinWanted, used, score };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x && x.kcalError <= 0.25 && x.macros.kcal <= open.kcal * 1.1)
+    .sort((a, b) => a.score - b.score)[0];
+  if (!best) return [];
+
+  const { dish, portions, macros } = best;
+  const cost = dishCostRange(dish, portions, priceLookup(ctx.state.products));
+  const amount = portions === 1 ? '' : ` (${fmt.servings(portions)})`;
+  const because = [
+    'dein eigenes Gericht',
+    best.used >= 2 ? `in den letzten 30 Tagen ${best.used}× gegessen` : null,
+    best.proteinWanted >= 10 && macros.protein >= best.proteinWanted * 0.8 ? `${fmt.g(macros.protein)} Protein – deckt deine offene Menge` : null,
+    `${fmt.kcal(macros.kcal)} – passt zu deinen offenen Kalorien`,
+  ].filter((b): b is string => !!b);
+  return [
+    {
+      id: `own_dish:${ctx.date}:${dish.id}`,
+      kind: 'own_dish',
+      domain: 'nutrition',
+      priority: 'medium',
+      confidence: 'high',
+      title: `Dein ${dish.name} passt heute gut`,
+      message: `ca. ${fmt.kcal(macros.kcal)} und ${fmt.g(macros.protein)} Protein${amount} – noch ca. ${fmt.kcal(open.kcal)} offen für ${SLOT_LABEL[slot]}.`,
+      reasons: [`Gegessen: ${fmt.int(ctx.eaten.kcal)} von ${fmt.kcal(t.kcal)}`],
+      facts: { openKcal: Math.round(open.kcal), dishKcal: macros.kcal, dishProtein: Math.round(macros.protein), portions, uses: best.used },
+      actions: [
+        {
+          type: 'log_dish',
+          label: `${dish.name} erfassen`,
+          date: ctx.date,
+          slot,
+          dishId: dish.id,
+          portions,
+          details: { title: `🍽️ ${dish.name}${amount}`, kcal: macros.kcal, protein: Math.round(macros.protein), cost, because },
+        },
+      ],
     },
   ];
 }

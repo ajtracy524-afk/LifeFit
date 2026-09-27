@@ -1,7 +1,7 @@
 import type { AppState } from '../types';
 import { buildContext, type EngineContext } from './context';
 import { applyGuardrails } from './guardrails';
-import { leftoversRule, nutritionGapRule, nutritionOverRule, proteinPatternRule } from './nutritionRules';
+import { leftoversRule, nutritionGapRule, nutritionOverRule, ownDishRule, proteinPatternRule } from './nutritionRules';
 import { bodyRateRule, shoppingRule } from './planRules';
 import { frequencyRule, missedRule, programRule, recoveryRule, stallRule, timeRule, undertrainedRule } from './trainingRules';
 import type { EngineOptions, Priority, Recommendation } from './types';
@@ -20,6 +20,7 @@ export const RULES: { name: string; run: Rule }[] = [
   { name: 'training_time', run: timeRule },
   { name: 'training_recovery', run: recoveryRule },
   { name: 'training_frequency', run: frequencyRule },
+  { name: 'own_dish', run: ownDishRule },
   { name: 'nutrition_gap', run: nutritionGapRule },
   { name: 'shopping_missing', run: shoppingRule },
   { name: 'training_missed', run: missedRule },

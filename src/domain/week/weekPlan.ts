@@ -132,6 +132,8 @@ export function weekFoodCost(state: AppState, week: ISODate, opts: { eatenUntil?
     if (!inWeek(e.date) || e.plannedMealId) continue;
     // A real price counts even without a weight (manual "1 Portion" with price).
     if (e.costChf !== undefined) items.push({ grams: e.grams ?? 0, exactChf: e.costChf });
+    // An own dish: its ingredients, priced like recipe ingredients (unlinked ones count as unpriced weight).
+    else if (e.ingredients?.length) items.push(...e.ingredients.filter((i) => i.grams > 0));
     else if (!e.grams) continue;
     else if (e.foodId) items.push({ foodId: e.foodId, grams: e.grams });
     // A product without price and without catalog link: its weight counts as unpriced.

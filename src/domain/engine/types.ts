@@ -14,6 +14,7 @@ export type EngineDomain = 'nutrition' | 'training' | 'shopping' | 'body' | 'saf
 export type RecommendationKind =
   | 'nutrition_gap'
   | 'nutrition_over'
+  | 'own_dish'
   | 'protein_pattern'
   | 'leftovers'
   | 'training_recovery'
@@ -35,6 +36,7 @@ export type Confidence = 'high' | 'medium' | 'low';
 export type EngineAction =
   | { type: 'add_meal'; label: string; date: ISODate; slot: MealSlot; recipeId: string; servings: number; details?: MealSuggestionDetails }
   | { type: 'log_food'; label: string; date: ISODate; slot: MealSlot; foodId: string; grams: number }
+  | { type: 'log_dish'; label: string; date: ISODate; slot: MealSlot; dishId: string; portions: number; details?: MealSuggestionDetails }
   | { type: 'swap_meal'; label: string; mealId: string; recipeId: string; servings: number }
   | { type: 'start_workout'; label: string; template: WorkoutTemplate }
   | { type: 'set_targets'; label: string; macros: Macros }
@@ -43,7 +45,8 @@ export type EngineAction =
 /** What the UI shows for a suggested meal – facts only, cost only with enough price data. */
 export interface MealSuggestionDetails {
   title: string;
-  prepMin: number;
+  /** Unknown for own dishes (no preparation time stored). */
+  prepMin?: number;
   kcal: number;
   protein: number;
   cost?: CostRange;

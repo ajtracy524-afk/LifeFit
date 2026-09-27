@@ -217,7 +217,7 @@ export interface LogEntry {
    * plan = eaten planned meal · food = catalog food · barcode = scanned product ·
    * manual = entered by hand · quick = older calorie-only entries (still read).
    */
-  method: 'plan' | 'food' | 'quick' | 'manual' | 'barcode';
+  method: 'plan' | 'food' | 'quick' | 'manual' | 'barcode' | 'dish';
   /** Snapshot – history stays correct even if the catalog changes. */
   macros: Macros;
   /** Optional nutrients – only those actually known, never estimated. */
@@ -236,6 +236,12 @@ export interface LogEntry {
   replacedMealId?: string;
   /** Real cost of the eaten amount in CHF (from a product price the user entered) – snapshot like the macros. */
   costChf?: number;
+  /** Own dish this entry was logged from (the entry keeps its own snapshot). */
+  dishId?: string;
+  /** Catalog ingredients of an own dish (for the price estimate) – foodId '' = no catalog food. */
+  ingredients?: { foodId: string; grams: number }[];
+  /** FoodData Central id of a database food. */
+  fdc?: number;
 }
 
 /**
@@ -413,4 +419,38 @@ export interface AppState {
   products: Record<string, Product>;
   /** Water drunk per day in ml. A new day simply has no entry yet. */
   water: Record<ISODate, number>;
+  /** The user's own saved dishes ("Meine Gerichte"), keyed by id. */
+  customDishes: Record<string, CustomDish>;
+}
+
+/** One ingredient of an own dish, with the nutrient values it had when it was added. */
+export interface DishIngredient {
+  id: string;
+  name: string;
+  /** Amount in g (ml for drinks – weighed like grams). */
+  grams: number;
+  /** Where the values come from: curated catalog, extended database (FoodData Central) or a scanned product. */
+  source: 'catalog' | 'database' | 'product';
+  /** foodId, database id or barcode. */
+  ref: string;
+  /** Snapshot per 100 g – the dish stays computable offline and does not change when a source changes. */
+  per100: Partial<Macros>;
+  micros100?: Micros;
+  /** Catalog food behind it (for prices and the pantry link), if any. */
+  foodId?: string;
+}
+
+/**
+ * An own dish ("Melon Sandwich"). Its nutrients are always computed from the
+ * ingredients (domain/dishes.ts). Logging it stores a snapshot, so editing
+ * the dish later never changes what was already eaten.
+ */
+export interface CustomDish {
+  id: string;
+  name: string;
+  /** How many portions the ingredients make. */
+  portions: number;
+  ingredients: DishIngredient[];
+  createdAt: string;
+  updatedAt: string;
 }

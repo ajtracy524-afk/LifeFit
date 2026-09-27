@@ -100,7 +100,6 @@ export function WaterControl({ date }: { date: ISODate }) {
 /** A small bottle, filled to `level` (0 … 1). */
 function Bottle({ level }: { level: number }) {
   const clip = `bottle${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const top = 7 + 21 * (1 - level);
   return (
     <svg viewBox="0 0 16 30" width="16" height="30" aria-hidden>
       <defs>
@@ -108,7 +107,8 @@ function Bottle({ level }: { level: number }) {
           <path d="M5.5 1.5h5v4l2.5 3v18.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 27V8.5l2.5-3z" />
         </clipPath>
       </defs>
-      {level > 0 && <rect x="0" y={top} width="16" height={30 - top} fill="var(--water)" clipPath={`url(#${clip})`} />}
+      {/* The water is one rect scaled from the bottom – so filling and emptying glide (CSS transition). */}
+      <rect className={styles.bottleWater} x="0" y="7" width="16" height="21" fill="var(--water)" clipPath={`url(#${clip})`} style={{ transform: `scaleY(${level})` }} />
       <path
         d="M5.5 1.5h5v4l2.5 3v18.5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 27V8.5l2.5-3z"
         fill="none"

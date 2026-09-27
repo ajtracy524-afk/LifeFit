@@ -17,6 +17,7 @@ import { Button } from '../../components/ui/Button';
 import { Card, LinkCard } from '../../components/ui/Card';
 import { Icon } from '../../components/ui/Icon';
 import { MacroStrip, ProgressBar, ProgressRing } from '../../components/ui/Progress';
+import { CountUp } from '../../components/ui/CountUp';
 import { Sheet } from '../../components/ui/Sheet';
 import { LogFoodSheet, type LogTarget } from '../nutrition/LogFoodSheet';
 import { WaterControl } from '../nutrition/WaterControl';
@@ -151,12 +152,17 @@ export function TodayScreen() {
         <Card>
           <div className={styles.target}>
             <ProgressRing value={totals.kcal} max={target.kcal} label={`${fmt.int(totals.kcal)} von ${fmt.int(target.kcal)} Kilokalorien`}>
-              <span className={styles.ringValue}>{fmt.int(Math.abs(target.kcal - totals.kcal))}</span>
+              <span className={styles.ringValue}>
+                <CountUp value={Math.abs(target.kcal - totals.kcal)} format={fmt.int} />
+              </span>
               <span className={styles.ringLabel}>{totals.kcal <= target.kcal ? 'kcal übrig' : 'kcal drüber'}</span>
             </ProgressRing>
             <div className={styles.targetSide}>
               <p className={styles.targetKcal}>
-                <strong>{fmt.int(totals.kcal)}</strong> / {fmt.kcal(target.kcal)}
+                <strong>
+                  <CountUp value={totals.kcal} format={fmt.int} />
+                </strong>{' '}
+                / {fmt.kcal(target.kcal)}
               </p>
               <p className={styles.muted}>heute gegessen</p>
               <CalorieStatusBadge date={t} eatenKcal={totals.kcal} targetKcal={target.kcal} />

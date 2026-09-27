@@ -20,7 +20,8 @@ export function CalorieStatusBadge({ date, eatenKcal, targetKcal }: { date: ISOD
   const status = calorieStatus({ eaten: eatenKcal, planned, targetKcal, finished: isDayFinished(date, today(), new Date().getHours()) });
   if (!status) return null;
   return (
-    <span className={`${styles.calorieBadge} ${styles[`tone_${status.tone}`]}`} role="status" aria-label={`${status.label.replace(' 🎯', '')}: ${status.detail}`}>
+    // Keyed by the status: a change ("Noch Platz" → "Im Ziel") plays the short entrance again.
+    <span key={status.key} className={`${styles.calorieBadge} ${styles[`tone_${status.tone}`]}`} role="status" aria-label={`${status.label.replace(' 🎯', '')}: ${status.detail}`}>
       <strong>{status.label}</strong>
       <span className={styles.calorieDetail}>{status.detail}</span>
     </span>

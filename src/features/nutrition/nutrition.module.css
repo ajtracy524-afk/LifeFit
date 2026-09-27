@@ -1203,3 +1203,118 @@
 .dayTotals + .calorieBadge {
   margin: -6px 0 14px;
 }
+
+/* ---------- Own dishes ("Meine Gerichte") ---------- */
+.dishSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.dishHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dishHead .listCaption {
+  margin: 0;
+}
+
+.dishIngredients {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+.ingredientList {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.ingredientRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.gramsInput {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.gramsInput input {
+  width: 64px;
+  min-height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fieldError {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pickerHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pickerHead .search {
+  flex: 1;
+  min-width: 0;
+}
+
+.dishTotals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.onlineSearch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+/* Water level inside a bottle: scaled from its bottom edge, glides on every change. */
+.bottleWater {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* New actions in the log sheet: a full 44 px touch target. */
+.tapTarget {
+  min-height: 44px;
+}

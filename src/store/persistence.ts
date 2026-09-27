@@ -27,6 +27,7 @@ export function emptyState(): AppState {
     plannerSettings: defaultPlannerSettings(),
     products: {},
     water: {},
+    customDishes: {},
   };
 }
 

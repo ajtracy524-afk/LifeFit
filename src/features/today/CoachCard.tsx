@@ -56,7 +56,7 @@ export function CoachCard({ domains, title = 'Für dich' }: { domains: EngineDom
 function RecommendationItem({ rec }: { rec: Recommendation }) {
   const [showReasons, setShowReasons] = useState(false);
   // Meal suggestions with facts get the richer layout; everything else stays a row of buttons.
-  const meals = rec.actions.filter((a): a is MealAction => a.type === 'add_meal' && !!a.details);
+  const meals = rec.actions.filter((a): a is MealAction => (a.type === 'add_meal' || a.type === 'log_dish') && !!a.details);
 
   const run = (action: EngineAction) => {
     if (action.type === 'open') return navigate(action.route);
@@ -106,7 +106,11 @@ function RecommendationItem({ rec }: { rec: Recommendation }) {
   );
 }
 
-type MealAction = Extract<EngineAction, { type: 'add_meal' }> & { details: NonNullable<Extract<EngineAction, { type: 'add_meal' }>['details']> };
+type MealAction = Extract<EngineAction, { type: 'add_meal' | 'log_dish' }> & { details: NonNullable<Extract<EngineAction, { type: 'add_meal' }>['details']> };
+
+/** A planned recipe is "eingeplant", an own dish is logged as eaten. */
+const verb = (a: MealAction) => (a.type === 'log_dish' ? 'Erfassen' : 'Einplanen');
+const key = (a: MealAction) => (a.type === 'log_dish' ? a.dishId : a.recipeId);
 
 /**
  * The best meal first – with time, protein, kcal, price (only with enough
@@ -120,26 +124,28 @@ function MealSuggestions({ actions, onRun }: { actions: MealAction[]; onRun: (a:
       <div className={styles.featured}>
         <strong className={styles.featuredTitle}>{d.title}</strong>
         <ul className={styles.facts} aria-label="Eckdaten">
-          <li>
-            <Icon name="clock" size={14} /> {d.prepMin} min
-          </li>
+          {d.prepMin !== undefined && (
+            <li>
+              <Icon name="clock" size={14} /> {d.prepMin} min
+            </li>
+          )}
           <li>{d.protein} g Protein</li>
           <li>{fmt.kcal(d.kcal)}</li>
           {d.cost && <li>{formatCostRange(d.cost)}</li>}
         </ul>
         {d.because.length > 0 && <p className={styles.because}>Empfohlen, weil {joinReasons(d.because.slice(0, 2))}.</p>}
-        <Button size="sm" icon="plus" onClick={() => onRun(best!)} className={styles.featuredButton}>
-          Einplanen
+        <Button size="sm" icon={best!.type === 'log_dish' ? 'check' : 'plus'} onClick={() => onRun(best!)} className={styles.featuredButton}>
+          {verb(best!)}
         </Button>
       </div>
       {others.length > 0 && (
         <ul className={styles.alternatives} aria-label="Weitere passende Gerichte">
           {others.map((a) => (
-            <li key={a.recipeId}>
-              <button type="button" className={styles.alternative} onClick={() => onRun(a)} aria-label={`${a.details.title} einplanen`}>
+            <li key={key(a)}>
+              <button type="button" className={styles.alternative} onClick={() => onRun(a)} aria-label={`${a.details.title} ${verb(a).toLowerCase()}`}>
                 <span className={styles.alternativeTitle}>{a.details.title}</span>
                 <span className={styles.alternativeMeta}>
-                  {[`${a.details.prepMin} min`, `${a.details.protein} g P`, fmt.kcal(a.details.kcal), a.details.cost && formatCostRange(a.details.cost)]
+                  {[a.details.prepMin !== undefined && `${a.details.prepMin} min`, `${a.details.protein} g P`, fmt.kcal(a.details.kcal), a.details.cost && formatCostRange(a.details.cost)]
                     .filter(Boolean)
                     .join(' · ')}
                 </span>
@@ -163,6 +169,7 @@ function doneMessage(action: EngineAction): string {
     case 'add_meal':
       return 'Mahlzeit eingeplant – Einkaufsliste aktualisiert';
     case 'log_food':
+    case 'log_dish':
       return 'Erfasst';
     case 'swap_meal':
       return 'Mahlzeit getauscht';

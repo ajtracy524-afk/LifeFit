@@ -80,3 +80,25 @@
   color: var(--text);
   font-size: 15px;
 }
+
+/* Protein target reached: the label turns accent and the bar glows once. */
+.macroReached .macroColLabel {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.macroReached .bar {
+  animation: reachedGlow 0.8s ease-out;
+}
+
+@keyframes reachedGlow {
+  0% {
+    box-shadow: 0 0 0 0 var(--accent-soft);
+  }
+  40% {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}

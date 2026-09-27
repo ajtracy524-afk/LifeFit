@@ -13,7 +13,7 @@ import type { Food, FoodUnit, LogEntry, MacroKey, Macros, Micros, Product } from
 const MACRO_KEYS: MacroKey[] = ['protein', 'carbs', 'fat'];
 
 /** Fields of a log entry that describe WHAT was eaten (id, date, slot, time are added by the action). */
-export type EntryContent = Pick<LogEntry, 'name' | 'method' | 'macros' | 'micros' | 'unknown' | 'amount' | 'unit' | 'grams' | 'barcode' | 'brand' | 'foodId' | 'costChf'>;
+export type EntryContent = Pick<LogEntry, 'name' | 'method' | 'macros' | 'micros' | 'unknown' | 'amount' | 'unit' | 'grams' | 'barcode' | 'brand' | 'foodId' | 'costChf' | 'dishId' | 'ingredients' | 'servings' | 'fdc'>;
 
 export interface ProductNutrients {
   macros: Macros;

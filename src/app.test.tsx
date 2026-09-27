@@ -1372,3 +1372,160 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     expect(store.getState().plannedMeals.some((m) => m.date === TUE && m.slot === 'lunch')).toBe(true);
   });
 });
+
+describe('own dishes, extended database, online search, feedback (Ernährung ↔ Heute)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 9, 0)); // Monday 09:00
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 30)));
+  const setInput = async (input: HTMLInputElement, value: string) => {
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setValue.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  /** Sets an input found by selector the way a user types. */
+  const fill = async (selector: string, value: string) => {
+    const input = container.querySelector<HTMLInputElement>(selector);
+    if (!input) throw new Error(`Input ${selector} not found`);
+    await setInput(input, value);
+  };
+  /** Waits (real time) until the extended database chunk is loaded and rendered. */
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 100 && !check(); i++) await settle();
+  };
+  const byLabel = async (label: string) => {
+    await until(() => !!container.querySelector(`button[aria-label="${label}"]`));
+    const b = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    if (!b) throw new Error(`Button "${label}" not found. Screen: ${text().slice(0, 300)}`);
+    await act(async () => b.click());
+  };
+  const gramsOf = (name: string) => [...container.querySelectorAll('label')].find((l) => l.textContent?.startsWith(`${name}: Menge in g`))!.querySelector('input')!;
+  const toast = () => document.body.textContent ?? '';
+
+  it('create a dish from ingredients (catalog + database), log a portion, edit it later – the logged entry stays as it was', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    expect(text()).toMatch(/Meine Gerichte/);
+    await click('Eigenes Gericht erstellen');
+    await type('Name', 'Melonen-Sandwich');
+    // The ingredient search is open for a new dish.
+    await fill('input[placeholder^="Zutat suchen"]', 'Feta');
+    await byLabel('Feta als Zutat hinzufügen');
+    await click('Zutat hinzufügen');
+    await fill('input[placeholder^="Zutat suchen"]', 'Wassermelone');
+    await settle(); // the extended database loads on demand
+    await byLabel('Wassermelone als Zutat hinzufügen');
+    await setInput(gramsOf('Feta'), '80');
+    // Live values: 80 g feta (208 kcal) + 100 g watermelon (30 kcal) = 238 kcal for the one portion.
+    expect(container.querySelector('[aria-label="Nährwerte des Gerichts"]')!.textContent).toMatch(/238\s*kcal/);
+
+    await clickInDialog('Speichern');
+    const dish = Object.values(store.getState().customDishes)[0]!;
+    expect(dish).toMatchObject({ name: 'Melonen-Sandwich', portions: 1 });
+    expect(dish.ingredients.map((i) => [i.name, i.grams, i.source])).toEqual([
+      ['Feta', 80, 'catalog'],
+      ['Wassermelone', 100, 'database'],
+    ]);
+    // Straight to the portion step: add one portion.
+    await clickInDialog('Hinzufügen');
+    const entry = store.getState().logEntries[0]!;
+    expect(entry).toMatchObject({ name: 'Melonen-Sandwich', method: 'dish', dishId: dish.id, servings: 1, macros: { kcal: 238 } });
+    expect(toast()).toMatch(/Melonen-Sandwich erfasst/);
+    // The day shows it at once (same store).
+    expect(text()).toMatch(/238\s*\/\s*[\d.]+ kcal/);
+    expect(text()).toMatch(/Mein Gericht/);
+
+    // Edit later: 160 g feta. The already logged entry does not change.
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    await click('Melonen-Sandwich');
+    await click('Gericht bearbeiten');
+    await setInput(gramsOf('Feta'), '160');
+    await clickInDialog('Speichern');
+    expect(store.getState().customDishes[dish.id]!.ingredients[0]!.grams).toBe(160);
+    expect(store.getState().logEntries[0]).toEqual(entry);
+    expect(text()).toMatch(/446\s*kcal/); // the portion step now shows the edited dish
+
+    // Delete: the dish is gone, the eaten entry stays.
+    await click('Gericht bearbeiten');
+    await click('Gericht löschen');
+    expect(store.getState().customDishes).toEqual({});
+    expect(store.getState().logEntries).toEqual([entry]);
+  });
+
+  it('Suchen finds database foods (FoodData Central) – logged with their source, visible on Heute at once', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Suchen');
+    await fill('input[placeholder^="z. B. Birne"]', 'birne');
+    await until(() => /Datenbank/.test(text()));
+    expect(text()).toMatch(/Birne\s*Datenbank 57 kcal/);
+    await click('Birne');
+    expect(text()).toMatch(/USDA FoodData Central .*169118/);
+    await clickInDialog('Hinzufügen');
+    expect(store.getState().logEntries[0]).toMatchObject({ name: 'Birne', method: 'food', fdc: 169118, grams: 100, macros: { kcal: 57 } });
+    expect(store.getState().logEntries[0]!.foodId).toBeUndefined();
+
+    await act(async () => {
+      window.location.hash = '#/today';
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    expect(container.querySelector('[role="img"]')!.getAttribute('aria-label')).toMatch(/^57 von/);
+  });
+
+  it('branded products online only on a tap; offline says so and local results keep working', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'));
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Suchen');
+    await fill('input[placeholder^="z. B. Birne"]', 'skyr');
+    await settle();
+    expect(fetchSpy).not.toHaveBeenCalled(); // typing never goes online
+    expect(text()).toMatch(/Skyr natur/);
+    await click('Markenprodukte online suchen');
+    await settle();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]![0])).toMatch(/search_terms=skyr/);
+    expect(text()).toMatch(/Keine Verbindung – die Online-Suche braucht Internet/);
+    expect(text()).toMatch(/Skyr natur/);
+  });
+
+  it('feedback after logging comes from the real values – a protein-rich food says so', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Suchen');
+    await fill('input[placeholder^="z. B. Birne"]', 'Hähnchenbrust');
+    await click('Hähnchenbrust');
+    await clickInDialog('Hinzufügen');
+    expect(toast()).toMatch(/Hähnchenbrust erfasst · 💪 Starker Protein-Boost · 24 g/);
+  });
+
+  it('water bottles fill through a transform (animatable) – the level is the data', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), nutritionProfile: { ...completeState().nutritionProfile, waterGoalMl: 2000 }, water: { '2026-09-21': 375 } }));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const levels = [...container.querySelectorAll<SVGRectElement>('[aria-label^="Wasser: 250 ml"] rect')].map((r) => r.style.transform);
+    expect(levels.slice(0, 3)).toEqual(['scaleY(1)', 'scaleY(0.5)', 'scaleY(0)']);
+  });
+});

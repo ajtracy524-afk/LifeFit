@@ -83,17 +83,29 @@ const RECIPE_SKIPS: ReadonlySet<MicroNutrient> = new Set(['salt', 'sodium']);
  * makes it unknown, never guessed or counted as 0.
  */
 export function recipeMicros(recipe: Recipe, servings = 1): Micros {
+  return sumCompleteMicros(
+    recipe.ingredients.map((ing) => ({ micros100: getFood(ing.foodId)?.micros, grams: ing.grams * servings })),
+    RECIPE_SKIPS,
+  );
+}
+
+/**
+ * THE rule for a sum of ingredients (recipes, own dishes): a nutrient is
+ * known only if EVERY ingredient has a value for it – one gap makes it
+ * unknown, never 0 and never the sum of the known part.
+ */
+export function sumCompleteMicros(items: { micros100?: Micros; grams: number }[], skip: ReadonlySet<MicroNutrient> = new Set()): Micros {
   const out: Micros = {};
-  if (!recipe.ingredients.length) return out;
+  if (!items.length) return out;
   for (const key of MICRO_NUTRIENTS) {
-    if (RECIPE_SKIPS.has(key)) continue;
+    if (skip.has(key)) continue;
     let sum = 0;
-    const known = recipe.ingredients.every((ing) => {
-      const v = getFood(ing.foodId)?.micros?.[key];
-      if (v !== undefined) sum += (v * ing.grams) / 100;
-      return v !== undefined;
+    const known = items.every(({ micros100, grams }) => {
+      const v = micros100?.[key];
+      if (v !== undefined && Number.isFinite(v)) sum += (v * grams) / 100;
+      return v !== undefined && Number.isFinite(v);
     });
-    if (known) out[key] = roundMicro(key, sum * servings);
+    if (known) out[key] = roundMicro(key, sum);
   }
   return out;
 }

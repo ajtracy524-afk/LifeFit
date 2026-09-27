@@ -10,6 +10,8 @@ import { activeWorkouts, createWorkout, detectRecords, workoutVolume } from '../
 import { applyWeekChange, closeCompletedDays, dayContextFor, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
 import { recordEvent } from '../domain/learning';
 import { productEntry, type EntryContent } from '../domain/foodEntry';
+import { dbFoodEntry, dishEntry, validateDish, type DishDraft } from '../domain/dishes';
+import type { DbFood } from '../data/foodDb';
 import { addWater } from '../domain/water';
 import { effectiveTimeBudget } from '../domain/timeBudget';
 import { currentWeight } from '../domain/progress';
@@ -253,6 +255,53 @@ export function saveProduct(product: Product): void {
     const known = s.products[product.barcode];
     s.products[product.barcode] = { ...product, foodId: 'foodId' in product ? product.foodId : known?.foodId };
   });
+}
+
+/** A generic food from the extended database (FoodData Central). */
+export function logDbFood(date: ISODate, slot: MealSlot, food: DbFood, grams: number, opts: LogOptions = {}): boolean {
+  if (!(grams > 0)) return false;
+  return logEntry(date, slot, dbFoodEntry(food, grams), opts);
+}
+
+// ---------- Own dishes ("Meine Gerichte") ----------
+
+/**
+ * Creates or updates an own dish. Already logged entries are snapshots and
+ * stay exactly as they were. Returns the dish id, or undefined if invalid.
+ */
+export function saveDish(draft: DishDraft, id?: string): string | undefined {
+  if (Object.keys(validateDish(draft)).length) return undefined;
+  const dishId = id ?? newId();
+  update((s) => {
+    s.customDishes ??= {};
+    const now = new Date().toISOString();
+    const before = s.customDishes[dishId];
+    s.customDishes[dishId] = {
+      id: dishId,
+      name: draft.name.trim(),
+      portions: draft.portions,
+      ingredients: draft.ingredients.map((i) => ({ ...i })),
+      createdAt: before?.createdAt ?? now,
+      updatedAt: now,
+    };
+  });
+  return dishId;
+}
+
+/** Removes the dish – logged entries keep their own values. */
+export function deleteDish(id: string): boolean {
+  if (!getState().customDishes?.[id]) return false;
+  update((s) => {
+    delete s.customDishes[id];
+  });
+  return true;
+}
+
+/** Logs `portions` of an own dish as ONE entry (snapshot of the dish now). */
+export function logDish(date: ISODate, slot: MealSlot, dishId: string, portions: number, opts: LogOptions = {}): boolean {
+  const dish = getState().customDishes?.[dishId];
+  if (!dish || !(portions > 0)) return false;
+  return logEntry(date, slot, dishEntry(dish, portions), opts);
 }
 
 export function removeLogEntry(id: string): void {
@@ -556,6 +605,8 @@ export function applyEngineAction(action: EngineAction): boolean {
     case 'log_food':
       logFood(action.date, action.slot, action.foodId, action.grams);
       return true;
+    case 'log_dish':
+      return logDish(action.date, action.slot, action.dishId, action.portions);
     case 'swap_meal':
       // Accepting a suggestion is not a taste signal against the old meal.
       applyChange({ type: 'replaceMeal', mealId: action.mealId, recipeId: action.recipeId, servings: action.servings, learn: false });

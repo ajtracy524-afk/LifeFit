@@ -125,7 +125,8 @@ function catalogMicros(id: string): Micros | undefined {
   const entry = FOOD_MICROS[id];
   if (!entry) return FIBER_ONLY[id] !== undefined ? { fiber: FIBER_ONLY[id] } : undefined;
   const { fdc: _source, ...micros } = entry;
-  return micros.sodium !== undefined ? { ...micros, salt: Math.round((micros.sodium * SALT_PER_SODIUM) / 10) / 100 } : micros;
+  // Unrounded: rounding happens once, after scaling to the eaten amount.
+  return micros.sodium !== undefined ? { ...micros, salt: (micros.sodium * SALT_PER_SODIUM) / 1000 } : micros;
 }
 
 export const FOODS: Food[] = RAW.map(([id, name, category, kcal, protein, carbs, fat, diet, allergens = [], extra = {}]) => ({
