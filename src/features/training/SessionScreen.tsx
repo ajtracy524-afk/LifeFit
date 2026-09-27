@@ -4,7 +4,10 @@ import { alternativesFor, EQUIPMENT_LABEL, SET_TYPE_LABEL, SET_TYPE_SHORT } from
 import { completedSetCount, formatKg, formatSet, isTimed, lastSetsFor } from '../../domain/training';
 import { bestSet } from '../../domain/trainingHistory';
 import { exerciseBests, recordText, setRecord, volumeRecord } from '../../domain/workoutRecords';
-import type { SetType, Workout, WorkoutExercise, WorkoutSet } from '../../domain/types';
+import type { BodyArea, Effort, SetType, Workout, WorkoutExercise, WorkoutSet } from '../../domain/types';
+import { changeLabel } from '../../domain/adaptive/progression';
+import { AREA_LABEL, DISCOMFORT_NOTE } from '../../domain/adaptive/sessionAdapt';
+import { Chip, parseNumber } from '../../components/ui/Controls';
 import { celebrate } from '../../lib/celebrate';
 import { formatClock } from '../../lib/format';
 import { haptic } from '../../lib/motion';
@@ -13,6 +16,8 @@ import {
   addExerciseToWorkout,
   addSet,
   completeSet,
+  decidePrescription,
+  setSetRpe,
   discardWorkout,
   finishWorkout,
   removeSet,
@@ -24,7 +29,6 @@ import {
 } from '../../store/actions';
 import { getState, useAppState } from '../../store/store';
 import { Button, IconButton } from '../../components/ui/Button';
-import { parseNumber } from '../../components/ui/Controls';
 import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { ProgressBar } from '../../components/ui/Progress';
@@ -33,6 +37,14 @@ import { ExercisePicker } from './ExerciseLibrary';
 import { ExerciseSheet } from './ExerciseSheet';
 import { useNow, useWakeLock } from './hooks';
 import styles from './training.module.css';
+
+const RPE_WORD: Record<number, string> = { 6: 'leicht', 8: 'fordernd', 10: 'maximal' };
+const EFFORT: Array<{ value: Effort; label: string }> = [
+  { value: 'easy', label: 'Leicht' },
+  { value: 'ok', label: 'Passend' },
+  { value: 'hard', label: 'Hart' },
+  { value: 'too_hard', label: 'Zu hart' },
+];
 
 interface Rest {
   endsAt: number;
@@ -59,6 +71,8 @@ export function SessionScreen() {
   const [exMenu, setExMenu] = useState<string | null>(null);
   const [picker, setPicker] = useState<Picker | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [effort, setEffort] = useState<Effort | undefined>(undefined);
+  const [pain, setPain] = useState<BodyArea[]>([]);
   // Each record is celebrated once per exercise and kind in a session (un-ticking and ticking again does not repeat it).
   const celebrated = useRef(new Set<string>());
   const now = useNow(workout ? 1000 : null);
@@ -98,7 +112,7 @@ export function SessionScreen() {
   };
 
   const finish = () => {
-    finishWorkout(workout.id);
+    finishWorkout(workout.id, { ...(effort ? { effort } : {}), ...(pain.length ? { discomfort: pain } : {}) });
     navigate('workout', { id: workout.id, done: '1' }, { replace: true });
   };
   const discard = () => {
@@ -128,6 +142,20 @@ export function SessionScreen() {
       </div>
 
       <div className={styles.exerciseList}>
+        {workout.adaptations && workout.adaptations.length > 0 && (
+          <details className={styles.adaptedBanner}>
+            <summary>
+              Heute angepasst: {workout.adaptations.map((a) => a.title).join(' · ')}
+            </summary>
+            <ul>
+              {workout.adaptations.map((a) => (
+                <li key={a.title}>
+                  <strong>{a.title}</strong> – {a.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         {workout.exercises.map((ex) => (
           <ExerciseCard
             key={ex.id}
@@ -174,6 +202,15 @@ export function SessionScreen() {
               ))}
             </div>
             <p className={styles.muted}>Aufwärmsätze zählen nicht fürs Volumen und nicht für Rekorde.</p>
+            <p className={styles.planLabel}>Anstrengung (RPE, optional)</p>
+            <div className={styles.planDays} role="group" aria-label="RPE">
+              {[6, 7, 8, 9, 10].map((r) => (
+                <Chip key={r} selected={menuSet.rpe === r} onClick={() => setSetRpe(workout.id, setMenu.exerciseEntryId, setMenu.setId, menuSet.rpe === r ? null : r)}>
+                  {`${r}${RPE_WORD[r] ? ` · ${RPE_WORD[r]}` : ''}`}
+                </Chip>
+              ))}
+            </div>
+            <p className={styles.muted}>10 = nichts mehr drin, 8 = noch 2 Wiederholungen möglich. Hilft bei den nächsten Vorschlägen.</p>
             <Button
               variant="secondary"
               block
@@ -286,6 +323,28 @@ export function SessionScreen() {
         }
       >
         <p className={styles.muted}>Dauer bisher: {formatClock(elapsed)}</p>
+        {done > 0 && (
+          <div className={styles.menu}>
+            <p className={styles.planLabel}>Wie war das Training? (optional)</p>
+            <div className={styles.planDays} role="group" aria-label="Wie war das Training">
+              {EFFORT.map((e) => (
+                <Chip key={e.value} selected={effort === e.value} onClick={() => setEffort(effort === e.value ? undefined : e.value)}>
+                  {e.label}
+                </Chip>
+              ))}
+            </div>
+            <p className={styles.planLabel}>Beschwerden?</p>
+            <div className={styles.planDays} role="group" aria-label="Beschwerden nach dem Training">
+              {(Object.keys(AREA_LABEL) as BodyArea[]).map((a) => (
+                <Chip key={a} selected={pain.includes(a)} onClick={() => setPain((xs) => (xs.includes(a) ? xs.filter((x) => x !== a) : [...xs, a]))}>
+                  {AREA_LABEL[a]}
+                </Chip>
+              ))}
+            </div>
+            {pain.length > 0 && <p className={styles.note}>{DISCOMFORT_NOTE}</p>}
+            <p className={styles.muted}>Deine Angaben fließen in die nächsten Vorschläge ein.</p>
+          </div>
+        )}
       </Sheet>
 
       <Sheet
@@ -360,8 +419,6 @@ function ExerciseCard({ workout, exercise, history, onSetDone, onSetMenu, onMenu
   const timed = isTimed(exercise.exerciseId);
   const last = lastSetsFor(history, exercise.exerciseId, workout.id);
   const best = timed ? undefined : bestSet(history.filter((w) => w.id !== workout.id), exercise.exerciseId);
-  const target = exercise.sets.find((s) => s.target)?.target;
-  const targetDiffers = target && last && (target.weightKg !== last[0]?.weightKg || target.reps !== last[0]?.reps);
   const allDone = exercise.sets.every((s) => s.done || s.skipped) && exercise.sets.some((s) => s.done);
   const replacedFrom = exercise.replacedFrom ? getExercise(exercise.replacedFrom)?.name : undefined;
   let workIndex = 0;
@@ -371,6 +428,7 @@ function ExerciseCard({ workout, exercise, history, onSetDone, onSetMenu, onMenu
       className={[styles.exerciseCard, allDone && styles.exerciseDone, exercise.skipped && styles.exerciseSkipped].filter(Boolean).join(' ')}
       aria-label={info?.name}
       data-state={exercise.skipped ? 'skipped' : allDone ? 'done' : 'open'}
+      data-entry={exercise.id}
     >
       <header className={styles.exerciseHeader}>
         <div className={styles.exerciseHeading}>
@@ -406,11 +464,12 @@ function ExerciseCard({ workout, exercise, history, onSetDone, onSetMenu, onMenu
                   Bestleistung: {formatSet(best)}
                 </>
               )}
-              {targetDiffers && <span className={styles.hint}> · Heute: {formatSet(target)}</span>}
             </p>
           ) : (
             <p className={styles.lastTime}>{timed ? 'Trag die Minuten ein, die du machst.' : `Erstes Mal – wähle ein Gewicht, mit dem du ${exercise.repMax} saubere Wiederholungen schaffst.`}</p>
           )}
+
+          {exercise.prescription && <PrescriptionBar workoutId={workout.id} exercise={exercise} />}
 
           <div className={styles.setTable} role="table" aria-label={`Sätze ${info?.name ?? ''}`}>
             <div className={styles.setHead} role="row">
@@ -470,6 +529,56 @@ function ExerciseCard({ workout, exercise, history, onSetDone, onSetMenu, onMenu
         </>
       )}
     </section>
+  );
+}
+
+const CHANGE_ICON: Record<string, string> = { increase: '📈', reps: '➕', hold: '⏸️', reduce: '📉' };
+
+/**
+ * The suggestion for this exercise and why – the sets are prefilled with it.
+ * Übernehmen keeps it, Ändern jumps into the first open value, "Wie letztes
+ * Mal" declines it (last session's values). The decision is stored and
+ * shapes the next suggestion.
+ */
+function PrescriptionBar({ workoutId, exercise }: { workoutId: string; exercise: WorkoutExercise }) {
+  const p = exercise.prescription!;
+  if (p.change === 'first') return null;
+  if (p.change === 'same') return <p className={styles.rxSame}>{p.reason}</p>;
+  const value = p.durationMin ? `${formatKg(p.durationMin)} min` : formatSet({ weightKg: p.weightKg, reps: p.reps });
+  if (p.decision) {
+    const word = p.decision === 'accepted' ? `Vorschlag übernommen · ${value}` : p.decision === 'declined' ? 'Wie letztes Mal – Vorschlag nicht übernommen' : 'Vorschlag von dir angepasst';
+    return (
+      <p className={styles.rxDone} data-decision={p.decision}>
+        {p.decision === 'accepted' ? '✓' : '↩'} {word}
+      </p>
+    );
+  }
+  const edit = () => {
+    const input = document.querySelector<HTMLInputElement>(`section[data-entry="${exercise.id}"] input:not(:disabled)`);
+    input?.focus();
+  };
+  return (
+    <div className={styles.rx} data-change={p.change} aria-label={`Vorschlag: ${value}`}>
+      <div className={styles.rxHead}>
+        <span aria-hidden>{CHANGE_ICON[p.change]}</span>
+        <strong>
+          Vorschlag: {value}
+          <span className={styles.rxDelta}>{changeLabel(p)}</span>
+        </strong>
+      </div>
+      <p className={styles.rxReason}>{p.reason}</p>
+      <div className={styles.proposalActions}>
+        <Button size="sm" onClick={() => decidePrescription(workoutId, exercise.id, 'accepted')}>
+          Übernehmen
+        </Button>
+        <Button size="sm" variant="secondary" onClick={edit}>
+          Ändern
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => decidePrescription(workoutId, exercise.id, 'declined')}>
+          Wie letztes Mal
+        </Button>
+      </div>
+    </div>
   );
 }
 

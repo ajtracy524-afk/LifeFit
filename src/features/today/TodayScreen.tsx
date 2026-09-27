@@ -9,8 +9,6 @@ import { dayTargetFor, weekShopping } from '../../domain/week';
 import type { MealSlot, WorkoutTemplate } from '../../domain/types';
 import { fmt, formatDateLong, greeting, weekdayShort } from '../../lib/format';
 import { href, navigate } from '../../lib/router';
-import { showToast } from '../../lib/toast';
-import { startWorkoutFrom } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen } from '../../components/Screen';
 import { Button } from '../../components/ui/Button';
@@ -31,6 +29,7 @@ import { useCrossing, useIncrease, useScreenMount } from '../../lib/motion';
 import { MealSheet } from '../nutrition/MealSheet';
 import { WeightSheet } from '../progress/WeightSheet';
 import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
+import { StartSheet } from '../training/StartSheet';
 import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { CoachCard } from './CoachCard';
 import { DayPlanCard } from './DayPlanCard';
@@ -95,11 +94,9 @@ export function TodayScreen() {
     return slots.includes(preferred) ? preferred : (slots[slots.length - 1] ?? 'dinner');
   };
 
-  // Starts today's planned version – shortened on a "wenig Zeit" day.
-  const begin = (template: WorkoutTemplate) => {
-    if (startWorkoutFrom(template)) navigate('session');
-    else showToast('Training konnte nicht gestartet werden.', { tone: 'error' });
-  };
+  // Today's planned version (shortened on a "wenig Zeit" day) – through the short check before the session.
+  const [starting, setStarting] = useState<WorkoutTemplate | null>(null);
+  const begin = (template: WorkoutTemplate) => setStarting(template);
 
   return (
     <Screen
@@ -211,6 +208,8 @@ export function TodayScreen() {
       {/* Only safety notices belong on "Heute" – plus, once today's training is done, what to eat now (fitness → nutrition). */}
       <CoachCard domains={['safety']} />
       {isCompletedOn(state.workouts, t) && <CoachCard domains={['nutrition']} title="Nach deinem Training" />}
+      {/* Nutrition → training: shortly before today's session (carbs so far, a big meal just now). */}
+      {todaysSession && !isCompletedOn(state.workouts, t) && <CoachCard domains={['nutrition']} kinds={['pre_workout', 'heavy_meal']} title="Vor dem Training" />}
 
       {/* The day as a timeline – meals and training in time order */}
       {weekHasMeals && (
@@ -307,6 +306,7 @@ export function TodayScreen() {
         }}
       />
       <WorkoutPlanSheet session={planOpen ? (todaysSession ?? null) : null} week={week} today={t} onClose={() => setPlanOpen(false)} />
+      <StartSheet template={starting} onClose={() => setStarting(null)} />
       {/* Keyed by mode: "Ersetzen" from the card starts a fresh sheet in that view. */}
       <MealSheet key={replaceFirst ? "replace" : "details"} mealId={openMeal} startReplacing={replaceFirst} onClose={() => setOpenMeal(null)} />
       <LogFoodSheet target={logTarget} onClose={() => setLogTarget(null)} />

@@ -1,5 +1,5 @@
 import type { CostRange } from '../costs';
-import type { ISODate, Macros, MealSlot, WorkoutTemplate } from '../types';
+import type { Experience, ISODate, Macros, MealSlot, WorkoutTemplate } from '../types';
 
 /**
  * Adaptive Fitness Engine – output contract.
@@ -24,6 +24,10 @@ export type RecommendationKind =
   | 'training_time'
   | 'training_stall'
   | 'training_program'
+  | 'training_level'
+  | 'training_cardio'
+  | 'pre_workout'
+  | 'heavy_meal'
   | 'shopping_missing'
   | 'body_rate'
   | 'safety';
@@ -40,6 +44,8 @@ export type EngineAction =
   | { type: 'swap_meal'; label: string; mealId: string; recipeId: string; servings: number }
   | { type: 'start_workout'; label: string; template: WorkoutTemplate }
   | { type: 'set_targets'; label: string; macros: Macros }
+  /** Next level of the plan (adaptive level) – program, days and optionally the experience in the profile. */
+  | { type: 'set_program'; label: string; programId: string; weekdays: number[]; experience?: Experience }
   | { type: 'open'; label: string; route: 'shopping' | 'training' | 'nutrition' | 'progress' };
 
 /** What the UI shows for a suggested meal – facts only, cost only with enough price data. */
@@ -76,6 +82,8 @@ export interface EngineOptions {
   date: ISODate;
   /** Local hour 0–23 – influences meal sizes and slots. Default 12. */
   hour?: number;
+  /** Minute of the hour – for "Training in 45 min". Default 0. */
+  minute?: number;
   /** Training time available today (overrides the stored value). */
   availableMinutes?: number;
   /** Extra food ids the user has at home (on top of "have"/"checked" in the shopping list). */

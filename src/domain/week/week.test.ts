@@ -7,7 +7,7 @@ import { effectivePrepMin, suggestWeek } from '../planner';
 import { activeWorkouts, estimateMinutes, planSlotId, resolveWorkouts, scheduleForWeek, templateForDay } from '../training';
 import type { AppState, PlannedMeal, Workout } from '../types';
 import { applyWeekChange, type CascadeResult } from './cascade';
-import { dayShift, dayTargetFor, MAX_BONUS_DAYS, TRAINING_DAY_KCAL } from './dayTargets';
+import { bonusKcalByDate, dayShift, dayTargetFor, MAX_BONUS_DAYS, TRAINING_DAY_KCAL } from './dayTargets';
 import { pantryEstimate, purchaseAmount } from './pantry';
 import { buildWeekPlan, weekShopping } from './weekPlan';
 import { getFood } from '../../data/foods';
@@ -328,20 +328,33 @@ describe('day targets for 3–6 training days', () => {
     return { s, targets: week.map((d) => dayTargetFor(s, d)!) };
   };
 
-  it.each([3, 4, 5])('%i training days: unchanged rule (+150 on every training day)', (n) => {
-    const { targets } = targetsFor(n);
+  it.each([3, 4, 5])('%i training days: each training day gets its load-based bonus, the rest days carry exactly their sum', (n) => {
+    const { s, targets } = targetsFor(n);
+    const bonus = bonusKcalByDate(s, MON);
     const training = DAYS[n]!.map((i) => targets[i]!.kcal);
     const rest = week.map((_, i) => i).filter((i) => !DAYS[n]!.includes(i)).map((i) => targets[i]!.kcal);
-    expect(training.every((k) => k === 2500 + TRAINING_DAY_KCAL)).toBe(true);
-    expect(rest.every((k) => k === 2500 + dayShift(false, n))).toBe(true);
+    expect(training).toEqual(DAYS[n]!.map((i) => 2500 + bonus.get(week[i]!)!));
+    for (const b of bonus.values()) expect(b).toBeGreaterThanOrEqual(TRAINING_DAY_KCAL * 0.7);
+    for (const b of bonus.values()) expect(b).toBeLessThanOrEqual(TRAINING_DAY_KCAL * 1.3);
+    const sum = [...bonus.values()].reduce((a, b) => a + b, 0);
+    expect(rest.every((k) => k === 2500 - Math.round(sum / (7 - n)))).toBe(true);
+  });
+
+  it('leg day gets more than the push day; similar sessions (full body A / B) keep exactly +150', () => {
+    const { s } = targetsFor(3);
+    const byTemplate = new Map(activeWorkouts(s.training, {}, [], MON).map((w) => [w.template.id, bonusKcalByDate(s, MON).get(w.date)!]));
+    expect(byTemplate.get('ppl-legs')!).toBeGreaterThan(byTemplate.get('ppl-push')!);
+    expect(byTemplate.get('ppl-push')!).toBeLessThan(TRAINING_DAY_KCAL);
+    const fb = state({ training: { programId: 'full-body', weekdays: [0, 2, 4] } });
+    expect([...bonusKcalByDate(fb, MON).values()]).toEqual([TRAINING_DAY_KCAL, TRAINING_DAY_KCAL, TRAINING_DAY_KCAL]);
+    expect(dayTargetFor(fb, '2026-09-22')!.kcal).toBe(2500 + dayShift(false, 3)); // unchanged rule for similar sessions
   });
 
   it('6 training days: only 5 days get the bonus, no extreme rest day', () => {
     const { s, targets } = targetsFor(6);
     const kcal = targets.map((t) => t.kcal);
-    expect(kcal.filter((k) => k === 2650)).toHaveLength(MAX_BONUS_DAYS);
-    // Same extremes as a 5-day week (−375), not −900 on the single rest day.
-    expect(Math.min(...kcal)).toBe(2500 + dayShift(false, 5));
+    expect(kcal.filter((k) => k > 2500)).toHaveLength(MAX_BONUS_DAYS);
+    // Same order of magnitude as a 5-day week (≈ −375), not −900 on the single rest day.
     expect(Math.min(...kcal)).toBeGreaterThan(2500 - 400);
     // The sessions themselves are untouched: still 6 per week, same rotation.
     expect(activeWorkouts(s.training, {}, [], MON).map((w) => w.template.id)).toEqual(scheduleForWeek(s.training, MON).map((w) => w.template.id));

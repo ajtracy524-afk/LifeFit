@@ -9,7 +9,7 @@ import { fmt, formatDuration, relativeDay, weekdayShort } from '../../lib/format
 import { href, navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
 import { withUndo } from '../../lib/undo';
-import { deleteRoutine, duplicateRoutine, startWorkoutFrom } from '../../store/actions';
+import { deleteRoutine, duplicateRoutine } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Screen, Section } from '../../components/Screen';
 import { Button, IconButton } from '../../components/ui/Button';
@@ -21,6 +21,7 @@ import { Sheet } from '../../components/ui/Sheet';
 import { estimateMinutes } from './trainingUtils';
 import { WorkoutPlanSheet } from './WorkoutPlanSheet';
 import { MuscleWeek, WorkoutRow } from './HistoryScreen';
+import { StartSheet } from './StartSheet';
 import { CoachCard } from '../today/CoachCard';
 import styles from './training.module.css';
 
@@ -50,11 +51,9 @@ export function TrainingScreen() {
   const routines = Object.values(state.routines).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const programWeekInfo = programWeek(state.training, t);
 
-  const begin = (template: WorkoutTemplate) => {
-    const id = startWorkoutFrom(template);
-    if (id) navigate('session');
-    else showToast('Training konnte nicht gestartet werden.', { tone: 'error' });
-  };
+  // Every start goes through the short check (time, discomfort, energy) – adaptations only when accepted.
+  const [starting, setStarting] = useState<WorkoutTemplate | null>(null);
+  const begin = (template: WorkoutTemplate) => setStarting(template);
 
   if (!program || !state.training) {
     return (
@@ -206,6 +205,7 @@ export function TrainingScreen() {
       </Section>
 
       <RoutineMenu template={menu} running={!!running} onClose={() => setMenu(null)} onStart={begin} />
+      <StartSheet template={starting} onClose={() => setStarting(null)} />
     </Screen>
   );
 }

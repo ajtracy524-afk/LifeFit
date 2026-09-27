@@ -78,10 +78,11 @@ export function MuscleWeek({ workouts, week }: { workouts: Workout[]; week: ISOD
   const load = useMemo(() => regionLoad(workouts, week, addDays(week, 6)), [workouts, week]);
   const max = Math.max(1, ...REGIONS.map((r) => load[r].sets));
   const any = REGIONS.some((r) => load[r].sets > 0);
+  const cardio = useMemo(() => workouts.filter((w) => w.status === 'completed' && w.date >= week && w.date <= addDays(week, 6)).reduce((m, w) => m + workoutStats(w).cardioMin, 0), [workouts, week]);
   return (
     <Card>
       <CardHeader title="Diese Woche trainiert" meta="Sätze je Muskelgruppe" />
-      {!any ? (
+      {!any && !cardio ? (
         <p className={styles.muted}>Nach deinem ersten Training dieser Woche siehst du hier, welche Muskelgruppen dran waren.</p>
       ) : (
         <ul className={styles.muscleBars}>
@@ -96,6 +97,7 @@ export function MuscleWeek({ workouts, week }: { workouts: Workout[]; week: ISOD
           ))}
         </ul>
       )}
+      {cardio > 0 && <p className={styles.muted}>Cardio diese Woche: {fmt.int(cardio)} min</p>}
     </Card>
   );
 }

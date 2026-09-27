@@ -6,7 +6,8 @@ import { getFood } from '../data/foods';
 import { findTemplate } from '../data/exercises';
 import { addDays, today, weekStart } from '../domain/dates';
 import { calculateTargets, foodMacros, logFromMeal, roundMacros, scaleMicros } from '../domain/nutrition';
-import { activeWorkouts, createWorkout, detectRecords, workoutExercise, workoutVolume } from '../domain/training';
+import { activeWorkouts, createWorkout, detectRecords, lastSetsFor, workoutExercise, workoutVolume } from '../domain/training';
+import { workoutAchievements } from '../domain/adaptive/achievements';
 import { applyWeekChange, closeCompletedDays, dayContextFor, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
 import { recordEvent } from '../domain/learning';
 import { productEntry, type EntryContent } from '../domain/foodEntry';
@@ -28,8 +29,11 @@ import type {
   PlannedMeal,
   Product,
   Profile,
+  AppliedAdaptation,
   Routine,
+  SessionCheckIn,
   SetType,
+  WorkoutFeedback,
   TemplateExercise,
   TrainingSetup,
   WorkoutExercise,
@@ -465,12 +469,17 @@ export function startWorkout(templateId: string, date: ISODate = today()): strin
   return template ? startWorkoutFrom(template, date) : undefined;
 }
 
-/** Starts a (possibly adapted, e.g. shortened) template. */
-export function startWorkoutFrom(template: WorkoutTemplate, date: ISODate = today()): string {
+/**
+ * Starts a (possibly adapted, e.g. shortened) template. The check-in and the
+ * adaptations the user accepted before starting are kept with the workout.
+ */
+export function startWorkoutFrom(template: WorkoutTemplate, date: ISODate = today(), opts: { checkIn?: SessionCheckIn; adaptations?: AppliedAdaptation[] } = {}): string {
   const s = getState();
   const running = s.workouts.find((w) => w.status === 'in_progress');
   if (running) return running.id;
-  const workout = { ...createWorkout(template, s.workouts, date), plannedId: plannedSessionFor(s, template.id, date) };
+  const checkIn = opts.checkIn && (opts.checkIn.minutes || opts.checkIn.energy || opts.checkIn.discomfort?.length) ? { checkIn: opts.checkIn } : {};
+  const adaptations = opts.adaptations?.length ? { adaptations: opts.adaptations.map(({ kind, title, reason }) => ({ kind, title, reason })) } : {};
+  const workout = { ...createWorkout(template, s.workouts, date), plannedId: plannedSessionFor(s, template.id, date), ...checkIn, ...adaptations };
   update((d) => {
     d.workouts.push(workout);
   });
@@ -489,11 +498,12 @@ function plannedSessionFor(s: AppState, templateId: string, date: ISODate): stri
 
 export function updateSet(workoutId: string, exerciseEntryId: string, setId: string, patch: Partial<WorkoutSet>): void {
   update((s) => {
-    const set = s.workouts
-      .find((w) => w.id === workoutId)
-      ?.exercises.find((e) => e.id === exerciseEntryId)
-      ?.sets.find((x) => x.id === setId);
-    if (set) Object.assign(set, patch);
+    const ex = s.workouts.find((w) => w.id === workoutId)?.exercises.find((e) => e.id === exerciseEntryId);
+    const set = ex?.sets.find((x) => x.id === setId);
+    if (!set) return;
+    Object.assign(set, patch);
+    // Changing a prefilled value is a decision too: the suggestion was edited.
+    if (ex?.prescription && !ex.prescription.decision && !set.done && ('weightKg' in patch || 'reps' in patch || 'durationMin' in patch)) ex.prescription.decision = 'edited';
   });
 }
 
@@ -596,7 +606,7 @@ export function replaceExercise(workoutId: string, exerciseEntryId: string, newE
       restSec: old.restSec,
       ...(old.planned?.durationMin ? { durationMin: old.planned.durationMin } : {}),
     };
-    const fresh = workoutExercise(te, s.workouts);
+    const fresh = workoutExercise(te, s.workouts, { date: w.date });
     const next: WorkoutExercise = {
       ...fresh,
       ...(old.planned ? { planned: old.planned } : { extra: true }),
@@ -616,7 +626,7 @@ export function addExerciseToWorkout(workoutId: string, exerciseId: string, temp
     const w = s.workouts.find((x) => x.id === workoutId && x.status === 'in_progress');
     if (!w) return;
     const te: TemplateExercise = { exerciseId, sets: 3, repMin: 8, repMax: 12, restSec: 90, ...template };
-    w.exercises.push(workoutExercise(te, s.workouts, { extra: true }));
+    w.exercises.push(workoutExercise(te, s.workouts, { extra: true, date: w.date }));
   });
 }
 
@@ -627,11 +637,46 @@ export function removeLastSet(workoutId: string, exerciseEntryId: string): void 
   });
 }
 
-/** Completing a workout updates volume and personal records – progress updates automatically. */
-export function finishWorkout(workoutId: string): void {
+/**
+ * The user's answer to a suggestion: "Übernehmen" keeps the prefilled values,
+ * "Wie letztes Mal" puts last session's values into the open sets (the
+ * suggestion is declined – the next suggestion learns from it). Editing a
+ * value marks it as "edited".
+ */
+export function decidePrescription(workoutId: string, exerciseEntryId: string, decision: 'accepted' | 'declined'): void {
+  update((s) => {
+    const ex = sessionExercise(s, workoutId, exerciseEntryId);
+    if (!ex?.prescription) return;
+    ex.prescription.decision = decision;
+    if (decision !== 'declined') return;
+    const last = lastSetsFor(s.workouts, ex.exerciseId, workoutId);
+    ex.sets.forEach((set, i) => {
+      if (set.done || set.skipped) return;
+      const prev = last?.[Math.min(i, last.length - 1)];
+      if (!prev) return;
+      set.weightKg = prev.weightKg;
+      set.reps = prev.reps;
+      if (prev.durationMin !== undefined) set.durationMin = prev.durationMin;
+    });
+  });
+}
+
+/** RPE 6–10 for a set (null removes it) – only what the user enters. */
+export function setSetRpe(workoutId: string, exerciseEntryId: string, setId: string, rpe: number | null): void {
+  update((s) => {
+    const set = sessionExercise(s, workoutId, exerciseEntryId)?.sets.find((x) => x.id === setId);
+    if (!set) return;
+    if (rpe === null) delete set.rpe;
+    else set.rpe = Math.min(10, Math.max(6, Math.round(rpe * 2) / 2));
+  });
+}
+
+/** Completing a workout updates volume, personal records and data-based achievements – progress updates automatically. */
+export function finishWorkout(workoutId: string, feedback?: WorkoutFeedback): void {
   update((s) => {
     const w = s.workouts.find((x) => x.id === workoutId);
     if (!w) return;
+    if (feedback && (feedback.effort || feedback.discomfort?.length)) w.feedback = feedback;
     // Keep history clean: only sets that were actually done. A planned exercise
     // without a done set stays as "ausgelassen" (its plan snapshot is kept) –
     // plan and reality both remain readable. Unplanned extras without a set go.
@@ -646,6 +691,7 @@ export function finishWorkout(workoutId: string): void {
     recordEvent(s, { type: 'workout_completed', date: w.date, hour: new Date(w.startedAt).getHours() }, w.endedAt);
     w.volumeKg = Math.round(workoutVolume(w));
     w.records = detectRecords(w, s.workouts);
+    w.achievements = workoutAchievements(w, s);
   });
 }
 
@@ -944,6 +990,17 @@ export function applyEngineAction(action: EngineAction): boolean {
     case 'set_targets':
       setTargets(action.macros, 'manual');
       return true;
+    case 'set_program': {
+      const setup = getState().training;
+      if (!setup) return false;
+      updateTraining({ ...setup, programId: action.programId, weekdays: action.weekdays, startedAt: undefined });
+      if (action.experience) {
+        update((d) => {
+          if (d.profile) d.profile.experience = action.experience!;
+        });
+      }
+      return true;
+    }
     case 'open':
       return false;
   }

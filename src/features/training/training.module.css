@@ -925,3 +925,117 @@
 .previewWeeks span {
   color: var(--text-2);
 }
+
+/* ---------- Adaptive: check-in proposals, suggestion bar ---------- */
+.proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  transition: box-shadow 0.2s ease;
+}
+
+.proposal[data-decision='accepted'] {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  background: var(--accent-soft);
+}
+
+.proposal[data-decision='skipped'] {
+  opacity: 0.6;
+}
+
+.proposalDetails {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.proposalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.note {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.rx {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 4px 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+}
+
+.rx[data-change='reduce'],
+.rx[data-change='hold'] {
+  background: var(--surface-2);
+}
+
+.rxHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.rxDelta {
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.rxReason {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.35;
+}
+
+.rxSame,
+.rxDone {
+  font-size: 13px;
+  color: var(--text-2);
+  margin: 0 4px 10px;
+}
+
+.rxDone[data-decision='accepted'] {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.adaptedBanner {
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 14px;
+}
+
+.adaptedBanner summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.adaptedBanner ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-2);
+}

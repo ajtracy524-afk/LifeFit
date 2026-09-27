@@ -1,6 +1,7 @@
 import { addDays, weekDays, weekStart } from '../dates';
 import { calorieFloor, targetForDate } from '../nutrition';
 import { appStartDate, currentWeight } from '../progress';
+import { sessionLoad } from '../adaptive/load';
 import { activeWorkouts } from '../training';
 import type { AppState, ISODate, Macros, NutritionTarget } from '../types';
 
@@ -35,6 +36,40 @@ export function shiftTarget<T extends Macros>(base: T, deltaKcal: number): T {
   return { ...base, kcal: base.kcal + deltaKcal, carbs: Math.max(0, Math.round(base.carbs + deltaKcal / 4)) };
 }
 
+/**
+ * Load-based split of the week's training energy: a bonus day whose session is
+ * clearly more demanding than the week's average (leg day) gets more, a
+ * clearly lighter one (arm day) less – between 70 % and 130 % of the bonus,
+ * only when it differs by 10 % or more, rounded to 5 kcal. The rest days carry
+ * exactly the sum of the bonuses, so the weekly total stays the same. With
+ * similar sessions every bonus day keeps TRAINING_DAY_KCAL.
+ */
+export const LOAD_SPLIT = { min: 0.7, max: 1.3, threshold: 0.1 } as const;
+
+export function bonusKcalByDate(state: Pick<AppState, 'training' | 'workoutOverrides' | 'workouts' | 'dayContexts'>, weekStartDate: ISODate): Map<ISODate, number> {
+  const sessions = activeWorkouts(state.training, state.workoutOverrides, state.workouts, weekStartDate);
+  const bonus = bonusDates(new Set(sessions.map((w) => w.date)));
+  const loads = new Map<ISODate, number>();
+  for (const w of sessions) if (bonus.has(w.date)) loads.set(w.date, (loads.get(w.date) ?? 0) + sessionLoad(w.template).score);
+  const mean = [...loads.values()].reduce((a, b) => a + b, 0) / Math.max(1, loads.size);
+  const out = new Map<ISODate, number>();
+  for (const [date, load] of loads) {
+    const raw = mean > 0 ? load / mean : 1;
+    const factor = Math.abs(raw - 1) < LOAD_SPLIT.threshold ? 1 : Math.min(LOAD_SPLIT.max, Math.max(LOAD_SPLIT.min, raw));
+    out.set(date, Math.round((TRAINING_DAY_KCAL * factor) / 5) * 5);
+  }
+  return out;
+}
+
+/** The training bonus of a day and its session's character ("Beintag") – for explanations. */
+export function trainingDayBonus(state: AppState, date: ISODate): { kcal: number; label?: string } | undefined {
+  const kcal = bonusKcalByDate(state, weekStart(date)).get(date);
+  if (kcal === undefined) return undefined;
+  const session = activeWorkouts(state.training, state.workoutOverrides, state.workouts, weekStart(date)).find((w) => w.date === date);
+  const label = session ? sessionLoad(session.template).label : undefined;
+  return { kcal, ...(label ? { label } : {}) };
+}
+
 /** Dates with a session that takes place (moved sessions count on their new day). */
 export function trainingDates(state: Pick<AppState, 'training' | 'workoutOverrides' | 'workouts'>, weekStartDate: ISODate): Set<ISODate> {
   return new Set(activeWorkouts(state.training, state.workoutOverrides, state.workouts, weekStartDate).map((w) => w.date));
@@ -59,7 +94,7 @@ export function dayTargetFor(state: AppState, date: ISODate): NutritionTarget | 
   if (frozen !== undefined) return shiftTarget(base, frozen - base.kcal);
 
   const week = weekDays(weekStart(date));
-  const bonus = bonusDates(trainingDates(state, week[0]!));
+  const bonus = bonusKcalByDate(state, week[0]!);
   const floor = floorFor(state);
   let kcal = ruleKcal(state, date, bonus, floor)!;
 
@@ -75,10 +110,11 @@ export function dayTargetFor(state: AppState, date: ISODate): NutritionTarget | 
 }
 
 /** kcal of a day by the training rule alone (no frozen values involved). */
-function ruleKcal(state: AppState, date: ISODate, bonus: Set<ISODate>, floor: ((baseKcal: number) => number) | undefined): number | undefined {
+function ruleKcal(state: AppState, date: ISODate, bonus: Map<ISODate, number>, floor: ((baseKcal: number) => number) | undefined): number | undefined {
   const base = targetForDate(state.targets, date);
   if (!base) return undefined;
-  let delta = dayShift(bonus.has(date), bonus.size);
+  const total = [...bonus.values()].reduce((a, b) => a + b, 0);
+  let delta = bonus.size <= 0 || bonus.size >= 7 ? 0 : (bonus.get(date) ?? -Math.round(total / (7 - bonus.size)));
   // Rest days never drop below the safety floor.
   if (delta < 0 && floor) delta = Math.max(delta, Math.min(0, Math.ceil(floor(base.kcal) - base.kcal)));
   return base.kcal + delta;

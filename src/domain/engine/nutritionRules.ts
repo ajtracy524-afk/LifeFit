@@ -5,7 +5,9 @@ import { addDays } from '../dates';
 import { dayTotals, foodAllowed, foodMacros, recipeAllowed, recipeMacros, roundServings, targetForDate } from '../nutrition';
 import { recipesForSlot, servingsForSlot, swapOptions } from '../planner';
 import type { Macros, MealSlot, Recipe } from '../types';
-import { dayContextFor, pantryEstimate, weekFoodCost } from '../week';
+import { dayContextFor, pantryEstimate, trainingDayBonus, weekFoodCost } from '../week';
+import { recentWorkout, workoutLine } from './adaptiveRules';
+import { sessionLoad } from '../adaptive/load';
 import { formatCostRange, priceLookup, recipeCostRange, type CostRange } from '../costs';
 import { dishCostRange, dishPortionNutrition } from '../dishes';
 import { plannerAffinity } from '../preferences';
@@ -192,9 +194,16 @@ export function nutritionGapRule(ctx: EngineContext): Recommendation[] {
     missing.kcal >= 50 ? fmt.kcal(missing.kcal) : null,
     missing.protein >= 5 ? `${fmt.g(missing.protein)} Protein` : null,
   ].filter(Boolean);
-  const title = `Heute fehlen noch ${parts.join(' und ')}`;
+  // Right after training (≤ 3 h): the same gap, told as "Nach dem Training" with the session it follows.
+  const after = recentWorkout(ctx);
+  const bonus = after ? trainingDayBonus(ctx.state, ctx.date) : undefined;
+  const title = after ? `Nach dem Training: noch ${parts.join(' und ')}` : `Heute fehlen noch ${parts.join(' und ')}`;
 
   const reasons = [`Gegessen: ${fmt.int(ctx.eaten.kcal)} von ${fmt.kcal(t.kcal)}, ${fmt.g(ctx.eaten.protein)} von ${fmt.g(t.protein)} Protein`];
+  if (after) reasons.unshift(`Training: ${workoutLine(after)}`);
+  // The label describes the session really trained (it may differ from the plan); the bonus is today's target.
+  const trained = after ? sessionLoad({ exercises: after.exercises.map((e) => ({ exerciseId: e.exerciseId, sets: e.sets.length, repMin: e.repMin, repMax: e.repMax, restSec: e.restSec, ...(e.planned?.durationMin ? { durationMin: e.planned.durationMin } : {}) })) }).label : undefined;
+  if (bonus) reasons.push(`${trained ?? 'Trainingstag'} · Tagesziel heute +${bonus.kcal} kcal (vor allem Kohlenhydrate)`);
   if (ctx.plannedOpen.length > 0) {
     reasons.push(`Noch geplant: ${fmt.kcal(ctx.plannedOpenMacros.kcal)}, ${fmt.g(ctx.plannedOpenMacros.protein)} Protein`);
   }
@@ -214,6 +223,7 @@ export function nutritionGapRule(ctx: EngineContext): Recommendation[] {
     late,
     timeBudget,
     trainingDay,
+    postWorkout: !!after,
   };
 
   let actions: EngineAction[] = [];

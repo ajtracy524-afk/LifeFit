@@ -4,6 +4,7 @@ import { applyGuardrails } from './guardrails';
 import { leftoversRule, nutritionGapRule, nutritionOverRule, ownDishRule, proteinPatternRule } from './nutritionRules';
 import { bodyRateRule, shoppingRule } from './planRules';
 import { frequencyRule, missedRule, programRule, recoveryRule, stallRule, timeRule, undertrainedRule } from './trainingRules';
+import { cardioRule, levelRule, preWorkoutRule } from './adaptiveRules';
 import type { EngineOptions, Priority, Recommendation } from './types';
 
 export * from './types';
@@ -18,6 +19,7 @@ type Rule = (ctx: EngineContext) => Recommendation[];
 /** Order = tie-breaker within the same priority. */
 export const RULES: { name: string; run: Rule }[] = [
   { name: 'training_time', run: timeRule },
+  { name: 'pre_workout', run: preWorkoutRule },
   { name: 'training_recovery', run: recoveryRule },
   { name: 'training_frequency', run: frequencyRule },
   { name: 'own_dish', run: ownDishRule },
@@ -30,6 +32,8 @@ export const RULES: { name: string; run: Rule }[] = [
   { name: 'leftovers', run: leftoversRule },
   { name: 'training_stall', run: stallRule },
   { name: 'training_program', run: programRule },
+  { name: 'training_level', run: levelRule },
+  { name: 'training_cardio', run: cardioRule },
   { name: 'nutrition_over', run: nutritionOverRule },
 ];
 
@@ -56,7 +60,9 @@ export function runEngine(state: AppState, options: EngineOptions): Recommendati
 
   // Recovery and frequency both propose a replacement for today's session – show one.
   const hasRecovery = raw.some((r) => r.kind === 'training_recovery');
-  const deduped = raw.filter((r) => !(hasRecovery && (r.kind === 'training_frequency' || r.kind === 'training_undertrained')));
+  // A level step and a program change are both about the program – the level step (from real progress) wins.
+  const hasLevel = raw.some((r) => r.kind === 'training_level');
+  const deduped = raw.filter((r) => !(hasRecovery && (r.kind === 'training_frequency' || r.kind === 'training_undertrained')) && !(hasLevel && r.kind === 'training_program'));
 
   const dismissed = state.coach?.dismissed ?? {};
   return applyGuardrails(deduped, ctx.safety, ctx.date)

@@ -2,6 +2,7 @@ import { getExercise, getProgram } from '../data/exercises';
 import { newId } from '../lib/id';
 import { addDays, daysBetween, weekDays } from './dates';
 import { effectiveTimeBudget, TIME_BUDGETS } from './timeBudget';
+import { prescribe } from './adaptive/progression';
 import type { DayContext, ISODate, PlanSlotId, TemplateExercise, TrainingSetup, Workout, WorkoutExercise, WorkoutOverride, WorkoutSet, WorkoutTemplate } from './types';
 
 export interface ScheduledWorkout {
@@ -245,32 +246,15 @@ export function progressionSuggestion(last: WorkoutSet[] | undefined, repMax: nu
 }
 
 /**
- * Today's target per set (double progression, only from real history):
- * - every set reached the top of the range last time → more weight, back to the bottom of the range
- * - otherwise the same weight and one rep more where the range allows ("80 kg × 9" after 80 × 8)
- * - no history → nothing (the user picks the first weight)
+ * A fresh exercise entry of a session: plan snapshot + sets prefilled with the
+ * suggestion of the progression engine (domain/adaptive/progression.ts) – one
+ * tap confirms. The suggestion and its reason are stored with the exercise, so
+ * the user sees why and can accept, change or decline it.
  */
-export function setTargets(
-  te: Pick<TemplateExercise, 'exerciseId' | 'sets' | 'repMin' | 'repMax'>,
-  last: WorkoutSet[] | undefined,
-): Array<{ weightKg: number | null; reps: number | null }> {
-  const suggested = progressionSuggestion(last, te.repMax, te.exerciseId);
-  const bodyweight = getExercise(te.exerciseId)?.bodyweight;
-  return Array.from({ length: te.sets }, (_, i) => {
-    const prev = last?.[Math.min(i, last.length - 1)];
-    if (suggested) return { weightKg: suggested, reps: te.repMin };
-    if (!prev) return { weightKg: null, reps: null };
-    const reps = prev.reps !== null && !bodyweight && prev.reps < te.repMax ? prev.reps + 1 : prev.reps;
-    return { weightKg: prev.weightKg, reps };
-  });
-}
-
-/** A fresh exercise entry of a session: plan snapshot + prefilled sets (the targets – one tap confirms). */
-export function workoutExercise(te: TemplateExercise, history: Workout[], opts: { extra?: boolean } = {}): WorkoutExercise {
-  const last = lastSetsFor(history, te.exerciseId);
+export function workoutExercise(te: TemplateExercise, history: Workout[], opts: { extra?: boolean; date?: ISODate } = {}): WorkoutExercise {
+  const rx = prescribe(te, history, opts.date ?? new Date().toISOString().slice(0, 10));
   const timed = isTimed(te.exerciseId);
-  const targets = timed ? [] : setTargets(te, last);
-  const lastMinutes = last?.find((s) => s.durationMin)?.durationMin ?? null;
+  const { sets: targets, ...prescription } = rx;
   return {
     id: newId(),
     exerciseId: te.exerciseId,
@@ -290,9 +274,10 @@ export function workoutExercise(te: TemplateExercise, history: Workout[], opts: 
             ...(te.durationMin ? { durationMin: te.durationMin } : {}),
           },
         }),
+    prescription,
     sets: Array.from({ length: te.sets }, (_, i) =>
       timed
-        ? { id: newId(), weightKg: null, reps: null, done: false, type: 'working' as const, durationMin: te.durationMin ?? lastMinutes, distanceKm: null }
+        ? { id: newId(), weightKg: null, reps: null, done: false, type: 'working' as const, durationMin: rx.durationMin ?? te.durationMin ?? null, distanceKm: null }
         : { id: newId(), ...targets[i]!, done: false, type: 'working' as const, target: targets[i]! },
     ),
   };
@@ -306,7 +291,7 @@ export function createWorkout(template: WorkoutTemplate, history: Workout[], dat
     name: template.name,
     startedAt: new Date().toISOString(),
     status: 'in_progress',
-    exercises: template.exercises.map((te) => workoutExercise(te, history)),
+    exercises: template.exercises.map((te) => workoutExercise(te, history, { date })),
   };
 }
 

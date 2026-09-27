@@ -2,6 +2,10 @@ import { useEffect } from 'react';
 import { getExercise } from '../../data/exercises';
 import { planSummary, planVsActual, PLAN_STATUS_LABEL, workoutStats } from '../../domain/trainingHistory';
 import { recordText } from '../../domain/workoutRecords';
+import { AREA_LABEL } from '../../domain/adaptive/sessionAdapt';
+import type { Effort } from '../../domain/types';
+
+const EFFORT_LABEL: Record<Effort, string> = { easy: 'Leicht', ok: 'Passend', hard: 'Hart', too_hard: 'Zu hart' };
 import { celebrate } from '../../lib/celebrate';
 import { fmt, formatDateLong, formatDuration } from '../../lib/format';
 import { navigate, useRoute } from '../../lib/router';
@@ -27,11 +31,13 @@ export function WorkoutSummary() {
   const workout = state.workouts.find((w) => w.id === params.get('id') && w.status === 'completed');
   const justFinished = params.get('done') === '1';
   const records = workout?.records ?? [];
+  const achievements = workout?.achievements ?? [];
 
-  // Right after finishing: one celebration for the records of this session (they are real – detectRecords).
+  // Right after finishing: one celebration – records first, otherwise the strongest data-based achievement.
   useEffect(() => {
-    if (!justFinished || !records.length) return;
-    celebrate({ kind: 'power', icon: '🏆', title: records.length === 1 ? 'Neue Bestleistung' : `${records.length} neue Bestleistungen`, detail: workout?.name, level: 3 });
+    if (!justFinished) return;
+    if (records.length) celebrate({ kind: 'power', icon: '🏆', title: records.length === 1 ? 'Neue Bestleistung' : `${records.length} neue Bestleistungen`, detail: workout?.name, level: 3 });
+    else if (achievements[0]) celebrate({ kind: achievements[0].kind === 'streak' ? 'sparkle' : 'power', icon: achievements[0].icon, title: achievements[0].title, detail: achievements[0].detail, level: 2 });
     // Only on arrival.
   }, []);
 
@@ -82,6 +88,21 @@ export function WorkoutSummary() {
         </Card>
       )}
 
+      {achievements.length > 0 && (
+        <Card aria-label="Fortschritte">
+          <ul className={styles.recordList}>
+            {achievements.map((a) => (
+              <li key={a.kind}>
+                <span>
+                  {a.icon} {a.title}
+                </span>
+                <strong>{a.detail}</strong>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <div className={styles.statGrid} aria-label="Zusammenfassung">
         <Stat label="Dauer" value={formatDuration(stats.durationMin * 60000)} />
         <Stat label="Übungen" value={String(stats.exercises)} />
@@ -120,6 +141,20 @@ export function WorkoutSummary() {
           })}
         </ul>
       </Card>
+
+      {(workout.adaptations?.length || workout.feedback) && (
+        <Card aria-label="Anpassungen und Feedback">
+          {workout.adaptations?.map((a) => (
+            <p key={a.title} className={styles.muted}>
+              <strong>Angepasst: {a.title}</strong> – {a.reason}
+            </p>
+          ))}
+          {workout.feedback?.effort && <p className={styles.muted}>Dein Eindruck: {EFFORT_LABEL[workout.feedback.effort]}</p>}
+          {workout.feedback?.discomfort?.length ? (
+            <p className={styles.muted}>Beschwerden: {workout.feedback.discomfort.map((d) => AREA_LABEL[d]).join(', ')} – beim nächsten Start bietet LifeFit dafür Alternativen an.</p>
+          ) : null}
+        </Card>
+      )}
 
       {/* Fitness → nutrition: right after training, what is still open today and meals that fit (same engine as Ernährung). */}
       {justFinished && workout.date === today() && <CoachCard domains={['nutrition']} title="Nach dem Training" />}

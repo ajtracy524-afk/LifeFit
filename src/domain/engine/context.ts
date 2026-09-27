@@ -17,6 +17,7 @@ export interface EngineContext {
   state: AppState;
   date: ISODate;
   hour: number;
+  minute: number;
   weekStart: ISODate;
   target?: NutritionTarget;
   /** Logged today (planned meals marked eaten + free entries). */
@@ -85,6 +86,7 @@ export function buildContext(state: AppState, options: EngineOptions): EngineCon
     state,
     date,
     hour,
+    minute: options.minute ?? 0,
     weekStart: ws,
     target,
     eaten,

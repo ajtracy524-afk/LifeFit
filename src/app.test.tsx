@@ -2193,6 +2193,9 @@ describe('training premium core (UI)', () => {
     window.history.replaceState(null, '', '/#/training');
     const store = await startApp();
     await tap(byLabel('Push – Brust, Schulter & Trizeps starten'));
+    // Every start goes through the short check – nothing changes without a decision.
+    expect(dialog()!.getAttribute('aria-label')).toBe('Push – Brust, Schulter & Trizeps');
+    await clickInDialog('Training starten');
     expect(window.location.hash).toBe('#/session');
     const bench = container.querySelector('section[aria-label="Bankdrücken"]')!;
     // Today's target from last time (80 × 8 → 80 × 9) is prefilled, last time and best are right at the exercise.
@@ -2200,7 +2203,7 @@ describe('training premium core (UI)', () => {
     expect(bench.querySelector<HTMLInputElement>('[aria-label="Wiederholungen Satz 1"]')!.value).toBe('9');
     expect(bench.textContent).toMatch(/Letztes Training: 80 kg × 8, 80 kg × 8, 80 kg × 8/);
     expect(bench.textContent).toMatch(/Bestleistung: 80 kg × 8/);
-    expect(bench.textContent).toMatch(/Heute: 80 kg × 9/);
+    expect(bench.querySelector('[aria-label="Vorschlag: 80 kg × 9"]')!.textContent).toContain('+1 Wdh.Letztes Mal 8 / 8 / 8 – heute eine Wiederholung mehr pro Satz.');
     expect(bench.querySelector('[role="row"]:nth-child(2) [class*="prev"]')!.textContent).toBe('80×8');
 
     // ✓ → a real rep record right away, and the rest timer starts by itself.
@@ -2313,6 +2316,7 @@ describe('training premium core (UI)', () => {
     expect(Object.keys(store.getState().routines)).toEqual([routine.id]);
     // Start it like any session.
     await tap(byLabel('Oberkörper kurz starten'));
+    await clickInDialog('Training starten');
     expect(window.location.hash).toBe('#/session');
     expect(container.querySelector('section[aria-label="Latzug"]')).toBeTruthy();
     await act(async () => store.update((s) => void (s.workouts = s.workouts.filter((w) => w.status !== 'in_progress'))));
@@ -2337,5 +2341,140 @@ describe('training premium core (UI)', () => {
     const own = Object.values(store.getState().customPrograms)[0]!;
     expect(own).toMatchObject({ name: 'Mein Wechsel', routineIds: [routine.id, 'ppl-legs'] });
     expect(card('Mein Wechsel').textContent).toMatch(/2 Einheiten im Wechsel/);
+  });
+});
+
+describe('adaptive training (UI)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 16, 45)); // Tuesday 16:45
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    (await import('./lib/celebrate')).dismissCelebration();
+  });
+
+  const done = (weight: number, reps: number) => ({ id: `s${Math.random()}`, weightKg: weight, reps, done: true, type: 'working' });
+  const lastPush = {
+    id: 'old',
+    date: '2026-09-15',
+    templateId: 'ppl-push',
+    name: 'Push – Brust, Schulter & Trizeps',
+    startedAt: '2026-09-15T17:00:00',
+    endedAt: '2026-09-15T18:00:00',
+    status: 'completed',
+    exercises: [
+      { id: 'o1', exerciseId: 'bench-press', repMin: 6, repMax: 10, restSec: 150, sets: [done(80, 10), done(80, 10), done(80, 10)] },
+      { id: 'o2', exerciseId: 'overhead-press', repMin: 8, repMax: 12, restSec: 120, sets: [done(20, 10), done(20, 10), done(20, 9)] },
+    ],
+  };
+  const setup = (patch: Record<string, unknown> = {}) => ({
+    ...completeState(),
+    training: { programId: 'push-pull-legs', weekdays: [1], startedAt: '2026-09-01' },
+    plannerSettings: { priority: 'balanced', mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:30' }, trainingTime: '18:00' },
+    workouts: [lastPush],
+    ...patch,
+  });
+  const dialog = () => document.querySelector<HTMLDialogElement>('dialog[open]')!;
+  const inDialog = (start: string) => {
+    const b = [...dialog().querySelectorAll<HTMLButtonElement>('button')].find((x) => x.textContent?.trim().startsWith(start));
+    if (!b) throw new Error(`"${start}" not in dialog`);
+    return b;
+  };
+  const tap = (el: HTMLElement) => act(async () => el.click());
+  const proposal = (title: string) => dialog().querySelector<HTMLElement>(`[aria-label="${title}"]`)!;
+  const startPush = async () => tap(container.querySelector<HTMLButtonElement>('[aria-label="Push – Brust, Schulter & Trizeps starten"]')!);
+
+  it('check-in: time + discomfort → proposals with reasons; only accepted ones change the session', async () => {
+    localStorage.setItem(KEY, JSON.stringify(setup()));
+    window.history.replaceState(null, '', '/#/training');
+    const store = await startApp();
+    await startPush();
+    expect(dialog().textContent).toMatch(/Kurzer Check · geplant ~35 min/);
+    expect(dialog().querySelector('[aria-label="Vorschläge für heute"]')).toBeNull(); // nothing to propose yet
+    await tap(inDialog('25 min'));
+    await tap(inDialog('Schulter'));
+    const compact = proposal('Kompakte Variante · ~25 min');
+    expect(compact.textContent).toMatch(/Du hast heute 25 min, geplant sind ~35 min/);
+    const swap = proposal('Kurzhantel-Bankdrücken statt Bankdrücken');
+    expect(swap.textContent).toMatch(/Du hast Beschwerden \(Schulter\) angegeben/);
+    expect(dialog().textContent).toMatch(/LifeFit stellt keine Diagnose/);
+    await tap([...compact.querySelectorAll('button')].find((b) => b.textContent === 'Übernehmen')!);
+    await tap([...swap.querySelectorAll('button')].find((b) => b.textContent === 'Überspringen')!);
+    expect(compact.getAttribute('data-decision')).toBe('accepted');
+    await tap(inDialog('Starten · 1 Anpassung'));
+    expect(window.location.hash).toBe('#/session');
+    const w = store.getState().workouts.find((x) => x.status === 'in_progress')!;
+    expect(w.checkIn).toEqual({ minutes: 25, discomfort: ['shoulder'] });
+    expect(w.adaptations!.map((a) => a.kind)).toEqual(['shorten']);
+    expect(w.exercises[0]!.exerciseId).toBe('bench-press'); // the declined swap did not happen
+    expect(w.exercises.length).toBeLessThan(5);
+    expect(container.textContent).toMatch(/Heute angepasst: Kompakte Variante · ~25 min/);
+  });
+
+  it('suggestion per exercise: reason visible; "Wie letztes Mal" declines it, "Übernehmen" keeps it; RPE is stored', async () => {
+    localStorage.setItem(KEY, JSON.stringify(setup()));
+    window.history.replaceState(null, '', '/#/training');
+    const store = await startApp();
+    await startPush();
+    await tap(inDialog('Training starten'));
+    const bench = () => container.querySelector('section[aria-label="Bankdrücken"]')!;
+    const bar = bench().querySelector('[aria-label="Vorschlag: 82,5 kg × 6"]')!;
+    expect(bar.textContent).toContain('+2,5 kg');
+    expect(bar.textContent).toContain('Letztes Training 3 × 80 kg (10 / 10 / 10) geschafft – oberes Ende erreicht.');
+    expect(bench().querySelector<HTMLInputElement>('[aria-label="Gewicht Satz 1"]')!.value).toBe('82,5');
+    await tap([...bar.querySelectorAll('button')].find((b) => b.textContent === 'Wie letztes Mal')!);
+    expect(bench().querySelector<HTMLInputElement>('[aria-label="Gewicht Satz 1"]')!.value).toBe('80');
+    expect(bench().querySelector<HTMLInputElement>('[aria-label="Wiederholungen Satz 1"]')!.value).toBe('10');
+    expect(bench().textContent).toMatch(/Wie letztes Mal – Vorschlag nicht übernommen/);
+    // Shoulder press: 10 / 10 / 9 inside the range → one rep more; accepted.
+    const ohp = container.querySelector('section[aria-label="Schulterdrücken (KH)"]')!;
+    await tap([...ohp.querySelectorAll('button')].find((b) => b.textContent === 'Übernehmen')!);
+    expect(ohp.textContent).toMatch(/✓ Vorschlag übernommen · 20 kg × 11/);
+    const w = () => store.getState().workouts.find((x) => x.status === 'in_progress')!;
+    expect(w().exercises.slice(0, 2).map((e) => e.prescription!.decision)).toEqual(['declined', 'accepted']);
+    // RPE for set 1 of the bench press.
+    await tap(bench().querySelector<HTMLButtonElement>('[aria-label^="Satz 1: Normal"]')!);
+    await tap(inDialog('9'));
+    expect(w().exercises[0]!.sets[0]!.rpe).toBe(9);
+  });
+
+  it('finish with feedback → stored, shown in the summary, and the discomfort is preselected at the next start', async () => {
+    localStorage.setItem(KEY, JSON.stringify(setup()));
+    window.history.replaceState(null, '', '/#/training');
+    const store = await startApp();
+    await startPush();
+    await tap(inDialog('Training starten'));
+    const bench = container.querySelector('section[aria-label="Bankdrücken"]')!;
+    await tap(bench.querySelector<HTMLButtonElement>('[aria-label="Satz 1 erledigt"]')!);
+    await click('Beenden');
+    await tap(inDialog('Hart'));
+    await tap(inDialog('Schulter'));
+    expect(dialog().textContent).toMatch(/Deine Angaben fließen in die nächsten Vorschläge ein/);
+    await clickInDialog('Speichern');
+    const w = store.getState().workouts.find((x) => x.id !== 'old')!;
+    expect(w.feedback).toEqual({ effort: 'hard', discomfort: ['shoulder'] });
+    expect(text()).toMatch(/Dein Eindruck: Hart/);
+    expect(text()).toMatch(/Beschwerden: Schulter – beim nächsten Start bietet LifeFit dafür Alternativen an/);
+    // Next start: preselected, and the alternative is proposed right away.
+    await act(async () => window.location.assign('#/training'));
+    await startPush();
+    expect(dialog().textContent).toMatch(/Beschwerden vom letzten Training übernommen/);
+    expect(proposal('Kurzhantel-Bankdrücken statt Bankdrücken')).toBeTruthy();
+  });
+
+  it('Heute before training: few carbs so far → "Vor dem Training" with a snack sized from the own target', async () => {
+    localStorage.setItem(KEY, JSON.stringify(setup({ workouts: [] })));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const card = [...container.querySelectorAll('h2')].find((h) => h.textContent === 'Vor dem Training')?.closest('section, div[class*="card"]') ?? container;
+    expect(card.textContent).toMatch(/Training in 75 min – ein kleiner Snack mit Kohlenhydraten\?/);
+    expect(card.textContent).toMatch(/Bananen \d+ g erfassen · \d+ g KH/);
   });
 });

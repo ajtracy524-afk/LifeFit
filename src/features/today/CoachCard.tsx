@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { DISCLAIMER, runEngine, type EngineAction, type EngineDomain, type Recommendation } from '../../domain/engine';
+import { DISCLAIMER, runEngine, type EngineAction, type EngineDomain, type Recommendation, type RecommendationKind } from '../../domain/engine';
 import { formatCostRange } from '../../domain/costs';
 import { fmt } from '../../lib/format';
 import { Icon } from '../../components/ui/Icon';
@@ -22,15 +22,18 @@ const VISIBLE = 3;
  * shows only what belongs to it; recommendations come with actions that run
  * through the cascade where they change the plan.
  */
-export function CoachCard({ domains, title = 'Für dich' }: { domains: EngineDomain[]; title?: string }) {
+export function CoachCard({ domains, title = 'Für dich', kinds }: { domains: EngineDomain[]; title?: string; kinds?: RecommendationKind[] }) {
   const state = useAppState();
   const t = today();
-  const hour = new Date().getHours();
+  const now = new Date();
+  const hour = now.getHours();
+  // Minutes matter for "Training in 45 min" – refreshed per quarter hour, not every render.
+  const minute = Math.floor(now.getMinutes() / 15) * 15;
   const [expanded, setExpanded] = useState(false);
-  const key = domains.join();
+  const key = `${domains.join()}|${kinds?.join() ?? ''}`;
 
-  // `key` stands in for the `domains` array (a new array each render).
-  const recs = useMemo(() => runEngine(state, { date: t, hour, limit: 6, domains }), [state, t, hour, key]);
+  // `key` stands in for the `domains` / `kinds` arrays (new arrays each render).
+  const recs = useMemo(() => runEngine(state, { date: t, hour, minute, limit: 6, domains }).filter((r) => !kinds || kinds.includes(r.kind)), [state, t, hour, minute, key]);
 
   // No data, no recommendation – the card simply does not appear.
   if (recs.length === 0) return null;
@@ -191,6 +194,8 @@ function doneMessage(action: EngineAction): string {
       return 'Mahlzeit getauscht';
     case 'set_targets':
       return 'Kalorienziel angepasst';
+    case 'set_program':
+      return 'Trainingsplan angepasst – ab heute gilt der neue Plan';
     default:
       return 'Erledigt';
   }

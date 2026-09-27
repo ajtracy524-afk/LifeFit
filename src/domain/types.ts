@@ -353,6 +353,58 @@ export interface WorkoutSet {
   target?: { weightKg: number | null; reps: number | null };
   /** Deliberately left out in the session (not the same as "not ticked yet"). */
   skipped?: boolean;
+  /** Rate of perceived exertion 6–10, only when the user entered it. */
+  rpe?: number;
+}
+
+/** How the next session of an exercise was derived (see domain/adaptive/progression.ts). */
+export type PrescriptionChange = 'first' | 'increase' | 'reps' | 'hold' | 'reduce' | 'same';
+
+export interface Prescription {
+  change: PrescriptionChange;
+  /** One sentence why – "Letztes Training 3 × 8 @ 80 kg geschafft". */
+  reason: string;
+  weightKg: number | null;
+  reps: number | null;
+  durationMin?: number | null;
+  /** +2,5 kg / −5 kg / +1 Wdh. / +5 min – for the label. */
+  delta?: { kg?: number; reps?: number; min?: number };
+  /** What the user did with it – the learning signal for the next suggestion. */
+  decision?: 'accepted' | 'declined' | 'edited';
+}
+
+/** Body areas for "Beschwerden" – used to offer alternatives, never to diagnose. */
+export type BodyArea = 'shoulder' | 'elbow' | 'wrist' | 'lower_back' | 'hip' | 'knee';
+export type Effort = 'easy' | 'ok' | 'hard' | 'too_hard';
+export type Energy = 'low' | 'normal' | 'high';
+
+/** What the user said before the session ("Heute nur 35 min", "Schulter zwickt"). */
+export interface SessionCheckIn {
+  minutes?: number;
+  discomfort?: BodyArea[];
+  energy?: Energy;
+}
+
+/** A change to the plan the user accepted before starting – kept with its reason. */
+export interface AppliedAdaptation {
+  kind: 'shorten' | 'swap' | 'drop' | 'fewer_sets' | 'extra_set';
+  title: string;
+  reason: string;
+}
+
+/** After the session: how it felt. */
+export interface WorkoutFeedback {
+  effort?: Effort;
+  discomfort?: BodyArea[];
+}
+
+export type AchievementKind = 'streak' | 'weight_up' | 'volume_up' | 'faster';
+
+export interface Achievement {
+  kind: AchievementKind;
+  icon: string;
+  title: string;
+  detail: string;
 }
 
 /** The plan of one exercise, frozen at the start – "Geplant 3 × 8–10 @ 80 kg". */
@@ -379,6 +431,8 @@ export interface WorkoutExercise {
   skipped?: boolean;
   extra?: boolean;
   supersetGroup?: string;
+  /** The suggestion the sets were prefilled with, and the user's decision. */
+  prescription?: Prescription;
 }
 
 /** est_1rm / max_reps: the best set · max_weight: heaviest ever · rep: more reps at a weight · volume: most kg × reps in one session. */
@@ -408,6 +462,11 @@ export interface Workout {
   records?: PersonalRecord[];
   /** The planned session this workout fulfils (see PlanSlotId). Missing on older workouts. */
   plannedId?: PlanSlotId;
+  checkIn?: SessionCheckIn;
+  adaptations?: AppliedAdaptation[];
+  feedback?: WorkoutFeedback;
+  /** Filled on completion – only what the data shows (streak, weight, volume, time). */
+  achievements?: Achievement[];
 }
 
 export interface WeightEntry {
