@@ -1318,3 +1318,195 @@
 .tapTarget {
   min-height: 44px;
 }
+
+/* ---------- Water motion ---------- */
+.glass {
+  transition: transform 0.35s var(--ease-spring);
+}
+
+.glass:active {
+  transform: scale(0.88);
+  transition-duration: 0.06s;
+}
+
+/* The wave runs over the surface of the bottle that just rose, then settles. */
+.bottleWave {
+  opacity: 0;
+  animation: bottleWave 0.9s ease-out;
+}
+
+.bottleBubble {
+  fill: var(--surface);
+  opacity: 0;
+  animation: bottleBubble 0.9s ease-out var(--delay) both;
+}
+
+/* Goal reached: the row bounces once, bottle by bottle. */
+.waterWin .glass {
+  animation: waterHop 0.6s var(--ease-spring) calc(var(--i) * 45ms) both;
+}
+
+.waterWin .glass svg path:last-child {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--water) 60%, transparent));
+}
+
+.glassAdd {
+  position: relative;
+  overflow: hidden;
+}
+
+.addRipple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  margin: -30px 0 0 -30px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--water) 35%, transparent);
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+  animation: addRipple 0.6s ease-out;
+}
+
+@keyframes bottleWave {
+  0% {
+    opacity: 1;
+    transform: translateX(0) translateY(-1px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(8px) translateY(0);
+  }
+}
+
+@keyframes bottleBubble {
+  0% {
+    opacity: 0.9;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(var(--rise));
+  }
+}
+
+@keyframes waterHop {
+  0% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-6px) scale(1.06);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes addRipple {
+  from {
+    transform: scale(0);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* ---------- Dashboard motion ---------- */
+.numberBump {
+  display: inline-block;
+  animation: numberBump 0.55s var(--ease-spring);
+}
+
+/* Micronutrient rows come in one after another when the panel opens. */
+.microRow {
+  animation: microIn 0.4s var(--ease-out) calc(var(--i) * 35ms) both;
+}
+
+.microReached {
+  display: inline-block;
+  color: var(--accent);
+  font-weight: 700;
+  animation: numberBump 0.5s var(--ease-spring) 0.3s both;
+}
+
+/* A dish saved just now enters "Meine Gerichte" with a short highlight. */
+.rowNew {
+  animation: rowNew 1.6s var(--ease-out);
+  border-radius: var(--radius-sm);
+}
+
+@keyframes numberBump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes microIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes rowNew {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+    background: var(--accent-soft);
+  }
+  25% {
+    opacity: 1;
+    transform: none;
+    background: var(--accent-soft);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* Meal just eaten: the row flashes once in the accent tone. */
+.mealRowJust {
+  animation: mealJust 0.9s var(--ease-out);
+}
+
+@keyframes mealJust {
+  0% {
+    background: var(--accent-soft);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* ---------- Press feedback (one feel everywhere: instant press, spring back) ---------- */
+.optionRow,
+.addFood,
+.check,
+.checkDone {
+  transition:
+    transform 0.35s var(--ease-spring),
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.optionRow:active,
+.addFood:active {
+  transform: scale(0.98);
+  transition-duration: 0.06s;
+}
+
+.check:active,
+.checkDone:active {
+  transform: scale(0.85);
+  transition-duration: 0.06s;
+}

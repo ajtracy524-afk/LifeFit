@@ -1,13 +1,16 @@
 import { fmt } from '../lib/format';
 import { calorieStatus } from './calorieStatus';
-import type { Macros, MacroKey, Micros, NutritionTarget } from './types';
+import { NUTRIENTS } from '../data/nutrients';
+import { VITAL_NUTRIENTS } from './nutrition';
+import type { Macros, MacroKey, MicroNutrient, Micros, NutritionTarget } from './types';
 
 /**
  * A small, honest reaction when food is logged – derived only from the
  * entry's real values and the day's totals. At most ONE line per entry, so it
  * stays special. Facts, no judgement, no health claims.
  *
- * Priority: a goal reached > sugar information > protein > fiber > balance.
+ * Priority: a goal reached > sugar information > protein > fiber > a vitamin/
+ * mineral reaching its reference > balance.
  */
 export const FEEDBACK_RULES = {
   /** "Protein-Boost": at least this much protein in the entry … */
@@ -27,9 +30,13 @@ export const FEEDBACK_RULES = {
 } as const;
 
 export interface FoodFeedback {
-  kind: 'protein_goal' | 'calorie_zone' | 'sugar' | 'protein' | 'fiber' | 'balanced';
+  kind: 'protein_goal' | 'calorie_zone' | 'sugar' | 'protein' | 'fiber' | 'micro' | 'balanced';
   icon: string;
   text: string;
+  /** The number behind it (g protein / g fiber of the entry, g sugar of the day) – for the celebration line. */
+  amount?: number;
+  /** The vitamin/mineral behind a "micro" feedback. */
+  nutrient?: MicroNutrient;
 }
 
 export interface FeedbackInput {
@@ -38,10 +45,12 @@ export interface FeedbackInput {
   before: Macros;
   /** Known sugar of the day before this entry (g), if any entry had sugar data. */
   sugarBefore?: number;
+  /** Known vitamin/mineral sums of the day before this entry (only nutrients with data). */
+  microsBefore?: Micros;
   target?: NutritionTarget;
 }
 
-export function foodFeedback({ entry, before, sugarBefore, target }: FeedbackInput): FoodFeedback | undefined {
+export function foodFeedback({ entry, before, sugarBefore, microsBefore = {}, target }: FeedbackInput): FoodFeedback | undefined {
   const F = FEEDBACK_RULES;
   const m = entry.macros;
   const unknown = new Set(entry.unknown ?? []);
@@ -59,18 +68,26 @@ export function foodFeedback({ entry, before, sugarBefore, target }: FeedbackInp
   if (sugar !== undefined && sugar > 0) {
     const day = (sugarBefore ?? 0) + sugar;
     if ((sugarBefore ?? 0) < F.sugarReferenceG && day >= F.sugarReferenceG) {
-      return { kind: 'sugar', icon: 'ℹ️', text: `Zucker heute bei ${fmt.g(day)} – über dem Referenzwert von ${F.sugarReferenceG} g` };
+      return { kind: 'sugar', icon: 'ℹ️', text: `Zucker heute bei ${fmt.g(day)} – über dem Referenzwert von ${F.sugarReferenceG} g`, amount: day };
     }
   }
   if (!unknown.has('protein') && m.protein >= F.proteinBoostG && (m.protein * 4) / m.kcal >= F.proteinEnergyShare) {
-    return { kind: 'protein', icon: '💪', text: `Starker Protein-Boost · ${fmt.g(m.protein)}` };
+    return { kind: 'protein', icon: '💪', text: `Starker Protein-Boost · ${fmt.g(m.protein)}`, amount: m.protein };
   }
   const fiber = entry.micros?.fiber;
-  if (fiber !== undefined && fiber >= F.fiberG) return { kind: 'fiber', icon: '🌱', text: `Gute Ballaststoffquelle · ${fmt.g(fiber)}` };
+  if (fiber !== undefined && fiber >= F.fiberG) return { kind: 'fiber', icon: '🌱', text: `Gute Ballaststoffquelle · ${fmt.g(fiber)}`, amount: fiber };
+  // A vitamin or mineral crossing its labelling reference (NRV) with this entry – only from values both sides have.
+  for (const key of VITAL_NUTRIENTS) {
+    const nrv = NUTRIENTS[key].nrv;
+    const v = entry.micros?.[key];
+    if (nrv === undefined || v === undefined || !(v > 0)) continue;
+    const was = microsBefore[key] ?? 0;
+    if (was < nrv && was + v >= nrv) return { kind: 'micro', icon: '✨', text: `${NUTRIENTS[key].label}: Referenzwert erreicht`, nutrient: key };
+  }
   if (!unknown.size && m.kcal >= F.balancedMinKcal) {
     const share = { protein: (m.protein * 4) / m.kcal, carbs: (m.carbs * 4) / m.kcal, fat: (m.fat * 9) / m.kcal };
     const inside = (Object.keys(F.balanced) as (keyof typeof F.balanced)[]).every((k) => share[k] >= F.balanced[k][0] && share[k] <= F.balanced[k][1]);
-    if (inside) return { kind: 'balanced', icon: '🎯', text: 'Ausgewogenes Makroprofil' };
+    if (inside) return { kind: 'balanced', icon: '✨', text: 'Ausgewogenes Makroprofil' };
   }
   return undefined;
 }

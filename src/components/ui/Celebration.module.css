@@ -1,0 +1,338 @@
+/* Celebration chip – transform/opacity only (GPU), no layout impact: it floats above the screen. */
+.host {
+  position: fixed;
+  top: calc(var(--safe-top) + 12px);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(420px, 100%);
+  padding: 8px 18px 8px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  animation:
+    chipIn 0.55s var(--ease-spring) both,
+    chipOut 0.32s ease-in calc(var(--life) - 320ms) forwards;
+}
+
+.big {
+  padding: 12px 22px 12px 12px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, var(--surface), var(--accent-soft));
+}
+
+.icon {
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  font-size: 21px;
+  line-height: 1;
+}
+
+.big .icon {
+  width: 48px;
+  height: 48px;
+  font-size: 26px;
+}
+
+.glyph {
+  display: block;
+  animation: glyphPop 0.6s var(--ease-spring) 0.12s both;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.text strong {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.big .text strong {
+  font-size: 17px;
+}
+
+.text span {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* ---------- Kinds ---------- */
+
+/* 💪 power: the icon punches out, eight short rays burst. */
+.power .glyph {
+  animation: power 0.7s var(--ease-spring) 0.1s both;
+}
+
+.burst span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 9px;
+  margin: -4.5px 0 0 -1.5px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transform: rotate(var(--a)) translateY(-14px);
+  animation: ray 0.55s ease-out 0.18s;
+}
+
+/* 💧 water: two rings ripple out of the icon. */
+.water .icon {
+  background: color-mix(in srgb, var(--water) 18%, var(--surface));
+}
+
+.ripple {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--water);
+  opacity: 0;
+  animation: ripple 0.9s ease-out 0.1s;
+}
+
+.rippleLate {
+  animation-delay: 0.35s;
+}
+
+/* 🎯 target / ✨ day: a ring is drawn around the icon. */
+.sweep {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  transform: rotate(-90deg);
+}
+
+.sweep circle {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 126;
+  stroke-dashoffset: 126;
+  animation: draw 0.8s var(--ease-out) 0.15s forwards;
+}
+
+/* 🌱 grow: the sprout grows from the ground and sways once. */
+.grow .glyph {
+  transform-origin: 50% 90%;
+  animation: grow 0.8s var(--ease-spring) 0.1s both;
+}
+
+/* ✨ sparkle: a gentle twinkle. */
+.sparkle .glyph {
+  animation: twinkle 0.9s ease-out 0.1s both;
+}
+
+/* 🍽️ dish: a light sweep across the chip – "saved, ready again". */
+.dish::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) 16%, transparent) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: shine 0.9s ease-out 0.25s;
+  pointer-events: none;
+}
+
+/* ✓ check: drawn, not just shown. */
+.check {
+  width: 22px;
+  height: 22px;
+}
+
+.check path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: draw 0.45s var(--ease-out) 0.15s forwards;
+}
+
+/* ℹ️ info: neutral – no bounce, no glow. */
+.info .icon {
+  background: var(--surface-2);
+}
+
+.info .glyph {
+  animation: none;
+}
+
+/* ---------- Particles (goal reached / day complete) ---------- */
+.particles {
+  position: absolute;
+  left: 28px;
+  top: 50%;
+  pointer-events: none;
+}
+
+.big .particles {
+  left: 50%;
+}
+
+.particles span {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: 2px;
+  background: var(--c);
+  opacity: 0;
+  animation: particle 0.9s var(--ease-out) calc(0.15s + var(--delay)) both;
+}
+
+.particles span:nth-child(3n) {
+  border-radius: 50%;
+}
+
+/* ---------- Keyframes ---------- */
+@keyframes chipIn {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.86);
+  }
+}
+
+@keyframes chipOut {
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+}
+
+@keyframes glyphPop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+
+@keyframes power {
+  0% {
+    transform: scale(0.5) rotate(-12deg);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.35) rotate(6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes ray {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-12px) scaleY(0.4);
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-26px) scaleY(1);
+  }
+}
+
+@keyframes ripple {
+  from {
+    opacity: 0.8;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes grow {
+  0% {
+    transform: scaleY(0.1) scaleX(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scaleY(1.15) rotate(-8deg);
+    opacity: 1;
+  }
+  80% {
+    transform: rotate(5deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes twinkle {
+  0% {
+    transform: scale(0.3) rotate(-40deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.25) rotate(10deg);
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes shine {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes particle {
+  0% {
+    opacity: 1;
+    transform: rotate(var(--a)) translateX(8px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateX(var(--d)) scale(0.6);
+  }
+}
+
+/* Reduced motion: the chip simply appears and goes – no movement, no particles. */
+@media (prefers-reduced-motion: reduce) {
+  .particles,
+  .burst,
+  .ripple {
+    display: none;
+  }
+}

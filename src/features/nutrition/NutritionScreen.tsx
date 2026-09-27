@@ -20,6 +20,8 @@ import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { MacroStrip } from '../../components/ui/Progress';
 import { CountUp } from '../../components/ui/CountUp';
+import { useIncrease, useLateMount, useScreenMount } from '../../lib/motion';
+import { motionStyles } from '../../components/ui/SwapText';
 import { LogFoodSheet, type LogTarget } from './LogFoodSheet';
 import { MealRow } from './MealRow';
 import { MealSheet } from './MealSheet';
@@ -36,6 +38,7 @@ import styles from './nutrition.module.css';
 type View = 'day' | 'week';
 
 export function NutritionScreen() {
+  useScreenMount();
   const { params } = useRoute();
   const view: View = params.get('view') === 'week' ? 'week' : 'day';
   const date = params.get('date') ?? today();
@@ -90,6 +93,8 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
   const target = dayTargetFor(state, date);
   const summary = useMemo(() => daySummary(state.logEntries, date), [state.logEntries, date]);
   const totals = summary.day.macros;
+  // The day total bumps on every real increase (e.g. an entry just logged).
+  const kcalBump = useIncrease(totals.kcal);
   const meals = state.plannedMeals.filter((m) => m.date === date);
   const extras = state.logEntries.filter((e) => e.date === date && !e.plannedMealId);
   const profileSlots = state.nutritionProfile?.slots ?? SLOT_ORDER;
@@ -113,7 +118,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
         <Card>
           <div className={styles.dayTotals}>
             <div>
-              <span className={styles.bigNumber}>
+              <span key={kcalBump} className={kcalBump ? `${styles.bigNumber} ${styles.numberBump}` : styles.bigNumber}>
                 <CountUp value={totals.kcal} format={fmt.int} />
               </span>
               <span className={styles.muted}> / {fmt.kcal(target.kcal)}</span>
@@ -215,7 +220,13 @@ function OptionalNutrients({ summary }: { summary: NutritionSummary }) {
           <div key={k} className={styles.extraCell} title={m.known > 0 && m.known < m.of ? `Nur ${m.known} von ${m.of} Einträgen haben diese Angabe` : undefined}>
             <dt>{MICRO_LABEL[k]}</dt>
             <dd>
-              {m.known > 0 ? <strong>{fmt.micro(k, m.value)}</strong> : <span className={styles.partial}>keine Daten</span>}
+              {m.known > 0 ? (
+                <strong>
+                  <CountUp value={m.value} format={(v) => fmt.micro(k, v)} />
+                </strong>
+              ) : (
+                <span className={styles.partial}>keine Daten</span>
+              )}
               {m.known > 0 && m.known < m.of && <span className={styles.extraPartial}>aus {m.known} von {m.of}</span>}
             </dd>
           </div>
@@ -230,10 +241,11 @@ const UNIT_LABEL = { g: 'g', ml: 'ml', portion: 'Portion', piece: 'Stück' } as 
 
 /** One logged food. `replaces`: the planned dish it was eaten instead of (shown like on Heute). */
 function LogRow({ entry, replaces }: { entry: LogEntry; replaces?: string }) {
+  const late = useLateMount();
   const unknown = new Set(entry.unknown ?? []);
   const amount = entry.amount !== undefined && entry.unit ? `${fmt.dec(entry.amount)} ${UNIT_LABEL[entry.unit]}` : entry.grams ? fmt.g(entry.grams) : undefined;
   return (
-    <div className={styles.logRow}>
+    <div className={late ? `${styles.logRow} ${motionStyles.enter}` : styles.logRow}>
       <span className={styles.logText}>
         <span className={styles.sourceBadge}>
           {entry.method === 'barcode' && <Icon name="barcode" size={12} />}

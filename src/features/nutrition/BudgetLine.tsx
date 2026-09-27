@@ -4,6 +4,7 @@ import { weekDays } from '../../domain/dates';
 import type { ISODate } from '../../domain/types';
 import { weekFoodCost } from '../../domain/week';
 import { useAppState } from '../../store/store';
+import { useCountUp } from '../../components/ui/CountUp';
 import styles from './nutrition.module.css';
 
 interface Props {
@@ -30,6 +31,9 @@ export function BudgetLine({ week, label = 'Diese Woche', className, progressUnt
     [state.plannedMeals, state.logEntries, state.products, week, progressUntil],
   );
   const budget = state.plannerSettings.weeklyBudgetChf;
+  // Ranges glide to new values like every other number (never below 0, same rounding as formatCostRange).
+  const low = useCountUp(cost?.lowChf ?? 0);
+  const high = useCountUp(cost?.highChf ?? 0);
 
   if (!cost) {
     const days = weekDays(week);
@@ -46,7 +50,7 @@ export function BudgetLine({ week, label = 'Diese Woche', className, progressUnt
   const left = budget !== undefined ? remaining(budget, cost) : undefined;
   return (
     <span className={[styles.budgetLine, over && styles.budgetOver, className].filter(Boolean).join(' ')} title="Schätzung aus Durchschnittspreisen und deinen eingegebenen Preisen">
-      {label} {formatCostRange(cost)}
+      {label} {formatCostRange({ lowChf: Math.min(low, high), highChf: Math.max(low, high) })}
       {budget !== undefined ? ` von ${budget} CHF` : ''}
       {over ? ' – über Budget' : ''}
       {progressUntil && budget !== undefined && (eaten || left) && (

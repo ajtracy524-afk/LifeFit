@@ -823,6 +823,10 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     const eat = container.querySelector<HTMLButtonElement>('dialog[open] button[aria-label$=" gegessen"]')!;
     const chosen = eat.getAttribute('aria-label')!.replace(/ gegessen$/, '');
     await act(async () => eat.click());
+    // Replacing is one flow with ONE feedback line: what the new food brings, or what changed (old → new · kcal).
+    const replaced = document.querySelector<HTMLElement>('[data-testid="celebration"]')!;
+    if (replaced.dataset.kind === 'check') expect(replaced.textContent).toMatch(new RegExp(`Vollkorn-Pasta Bolognese → ${chosen} · [+−][\d.]+ kcal`));
+    else expect(replaced.dataset.level).toMatch(/^[123]$/);
 
     const s = store.getState();
     const lunch = s.plannedMeals.find((m) => m.id === 'l')!;
@@ -1370,6 +1374,7 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     expect(text()).not.toMatch(/€|EUR/);
     await click('Einplanen');
     expect(store.getState().plannedMeals.some((m) => m.date === TUE && m.slot === 'lunch')).toBe(true);
+    expect(document.querySelector<HTMLElement>('[data-testid="celebration"]')!.dataset).toMatchObject({ kind: 'check', level: '1' });
   });
 });
 
@@ -1435,6 +1440,8 @@ describe('own dishes, extended database, online search, feedback (Ernährung ↔
     expect(container.querySelector('[aria-label="Nährwerte des Gerichts"]')!.textContent).toMatch(/238\s*kcal/);
 
     await clickInDialog('Speichern');
+    // Saving feels like saving: the dish celebration (level 2).
+    expect(document.querySelector<HTMLElement>('[data-testid="celebration"]')!.textContent).toMatch(/Gericht gespeichertAb jetzt mit einem Tipp erfassbar/);
     const dish = Object.values(store.getState().customDishes)[0]!;
     expect(dish).toMatchObject({ name: 'Melonen-Sandwich', portions: 1 });
     expect(dish.ingredients.map((i) => [i.name, i.grams, i.source])).toEqual([
@@ -1509,7 +1516,7 @@ describe('own dishes, extended database, online search, feedback (Ernährung ↔
     expect(text()).toMatch(/Skyr natur/);
   });
 
-  it('feedback after logging comes from the real values – a protein-rich food says so', async () => {
+  it('feedback after logging comes from the real values – a protein-rich food gets the protein celebration', async () => {
     localStorage.setItem(KEY, JSON.stringify(completeState()));
     window.history.replaceState(null, '', '/#/nutrition');
     await startApp();
@@ -1518,7 +1525,11 @@ describe('own dishes, extended database, online search, feedback (Ernährung ↔
     await fill('input[placeholder^="z. B. Birne"]', 'Hähnchenbrust');
     await click('Hähnchenbrust');
     await clickInDialog('Hinzufügen');
-    expect(toast()).toMatch(/Hähnchenbrust erfasst · 💪 Starker Protein-Boost · 24 g/);
+    // The undo toast stays short; the ONE feedback line is the celebration chip – a protein 'power' moment, level 2.
+    expect(toast()).toMatch(/Hähnchenbrust erfasst/);
+    const chip = document.querySelector<HTMLElement>('[data-testid="celebration"]')!;
+    expect(chip.textContent).toBe('💪+24 g ProteinStarker Protein-Boost');
+    expect(chip.dataset).toMatchObject({ kind: 'power', level: '2' });
   });
 
   it('water bottles fill through a transform (animatable) – the level is the data', async () => {
@@ -1527,5 +1538,104 @@ describe('own dishes, extended database, online search, feedback (Ernährung ↔
     await startApp();
     const levels = [...container.querySelectorAll<SVGRectElement>('[aria-label^="Wasser: 250 ml"] rect')].map((r) => r.style.transform);
     expect(levels.slice(0, 3)).toEqual(['scaleY(1)', 'scaleY(0.5)', 'scaleY(0)']);
+  });
+});
+
+describe('gamification loop on Heute and Ernährung (action → reaction → progress → feedback → goal)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 12, 45)); // Tuesday 12:45
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    const { dismissCelebration } = await import('./lib/celebrate');
+    dismissCelebration();
+  });
+
+  const TUE = '2026-09-22';
+  const chip = () => document.querySelector<HTMLElement>('[data-testid="celebration"]');
+  const ring = () => container.querySelector<HTMLElement>('[role="img"][data-impact]')!;
+  const quickLog = (id: string, date: string, kcal: number, protein: number) => ({ id, date, slot: 'lunch', loggedAt: `${date}T12:00:00Z`, name: 'Eintrag', method: 'quick', macros: { kcal, protein, carbs: 100, fat: 30 } });
+  const withGoal = (patch: Record<string, unknown> = {}) => ({
+    ...completeState(),
+    closedDayTargets: { [TUE]: 2700 },
+    nutritionProfile: { ...completeState().nutritionProfile, waterGoalMl: 2000 },
+    ...patch,
+  });
+
+  it('"Gegessen" on the next-action card: the ring takes the impact, the timeline check snaps in, the card sets in the next action', async () => {
+    const lunch = { id: 'l', date: TUE, slot: 'lunch', recipeId: 'bolognese', servings: 1, status: 'planned', source: 'suggest' };
+    const dinner = { id: 'd', date: TUE, slot: 'dinner', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' };
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ plannedMeals: [lunch, dinner] })));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    expect(ring().dataset.impact).toBe('0'); // nothing animates on arrival
+    await act(() => new Promise((r) => setTimeout(r, 450))); // a person looks before tapping (elements appearing later animate in)
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Nächste Aktion"] button:not([aria-label])')!.click());
+    expect(store.getState().plannedMeals.find((m) => m.id === 'l')!.status).toBe('eaten');
+    expect(ring().dataset.impact).toBe('1');
+    const eatenMark = [...container.querySelectorAll('ol li button')].find((b) => b.textContent?.includes('Bolognese'))!.querySelector('[class*="doneMark"]')!;
+    expect(eatenMark.className).toMatch(/snap/);
+    // The next action changed (here: shopping comes first) – it is set in, not just swapped.
+    const next = container.querySelector('[aria-label="Nächste Aktion"]')!;
+    expect(next.textContent).not.toMatch(/Mittagessen/);
+    expect(next.className).toMatch(/enter/);
+  });
+
+  it('water: the filled bottle waves, the goal crossing celebrates (level 3) and the row bounces', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ water: { [TUE]: 1500 } })));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
+    expect(container.querySelectorAll('[aria-label^="Wasser: 250 ml"] path[class*="bottleWave"]')).toHaveLength(1);
+    expect(chip()).toBeNull(); // a normal glass: motion, no message
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
+    expect(chip()!.dataset).toMatchObject({ kind: 'water', level: '3' });
+    expect(chip()!.textContent).toMatch(/Wasserziel erreicht2 L heute/);
+    expect(container.querySelector('[aria-label^="Wasser: 250 ml"]')!.className).toMatch(/waterWin/);
+    // Taking water back: level goes down, no celebration, no "negative" animation.
+    await act(async () => (await import('./lib/celebrate')).dismissCelebration());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml weniger"]')!.click());
+    expect(chip()).toBeNull();
+  });
+
+  it('day goals close one by one; the last one completes the day – the biggest moment (level 4) and a calm consistency count', async () => {
+    const logs = [quickLog('y1', '2026-09-21', 2600, 150), quickLog('y2', '2026-09-20', 2500, 140), quickLog('t', TUE, 2650, 170)];
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ logEntries: logs, water: { [TUE]: 1750 } })));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const goals = () => container.querySelector('[aria-label="Tagesziele"]')!;
+    expect(goals().textContent).toMatch(/^Tagesziele 2 \/ 3🔥 3 Tage dabei/);
+    expect([...goals().querySelectorAll('li')].map((li) => li.getAttribute('data-done'))).toEqual(['true', 'true', 'false']);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
+    expect(goals().textContent).toMatch(/^Tag abgeschlossen ✨/);
+    expect(chip()!.dataset).toMatchObject({ kind: 'day', level: '4' });
+    expect(chip()!.textContent).toMatch(/Tag abgeschlossen/);
+    expect(goals().className).toMatch(/dayGoalsFinish/);
+  });
+
+  it('the ring turns calmly amber above the zone – never a red "error"', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ logEntries: [quickLog('t', TUE, 3300, 150)] })));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    expect(ring().dataset.tone).toBe('over');
+    expect(ring().querySelector('circle[class*="ringValue"]')!.getAttribute('stroke')).toBe('var(--carbs)');
+  });
+
+  it('Ernährung: logging updates the day total with a bump and the macros glide; the protein goal crossing pulses the protein column', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ logEntries: [quickLog('t', TUE, 1500, 150)] })));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await act(async () => store.update((s) => void s.logEntries.push(quickLog('t2', TUE, 200, 20) as never)));
+    expect(container.querySelector('[class*="numberBump"]')!.textContent).toBe('1.700');
+    const protein = [...container.querySelectorAll('[aria-label="Makros"] > div')][0]!;
+    expect(protein.className).toMatch(/macroPower/);
+    expect(protein.textContent).toMatch(/Protein ✓170 \/ 160 g/);
   });
 });

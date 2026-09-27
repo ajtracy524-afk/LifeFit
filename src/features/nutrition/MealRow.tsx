@@ -5,7 +5,9 @@ import { fmt } from '../../lib/format';
 import { withUndo } from '../../lib/undo';
 import { markEaten, unmarkEaten } from '../../store/actions';
 import { Icon } from '../../components/ui/Icon';
-import { mealLoggedMessage } from './logFeedback';
+import { runMealEaten } from './logFeedback';
+import { SwapText, motionStyles } from '../../components/ui/SwapText';
+import { useJustChanged } from '../../lib/motion';
 import styles from './nutrition.module.css';
 
 interface MealRowProps {
@@ -23,24 +25,26 @@ export function MealRow({ meal, label, onOpen, highlight, checkable = true }: Me
   const eaten = meal.status === 'eaten';
   const skipped = meal.status === 'skipped';
 
+  // Eaten right now → the check snaps in and the row flashes once (not on arrival).
+  const justChanged = useJustChanged(eaten);
+
   const toggle = () => {
     if (eaten) {
       withUndo('Markierung entfernt', () => unmarkEaten(meal.id));
     } else {
-      withUndo(mealLoggedMessage(meal, `${recipe?.title ?? 'Mahlzeit'} erfasst`), () => markEaten(meal.id));
-      navigator.vibrate?.(10);
+      runMealEaten(meal, `${recipe?.title ?? 'Mahlzeit'} erfasst`, () => markEaten(meal.id));
     }
   };
 
   return (
-    <div className={[styles.mealRow, highlight && styles.mealRowHighlight, (eaten || skipped) && styles.mealRowDone].filter(Boolean).join(' ')}>
+    <div className={[styles.mealRow, highlight && styles.mealRowHighlight, (eaten || skipped) && styles.mealRowDone, eaten && justChanged && styles.mealRowJust].filter(Boolean).join(' ')}>
       <button type="button" className={styles.mealMain} onClick={onOpen}>
         <span className={styles.mealEmoji} aria-hidden>
           {recipe?.emoji ?? '🍽️'}
         </span>
         <span className={styles.mealText}>
           {label && <span className={styles.mealLabel}>{label}</span>}
-          <span className={styles.mealTitle}>{recipe?.title ?? 'Unbekanntes Rezept'}</span>
+          <SwapText className={styles.mealTitle} text={recipe?.title ?? 'Unbekanntes Rezept'} />
           <span className={styles.mealMeta}>
             {skipped ? 'Anders gegessen' : `${fmt.kcal(macros.kcal)} · ${fmt.int(macros.protein)} g Protein`}
           </span>
@@ -49,7 +53,7 @@ export function MealRow({ meal, label, onOpen, highlight, checkable = true }: Me
       {checkable && !skipped && (
         <button
           type="button"
-          className={eaten ? styles.checkDone : styles.check}
+          className={[eaten ? styles.checkDone : styles.check, eaten && justChanged && motionStyles.snap].filter(Boolean).join(' ')}
           onClick={toggle}
           aria-pressed={eaten}
           aria-label={eaten ? `${recipe?.title} nicht mehr als gegessen markieren` : `${recipe?.title} als gegessen markieren`}

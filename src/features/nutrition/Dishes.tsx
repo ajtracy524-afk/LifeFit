@@ -6,6 +6,7 @@ import type { CustomDish, DishIngredient, Food, Product } from '../../domain/typ
 import { fmt } from '../../lib/format';
 import { newId } from '../../lib/id';
 import { withUndo } from '../../lib/undo';
+import { celebrate } from '../../lib/celebrate';
 import { deleteDish, saveDish } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Button, IconButton } from '../../components/ui/Button';
@@ -16,6 +17,10 @@ import { MicroLine, NutrientGrid } from './ProductConfirm';
 import { matchesQuery } from '../../services/foodDatabase';
 import { useFoodSearch } from './useFoodSearch';
 import styles from './nutrition.module.css';
+
+/** The dish saved last – its row enters "Meine Gerichte" with a short highlight (a few seconds only). */
+let lastSaved: { id: string; at: number } | undefined;
+const isFresh = (id: string) => !!lastSaved && lastSaved.id === id && Date.now() - lastSaved.at < 8000;
 
 const SOURCE_LABEL: Record<DishIngredient['source'], string> = { catalog: 'Katalog', database: 'Datenbank', product: 'Produkt' };
 const perPortionLine = (dish: CustomDish) => {
@@ -50,7 +55,7 @@ export function DishList({ onPick, onCreate }: { onPick: (dish: CustomDish) => v
           )}
           <ul className={styles.optionList}>
             {shown.map((dish) => (
-              <li key={dish.id}>
+              <li key={dish.id} className={isFresh(dish.id) ? styles.rowNew : undefined}>
                 <button type="button" className={styles.optionRow} onClick={() => onPick(dish)}>
                   <span className={styles.mealText}>
                     <span className={styles.mealTitle}>🍽️ {dish.name}</span>
@@ -150,10 +155,14 @@ export function DishEditorSheet({ dish, onSaved, onCancel, onClose }: { dish?: C
     const e = validateDish(draft);
     if (Object.keys(e).length) return setErrors(e);
     let saved: string | undefined;
-    withUndo(dish ? `${name.trim()} gespeichert – bereits erfasste Mahlzeiten bleiben unverändert` : `${name.trim()} gespeichert`, () => {
+    const ok = withUndo(dish ? `${name.trim()} gespeichert – bereits erfasste Mahlzeiten bleiben unverändert` : `${name.trim()} gespeichert`, () => {
       saved = saveDish(draft, dish?.id);
       return !!saved;
     });
+    if (ok && saved) {
+      lastSaved = { id: saved, at: Date.now() };
+      celebrate({ kind: 'dish', icon: '🍽️', title: dish ? 'Gericht aktualisiert' : 'Gericht gespeichert', detail: 'Ab jetzt mit einem Tipp erfassbar', level: 2 });
+    }
     onSaved(saved);
   };
 

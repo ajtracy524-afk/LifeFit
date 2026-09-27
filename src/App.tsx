@@ -8,6 +8,7 @@ import { useAppState, useStorageStatus } from './store/store';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TabBar } from './components/TabBar';
 import { Banner, ToastHost } from './components/ui/Feedback';
+import { CelebrationHost } from './components/ui/Celebration';
 import { Onboarding } from './features/onboarding/Onboarding';
 import { TodayScreen } from './features/today/TodayScreen';
 import { NutritionScreen } from './features/nutrition/NutritionScreen';
@@ -36,6 +37,7 @@ export function App() {
           <Onboarding />
         </ErrorBoundary>
         <ToastHost />
+      <CelebrationHost />
       </>
     );
   }
@@ -58,6 +60,7 @@ export function App() {
       </ErrorBoundary>
       {!fullscreen && <TabBar active={activeTab} badges={{ shopping: shoppingBadge }} />}
       <ToastHost />
+      <CelebrationHost />
     </>
   );
 }

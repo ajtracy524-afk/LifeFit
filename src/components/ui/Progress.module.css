@@ -4,7 +4,91 @@
 }
 
 .ringValue {
-  transition: stroke-dashoffset 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  transition:
+    stroke-dashoffset 1s var(--ease-out),
+    stroke 0.5s ease;
+}
+
+/* A real increase: the arc glows up once. */
+.ringImpact {
+  opacity: 0;
+  animation: ringImpact 0.9s var(--ease-out);
+}
+
+/* Goal reached: a light runs once around the ring … */
+.ringSweep {
+  opacity: 0;
+  transform-box: view-box;
+  transform-origin: center;
+  animation: ringSweep 1.1s var(--ease-out) 0.25s;
+}
+
+/* … and a ripple goes out. */
+.ringWave {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  animation: ringWave 1s var(--ease-out) 0.2s;
+}
+
+/* The number in the middle bumps when it changes. */
+.ringThump {
+  animation: ringThump 0.55s var(--ease-spring);
+}
+
+@keyframes ringImpact {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.28;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes ringSweep {
+  0% {
+    opacity: 0;
+    transform: rotate(-90deg);
+  }
+  15% {
+    opacity: 0.9;
+  }
+  85% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(270deg);
+  }
+}
+
+@keyframes ringWave {
+  from {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.22);
+  }
+}
+
+@keyframes ringThump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .ringCenter {
@@ -87,8 +171,62 @@
   font-weight: 650;
 }
 
-.macroReached .bar {
-  animation: reachedGlow 0.8s ease-out;
+.barFill {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shine along the fill after a real increase. */
+.barShine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 55%), transparent);
+  transform: translateX(-100%);
+  animation: barShine 0.8s var(--ease-out) 0.2s;
+}
+
+.macroCheck {
+  display: inline-block;
+  animation: checkSnap 0.5s var(--ease-spring);
+}
+
+/* Protein target reached (only when it happens): power pulse + glow. */
+.macroPower {
+  animation: macroPower 0.7s var(--ease-spring);
+}
+
+.macroPower .bar {
+  animation: reachedGlow 0.9s ease-out;
+}
+
+@keyframes barShine {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes checkSnap {
+  0% {
+    transform: scale(0);
+  }
+  70% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes macroPower {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.07);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 @keyframes reachedGlow {
@@ -96,7 +234,7 @@
     box-shadow: 0 0 0 0 var(--accent-soft);
   }
   40% {
-    box-shadow: 0 0 0 4px var(--accent-soft);
+    box-shadow: 0 0 0 5px var(--accent-soft);
   }
   100% {
     box-shadow: 0 0 0 0 transparent;

@@ -25,6 +25,9 @@ import { MicronutrientPanel } from '../nutrition/MicronutrientPanel';
 import { BudgetLine } from '../nutrition/BudgetLine';
 import { CalorieStatusBadge } from '../nutrition/CalorieStatusBadge';
 import { DayTypeBadge } from './DayTypeBadge';
+import { DayGoals } from './DayGoals';
+import { calorieStatus } from '../../domain/calorieStatus';
+import { useCrossing, useIncrease, useScreenMount } from '../../lib/motion';
 import { MealSheet } from '../nutrition/MealSheet';
 import { WeightSheet } from '../progress/WeightSheet';
 import { WorkoutPlanSheet } from '../training/WorkoutPlanSheet';
@@ -36,6 +39,7 @@ import { TimeBudgetControl } from './TimeBudgetControl';
 import styles from './today.module.css';
 
 export function TodayScreen() {
+  useScreenMount();
   const state = useAppState();
   const t = today();
   const start = weekStart(t);
@@ -54,6 +58,10 @@ export function TodayScreen() {
   // One summary of what was eaten today – macros and micronutrients from the same entries.
   const day = useMemo(() => daySummary(state.logEntries, t).day, [state.logEntries, t]);
   const totals = day.macros;
+  // Ring motion from real changes: every increase an impact, entering the target zone a success sweep.
+  const zone = target ? calorieStatus({ eaten: totals.kcal, planned: 0, targetKcal: target.kcal, finished: false })?.key : undefined;
+  const ringImpact = useIncrease(totals.kcal);
+  const ringSuccess = useCrossing(zone === 'in_zone');
   const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
   const weekHasMeals = state.plannedMeals.some((m) => m.date >= t && m.date <= addDays(start, 6));
 
@@ -151,11 +159,25 @@ export function TodayScreen() {
       {target && (
         <Card>
           <div className={styles.target}>
-            <ProgressRing value={totals.kcal} max={target.kcal} label={`${fmt.int(totals.kcal)} von ${fmt.int(target.kcal)} Kilokalorien`}>
+            <ProgressRing
+              value={totals.kcal}
+              max={target.kcal}
+              label={`${fmt.int(totals.kcal)} von ${fmt.int(target.kcal)} Kilokalorien`}
+              impact={ringImpact}
+              success={ringSuccess}
+              tone={zone === 'over' || zone === 'well_over' ? 'over' : 'default'}
+            >
               <span className={styles.ringValue}>
                 <CountUp value={Math.abs(target.kcal - totals.kcal)} format={fmt.int} />
               </span>
-              <span className={styles.ringLabel}>{totals.kcal <= target.kcal ? 'kcal übrig' : 'kcal drüber'}</span>
+              <span className={styles.ringLabel}>
+                {zone === 'in_zone' && (
+                  <span key={ringSuccess} className={styles.ringCheck} aria-hidden>
+                    ✓{' '}
+                  </span>
+                )}
+                {totals.kcal <= target.kcal ? 'kcal übrig' : 'kcal drüber'}
+              </span>
             </ProgressRing>
             <div className={styles.targetSide}>
               <p className={styles.targetKcal}>
@@ -168,6 +190,7 @@ export function TodayScreen() {
               <CalorieStatusBadge date={t} eatenKcal={totals.kcal} targetKcal={target.kcal} />
             </div>
           </div>
+          <DayGoals date={t} />
           <div className={styles.macroRow}>
             <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
             <MicronutrientPanel summary={day} />

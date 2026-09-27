@@ -3,8 +3,8 @@ import { getRecipe } from '../../data/recipes';
 import { formatCostRange, priceLookup, recipeCostRange } from '../../domain/costs';
 import { today as todayIso } from '../../domain/dates';
 import { explainMeal } from '../../domain/explain';
-import { EMPTY_MANUAL, manualFromProduct, type EntryContent, type ManualInput } from '../../domain/foodEntry';
-import { recipeAllowed, recipeMacros } from '../../domain/nutrition';
+import { EMPTY_MANUAL, manualFromProduct, productEntry, type EntryContent, type ManualInput } from '../../domain/foodEntry';
+import { plannedMealMacros, recipeAllowed, recipeMacros, recipeMicros } from '../../domain/nutrition';
 import { matchingTastes } from '../../domain/preferences';
 import { replacementHistory, type Replacement } from '../../domain/replacements';
 import { minutesOf } from '../../domain/schedule';
@@ -12,7 +12,6 @@ import type { PlannedMeal, Product, Recipe } from '../../domain/types';
 import { mealAlternatives } from '../../domain/week';
 import { fmt } from '../../lib/format';
 import { newId } from '../../lib/id';
-import { withUndo } from '../../lib/undo';
 import { replaceWithEntry, replaceWithProduct, replaceWithRecipe } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Button } from '../../components/ui/Button';
@@ -21,6 +20,7 @@ import { Icon } from '../../components/ui/Icon';
 import { BarcodeLookup } from './BarcodeLookup';
 import { ManualForm } from './ManualForm';
 import { ProductConfirm } from './ProductConfirm';
+import { runLog } from './logFeedback';
 import styles from './nutrition.module.css';
 
 type Mode = 'suggest' | 'barcode' | 'manual';
@@ -60,13 +60,29 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
   const planOptions = options.filter((o) => !remembered.has(o.recipe.id));
   const price = useMemo(() => priceLookup(state.products), [state.products]);
 
-  const finish = (message: string, action: () => boolean) => {
-    if (withUndo(message, action)) navigator.vibrate?.(10);
+  const oldTitle = getRecipe(meal.recipeId)?.title ?? 'Mahlzeit';
+  /**
+   * Replacing is one flow: the new dish is set in, the day animates to the new
+   * values, and the feedback says what changed ("Pasta → Sandwich · −120 kcal") –
+   * or, if eaten now, what the new food brings (protein, fiber …).
+   */
+  const finish = (message: string, action: () => boolean, next: { title: string; content: Pick<EntryContent, 'macros' | 'micros' | 'unknown'> }) => {
+    const delta = Math.round(next.content.macros.kcal - plannedMealMacros(meal).kcal);
+    runLog(meal.date, message, due ? next.content : undefined, action, () => ({
+      kind: 'check',
+      icon: '✓',
+      title: due ? `${next.title} eingesetzt` : 'Plan angepasst',
+      detail: `${oldTitle} → ${next.title} · ${delta >= 0 ? '+' : '−'}${fmt.kcal(Math.abs(delta))}`,
+      level: 1,
+    }));
     onDone();
   };
   const useRecipe = (recipe: Recipe, servings: number) =>
-    finish(due ? `${recipe.title} statt ${getRecipe(meal.recipeId)?.title ?? 'Mahlzeit'} erfasst` : `Ersetzt durch ${recipe.title}`, () => replaceWithRecipe(meal.id, recipe.id, servings, due));
-  const useEntry = (content: EntryContent, id = newId()) => finish(`${content.name} statt ${getRecipe(meal.recipeId)?.title ?? 'Mahlzeit'} erfasst`, () => replaceWithEntry(meal.id, content, { id }));
+    finish(due ? `${recipe.title} statt ${oldTitle} erfasst` : `Ersetzt durch ${recipe.title}`, () => replaceWithRecipe(meal.id, recipe.id, servings, due), {
+      title: recipe.title,
+      content: { macros: recipeMacros(recipe, servings), micros: recipeMicros(recipe, servings) },
+    });
+  const useEntry = (content: EntryContent, id = newId()) => finish(`${content.name} statt ${oldTitle} erfasst`, () => replaceWithEntry(meal.id, content, { id }), { title: content.name, content });
 
   if (product) {
     return (
@@ -88,8 +104,10 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
               disabled={!choice}
               onClick={() =>
                 choice &&
-                finish(`${product.name} statt ${getRecipe(meal.recipeId)?.title ?? 'Mahlzeit'} erfasst`, () =>
-                  replaceWithProduct(meal.id, product, choice.amount, { id: choice.id, foodId: choice.foodId, fromPantry: choice.fromPantry, price: choice.price }),
+                finish(
+                  `${product.name} statt ${oldTitle} erfasst`,
+                  () => replaceWithProduct(meal.id, product, choice.amount, { id: choice.id, foodId: choice.foodId, fromPantry: choice.fromPantry, price: choice.price }),
+                  { title: product.name, content: productEntry(product, choice.amount) ?? { macros: { kcal: 0, protein: 0, carbs: 0, fat: 0 } } },
                 )
               }
             >

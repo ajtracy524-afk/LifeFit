@@ -207,3 +207,56 @@
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- Suggestion motion ---------- */
+.featured {
+  animation: featuredIn 0.5s var(--ease-out) both;
+}
+
+.because {
+  animation: becauseIn 0.45s var(--ease-out) 0.25s both;
+}
+
+.bestFit {
+  animation:
+    featuredIn 0.5s var(--ease-out) both,
+    bestFit 1.4s ease-out 0.4s;
+}
+
+.alternative {
+  transition:
+    transform 0.35s var(--ease-spring),
+    background-color 0.2s ease;
+}
+
+.alternative:active {
+  transform: scale(0.97);
+  transition-duration: 0.06s;
+  background: var(--accent-soft);
+}
+
+@keyframes featuredIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes becauseIn {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+}
+
+@keyframes bestFit {
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  35% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}

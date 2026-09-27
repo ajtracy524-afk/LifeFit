@@ -12,7 +12,6 @@ import type { CustomDish, Food, ISODate, MealSlot, PlannedMeal, Product, Recipe 
 import { dayTargetFor, pantryEstimate, slotSuggestions } from '../../domain/week';
 import { fmt, formatGrams, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { newId } from '../../lib/id';
-import { withUndo } from '../../lib/undo';
 import { eatSuggestion, logDbFood, logDish, logEntry, logFood, logProduct, markEaten } from '../../store/actions';
 import { searchProducts } from '../../services/foodDatabase';
 import { getState, useAppState } from '../../store/store';
@@ -24,7 +23,7 @@ import { Sheet } from '../../components/ui/Sheet';
 import { BarcodeLookup } from './BarcodeLookup';
 import { ManualForm } from './ManualForm';
 import { DishEditorSheet, DishList, DishPortionSheet } from './Dishes';
-import { loggedMessage, mealLoggedMessage } from './logFeedback';
+import { runLog, type CelebrationInput } from './logFeedback';
 import { useFoodSearch } from './useFoodSearch';
 import { MicroLine, NutrientGrid, ProductConfirm } from './ProductConfirm';
 import styles from './nutrition.module.css';
@@ -80,8 +79,8 @@ export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
   const activeMode = mode ?? modes[0]!.value;
   const subtitle = `${SLOT_LABEL[activeSlot]} · ${relativeDay(target.date)}`;
   // `content`: what is about to be logged – adds the small feedback line (computed before the action).
-  const done = (message: string, action: () => boolean | void, content?: Pick<EntryContent, 'macros' | 'micros' | 'unknown'>) => {
-    if (withUndo(content ? loggedMessage(target.date, message, content) : message, action)) navigator.vibrate?.(10);
+  const done = (message: string, action: () => boolean | void, content?: Pick<EntryContent, 'macros' | 'micros' | 'unknown'>, fallback?: () => CelebrationInput | undefined) => {
+    runLog(target.date, message, content, action, fallback);
     close();
   };
 
@@ -102,7 +101,13 @@ export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
         onBack={() => setStep(null)}
         onClose={close}
         onEdit={() => setStep({ kind: 'dishEdit', dish, back: step })}
-        onAdd={(portions, id) => done(`${dish.name} erfasst`, () => logDish(target.date, activeSlot, dish.id, portions, { id }), dishEntry(dish, portions))}
+        onAdd={(portions, id) => {
+          // Known dish used again – "the app knows your routine" (from the real log count).
+          const before = state.logEntries.filter((e) => e.dishId === dish.id).length;
+          done(`${dish.name} erfasst`, () => logDish(target.date, activeSlot, dish.id, portions, { id }), dishEntry(dish, portions), () =>
+            before > 0 ? { kind: 'dish', icon: '🍽️', title: 'Wieder verwendet', detail: `${dish.name} · ${before + 1}. Mal erfasst`, level: 2 } : undefined,
+          );
+        }}
       />
     );
   }
@@ -227,7 +232,7 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
               {fmt.kcal(recipeMacros(plannedRecipe, planned.servings).kcal)} · {fmt.g(recipeMacros(plannedRecipe, planned.servings).protein)} Protein
             </span>
           </span>
-          <Button size="sm" icon="check" onClick={() => onDone(mealLoggedMessage(planned, `${plannedRecipe.title} erfasst`), () => markEaten(planned.id))}>
+          <Button size="sm" icon="check" onClick={() => onDone(`${plannedRecipe.title} erfasst`, () => markEaten(planned.id), logFromMeal(planned))}>
             Gegessen
           </Button>
         </div>

@@ -14,7 +14,20 @@ import { useAppState } from '../../store/store';
 import { Button } from '../../components/ui/Button';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { Icon } from '../../components/ui/Icon';
+import { SwapText, motionStyles } from '../../components/ui/SwapText';
+import { useJustChanged, useLateMount } from '../../lib/motion';
 import styles from './today.module.css';
+
+/** The meal's mark: its emoji, or a check that snaps in the moment it is eaten (or set in as a replacement). */
+function MealMark({ done, emoji }: { done: boolean; emoji?: string }) {
+  const changed = useJustChanged(done);
+  const late = useLateMount();
+  return (
+    <span className={[done ? styles.doneMark : styles.mealIcon, done && (changed || late) && motionStyles.snap].filter(Boolean).join(' ')} aria-hidden>
+      {done ? <Icon name="check" size={16} strokeWidth={2.6} /> : emoji}
+    </span>
+  );
+}
 
 interface Props {
   date: ISODate;
@@ -97,12 +110,12 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
               <li key={item.meal.id}>
                 <button type="button" className={`${styles.timelineItem} ${styles.timelineDone}`} onClick={() => onOpenMeal(item.meal.id)} data-state="eaten">
                   <span className={styles.time}>{item.time}</span>
-                  <span className={styles.doneMark} aria-hidden>
-                    <Icon name="check" size={16} strokeWidth={2.6} />
-                  </span>
+                  <MealMark done />
                   <span className={styles.flex}>
                     <span className={styles.timelineLabel}>{SLOT_LABEL[item.meal.slot]} · gegessen</span>
-                    <strong className={styles.timelineTitle}>{item.entries.map((e) => e.name).join(', ')}</strong>
+                    <strong className={styles.timelineTitle}>
+                      <SwapText text={item.entries.map((e) => e.name).join(', ')} />
+                    </strong>
                     <span className={styles.muted}>
                       {[fmt.kcal(kcal), `${fmt.g(protein)} Protein`, realCost(item.entries)].filter(Boolean).join(' · ')} · statt {recipe?.title ?? 'Mahlzeit'}
                     </span>
@@ -124,16 +137,16 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
                 data-state={done ? 'eaten' : next ? 'next' : 'planned'}
               >
                 <span className={styles.time}>{item.time}</span>
-                <span className={done ? styles.doneMark : styles.mealIcon} aria-hidden>
-                  {done ? <Icon name="check" size={16} strokeWidth={2.6} /> : recipe?.emoji}
-                </span>
+                <MealMark done={done} emoji={recipe?.emoji} />
                 <span className={styles.flex}>
                   <span className={styles.timelineLabel}>
                     {SLOT_LABEL[item.meal.slot]}
                     {done ? ' · gegessen' : next ? ' · als Nächstes' : ' · später'}
                     {role}
                   </span>
-                  <strong className={styles.timelineTitle}>{recipe?.title ?? 'Mahlzeit'}</strong>
+                  <strong className={styles.timelineTitle}>
+                    <SwapText text={recipe?.title ?? 'Mahlzeit'} />
+                  </strong>
                   <span className={styles.muted}>
                     {[fmt.kcal(macros.kcal), `${fmt.g(macros.protein)} Protein`, !done && `${recipe?.prepMin ?? 0} min`, recipe && costRange(recipe, item.meal.servings, price)].filter(Boolean).join(' · ')}
                   </span>

@@ -646,3 +646,184 @@
 .dayTypeTraining .dayTypeKicker {
   color: var(--accent);
 }
+
+/* ---------- Tagesziele / Tag abgeschlossen ---------- */
+.dayGoals {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.dayGoalsHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.dayGoalsTitle {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.dayGoalsComplete .dayGoalsTitle {
+  color: var(--accent);
+}
+
+.streak {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--warning-soft);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.goalChips {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.goalChip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  transition:
+    background-color 0.4s ease,
+    color 0.4s ease;
+}
+
+.goalIcon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.goalLabel {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.goalDone {
+  background: var(--accent-soft);
+}
+
+.goalDone .goalLabel {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.goalCheck {
+  width: 20px;
+  height: 20px;
+}
+
+.goalCheck path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A goal reached right now: the chip pops and the check is drawn. */
+.goalJustDone {
+  animation: goalPop 0.6s var(--ease-spring);
+}
+
+.goalJustDone .goalCheck path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: goalDraw 0.45s var(--ease-out) 0.1s forwards;
+}
+
+/* The whole day done: the chips close in a wave and the block glows once. */
+.dayGoalsFinish .goalChip {
+  animation: goalPop 0.6s var(--ease-spring) calc(var(--i) * 90ms) both;
+}
+
+.dayGoalsFinish {
+  animation: dayGlow 1.6s ease-out;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes goalPop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes goalDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes dayGlow {
+  0% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  30% {
+    box-shadow: 0 0 0 6px var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* In the target zone: a check snaps in next to the ring label. */
+.ringCheck {
+  display: inline-block;
+  color: var(--accent);
+  font-weight: 700;
+  animation: ringCheck 0.55s var(--ease-spring);
+}
+
+@keyframes ringCheck {
+  0% {
+    transform: scale(0) rotate(-30deg);
+  }
+  70% {
+    transform: scale(1.5) rotate(8deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* Timeline rows spring back after a tap. */
+.timelineItem {
+  transition: transform 0.35s var(--ease-spring);
+}
+
+button.timelineItem:active {
+  transform: scale(0.98);
+  transition-duration: 0.06s;
+}

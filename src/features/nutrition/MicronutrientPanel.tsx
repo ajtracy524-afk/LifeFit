@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
+import { CountUp } from '../../components/ui/CountUp';
 import { NUTRIENTS } from '../../data/nutrients';
 import { VITAL_NUTRIENTS, type NutritionSummary } from '../../domain/nutrition';
 import { ProgressBar } from '../../components/ui/Progress';
@@ -61,16 +62,25 @@ export function MicronutrientPanel({ summary }: { summary: NutritionSummary }) {
                     <section key={group.id} className={styles.microGroup} aria-label={group.label}>
                       <h3 className={styles.microGroupTitle}>{group.label}</h3>
                       <ul className={styles.microList}>
-                        {rows.map((k) => {
+                        {rows.map((k, index) => {
                           const info = NUTRIENTS[k];
                           const m = summary.micros[k];
                           const shown = displayUnit(info.unit, info.nrv ?? m.value);
                           return (
-                            <li key={k}>
-                              <span className={styles.microName}>{info.label}</span>
+                            <li key={k} className={styles.microRow} style={{ '--i': index } as CSSProperties}>
+                              <span className={styles.microName}>
+                                {info.label}
+                                {/* The label reference reached – only from real values (a partial sum is a real lower bound). */}
+                                {info.nrv !== undefined && m.value >= info.nrv && (
+                                  <span className={styles.microReached} aria-label=" – Referenzwert erreicht">
+                                    {' '}
+                                    ✓
+                                  </span>
+                                )}
+                              </span>
                               <span className={styles.microValue}>
                                 <strong>
-                                  {num(m.value / shown.divide)} {shown.unit}
+                                  <CountUp value={m.value / shown.divide} format={num} /> {shown.unit}
                                 </strong>
                                 {info.nrv !== undefined && (
                                   <span className={styles.microRef}>

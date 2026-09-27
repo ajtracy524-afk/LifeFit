@@ -9,8 +9,9 @@ import { estimateMinutes } from '../../domain/training';
 import type { WorkoutTemplate } from '../../domain/types';
 import { fmt, SLOT_LABEL } from '../../lib/format';
 import { navigate } from '../../lib/router';
-import { withUndo } from '../../lib/undo';
-import { mealLoggedMessage } from '../nutrition/logFeedback';
+import { runMealEaten } from '../nutrition/logFeedback';
+import { useLateMount } from '../../lib/motion';
+import { motionStyles } from '../../components/ui/SwapText';
 import { markEaten } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Button } from '../../components/ui/Button';
@@ -65,7 +66,7 @@ export function NextActionCard({ action, onPlanWeek, onStart, onOpenMeal, onRepl
           }
           text={[fmt.kcal(macros.kcal), `${fmt.int(macros.protein)} g P · ${fmt.int(macros.carbs)} g KH · ${fmt.int(macros.fat)} g F`, cost && formatCostRange(cost)].filter(Boolean).join(' · ')}
         >
-          <Button icon="check" onClick={() => withUndo(mealLoggedMessage(action.meal, `${slot} erfasst`), () => markEaten(action.meal.id))}>
+          <Button icon="check" onClick={() => runMealEaten(action.meal, `${slot} erfasst`, () => markEaten(action.meal.id))}>
             Gegessen
           </Button>
           <Button variant="secondary" icon="swap" onClick={() => onReplaceMeal(action.meal.id)}>
@@ -109,8 +110,14 @@ function mealStatus(due: boolean, time: string, date: string): string {
 }
 
 function Shell({ eyebrow, title, text, children }: { eyebrow: string; title: ReactNode; text: string; children?: ReactNode }) {
+  return <ShellInner key={`${eyebrow}|${text}`} eyebrow={eyebrow} title={title} text={text} children={children} />;
+}
+
+/** Keyed by its content: after "Gegessen" the next action is set in, not just swapped. */
+function ShellInner({ eyebrow, title, text, children }: { eyebrow: string; title: ReactNode; text: string; children?: ReactNode }) {
+  const late = useLateMount();
   return (
-    <Card tone="accent" className={styles.nextAction} aria-label="Nächste Aktion">
+    <Card tone="accent" className={late ? `${styles.nextAction} ${motionStyles.enter}` : styles.nextAction} aria-label="Nächste Aktion">
       <p className={styles.eyebrow}>{eyebrow}</p>
       <strong className={styles.nextTitle}>{title}</strong>
       <p className={styles.muted}>{text}</p>

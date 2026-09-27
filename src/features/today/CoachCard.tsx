@@ -7,7 +7,10 @@ import { today } from '../../domain/dates';
 import { navigate } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
 import { applyEngineAction, dismissRecommendation } from '../../store/actions';
-import { useAppState } from '../../store/store';
+import { getState, useAppState } from '../../store/store';
+import { celebrate } from '../../lib/celebrate';
+import { dishEntry } from '../../domain/dishes';
+import { runLog } from '../nutrition/logFeedback';
 import { Button, IconButton } from '../../components/ui/Button';
 import { Card, CardHeader } from '../../components/ui/Card';
 import styles from './coach.module.css';
@@ -64,7 +67,19 @@ function RecommendationItem({ rec }: { rec: Recommendation }) {
       applyEngineAction(action);
       return navigate('session');
     }
-    withUndo(doneMessage(action), () => applyEngineAction(action));
+    // Logging an own dish is a real log: same loop as everywhere (feedback from its values, "wieder verwendet" otherwise).
+    if (action.type === 'log_dish') {
+      const s = getState();
+      const dish = s.customDishes?.[action.dishId];
+      const before = s.logEntries.filter((e) => e.dishId === action.dishId).length;
+      runLog(action.date, doneMessage(action), dish ? dishEntry(dish, action.portions) : undefined, () => applyEngineAction(action), () =>
+        dish ? { kind: 'dish', icon: '🍽️', title: before ? 'Wieder verwendet' : 'Erfasst', detail: `${dish.name}${before ? ` · ${before + 1}. Mal erfasst` : ''}`, level: 2 } : undefined,
+      );
+      return;
+    }
+    if (withUndo(doneMessage(action), () => applyEngineAction(action)) && action.type === 'add_meal') {
+      celebrate({ kind: 'check', icon: '✓', title: 'Eingeplant', detail: action.details?.title ?? 'Einkaufsliste aktualisiert', level: 1 });
+    }
   };
 
   return (
@@ -121,7 +136,8 @@ function MealSuggestions({ actions, onRun }: { actions: MealAction[]; onRun: (a:
   const d = best!.details;
   return (
     <div className={styles.suggestion}>
-      <div className={styles.featured}>
+      {/* Three or more real reasons = an especially good fit: the card glows once. */}
+      <div className={d.because.length >= 3 ? `${styles.featured} ${styles.bestFit}` : styles.featured} data-fit={d.because.length >= 3 ? "best" : undefined}>
         <strong className={styles.featuredTitle}>{d.title}</strong>
         <ul className={styles.facts} aria-label="Eckdaten">
           {d.prepMin !== undefined && (
