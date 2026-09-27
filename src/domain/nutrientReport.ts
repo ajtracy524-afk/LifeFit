@@ -62,6 +62,8 @@ export interface Reference {
   personalized: boolean;
   /** One short line: where the value comes from. */
   basis: string;
+  /** What the number IS: "Tagesziel", "Zielbereich", "Mindestwert", "Orientierungswert", "Obergrenze", "Referenz (NRV)", "Dein Ziel". */
+  role: string;
 }
 
 export interface NutrientRow {
@@ -108,25 +110,26 @@ export function references(target: NutritionTarget | undefined, waterGoalMl: num
   const refs: Partial<Record<ReportKey, Reference>> = {};
   if (target) {
     const personal = 'Dein Tagesziel (aus Körperdaten, Aktivität, Training und Ziel)';
-    refs.kcal = { kind: 'range', amount: target.kcal, unit: 'kcal', tolerance: calorieTolerance(target.kcal), personalized: true, basis: personal };
-    refs.protein = { kind: 'min', amount: target.protein, unit: 'g', personalized: true, basis: personal };
-    refs.carbs = { kind: 'range', amount: target.carbs, unit: 'g', tolerance: Math.round(target.carbs * R.rangeShare), personalized: true, basis: personal };
-    refs.fat = { kind: 'range', amount: target.fat, unit: 'g', tolerance: Math.round(target.fat * R.rangeShare), personalized: true, basis: personal };
-    refs.fiber = { kind: 'min', amount: Math.round((target.kcal / 1000) * R.fiberPer1000Kcal), unit: 'g', personalized: true, basis: `${R.fiberPer1000Kcal} g pro 1'000 kcal deines Tagesziels` };
+    refs.kcal = { kind: 'range', amount: target.kcal, unit: 'kcal', tolerance: calorieTolerance(target.kcal), personalized: true, basis: personal, role: 'Zielbereich' };
+    refs.protein = { kind: 'min', amount: target.protein, unit: 'g', personalized: true, basis: personal, role: 'Tagesziel' };
+    refs.carbs = { kind: 'range', amount: target.carbs, unit: 'g', tolerance: Math.round(target.carbs * R.rangeShare), personalized: true, basis: personal, role: 'Zielbereich' };
+    refs.fat = { kind: 'range', amount: target.fat, unit: 'g', tolerance: Math.round(target.fat * R.rangeShare), personalized: true, basis: personal, role: 'Zielbereich' };
+    refs.fiber = { kind: 'min', amount: Math.round((target.kcal / 1000) * R.fiberPer1000Kcal), unit: 'g', personalized: true, basis: `${R.fiberPer1000Kcal} g pro 1'000 kcal deines Tagesziels`, role: 'Mindestwert' };
     refs.sugar = {
       kind: 'max',
       amount: Math.round((R.sugarReferenceG * target.kcal) / R.sugarReferenceKcal),
       unit: 'g',
       personalized: true,
       basis: `EU-Referenzmenge (90 g bei 2'000 kcal), auf dein Tagesziel umgerechnet`,
+      role: 'Orientierungswert',
     };
   }
-  refs.salt = { kind: 'max', amount: R.saltLimitG, unit: 'g', personalized: false, basis: 'Empfehlung für Erwachsene (WHO): höchstens 5 g pro Tag' };
-  if (waterGoalMl) refs.water = { kind: 'min', amount: waterGoalMl, unit: 'ml', personalized: true, basis: 'Dein eigenes Wasserziel' };
+  refs.salt = { kind: 'max', amount: R.saltLimitG, unit: 'g', personalized: false, basis: 'Empfehlung für Erwachsene (WHO): höchstens 5 g pro Tag', role: 'Obergrenze' };
+  if (waterGoalMl) refs.water = { kind: 'min', amount: waterGoalMl, unit: 'ml', personalized: true, basis: 'Dein eigenes Wasserziel', role: 'Dein Ziel' };
   for (const key of VITAL_NUTRIENTS) {
     const info = NUTRIENTS[key];
-    if (key === 'sodium') refs.sodium = { kind: 'max', amount: R.sodiumLimitMg, unit: 'mg', personalized: false, basis: 'Obergrenze für Erwachsene (WHO): 2’000 mg' };
-    else if (info.nrv !== undefined) refs[key] = { kind: 'min', amount: info.nrv, unit: info.unit, personalized: false, basis: 'Allgemeiner Referenzwert (NRV) – für alle gleich, nicht individuell berechnet' };
+    if (key === 'sodium') refs.sodium = { kind: 'max', amount: R.sodiumLimitMg, unit: 'mg', personalized: false, basis: 'Obergrenze für Erwachsene (WHO): 2’000 mg', role: 'Obergrenze' };
+    else if (info.nrv !== undefined) refs[key] = { kind: 'min', amount: info.nrv, unit: info.unit, personalized: false, basis: 'Allgemeiner Referenzwert (NRV) – für alle gleich, nicht individuell berechnet', role: 'Referenz (NRV)' };
   }
   return refs;
 }

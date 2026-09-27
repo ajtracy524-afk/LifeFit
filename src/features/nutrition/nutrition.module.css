@@ -1860,3 +1860,11 @@
   background: var(--accent-soft);
   font-size: 13px;
 }
+
+.weekMacros {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}

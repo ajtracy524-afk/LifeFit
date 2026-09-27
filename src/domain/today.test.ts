@@ -139,3 +139,16 @@ describe('recommendations: right place, real data only', () => {
     expect(gap.actions.every((a) => a.type === 'add_meal' || a.type === 'log_food')).toBe(true);
   });
 });
+
+describe('Heute · meal time state (one rule for the card and the timeline)', () => {
+  it('"now" from 30 min before the meal time, "overdue" more than 2 h after, other days by date', async () => {
+    const { mealTimeState } = await import('./today');
+    const T = '2026-09-22';
+    expect(mealTimeState(T, '12:30', T, 11 * 60 + 59)).toBe('later');
+    expect(mealTimeState(T, '12:30', T, 12 * 60)).toBe('now');
+    expect(mealTimeState(T, '12:30', T, 14 * 60 + 30)).toBe('now');
+    expect(mealTimeState(T, '12:30', T, 14 * 60 + 31)).toBe('overdue');
+    expect(mealTimeState('2026-09-21', '19:00', T, 0)).toBe('overdue');
+    expect(mealTimeState('2026-09-23', '07:30', T, 23 * 60)).toBe('later');
+  });
+});

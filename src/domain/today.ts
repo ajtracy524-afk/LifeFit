@@ -21,6 +21,21 @@ export type NextAction =
 
 /** A meal counts as due 30 min before its planned time (see plannerSettings.mealTimes). */
 export const DUE_BEFORE_MIN = 30;
+/** Hours after its time an unlogged meal counts as "noch offen" (to catch up on) rather than "jetzt". */
+export const OVERDUE_AFTER_MIN = 120;
+
+/**
+ * Where a planned (not yet logged) meal stands in time – THE rule for the
+ * next-action card and the day timeline: "später" before it is due, "jetzt"
+ * around its time, "noch offen" long after it (or on a past day).
+ */
+export function mealTimeState(date: ISODate, time: string, today: ISODate, nowMinutes: number): 'later' | 'now' | 'overdue' {
+  if (date < today) return 'overdue';
+  if (date > today) return 'later';
+  const at = minutesOf(time);
+  if (nowMinutes > at + OVERDUE_AFTER_MIN) return 'overdue';
+  return nowMinutes >= at - DUE_BEFORE_MIN ? 'now' : 'later';
+}
 
 function isDue(state: AppState, slot: MealSlot, hour: number): boolean {
   return hour * 60 >= minutesOf(state.plannerSettings.mealTimes[slot]) - DUE_BEFORE_MIN;

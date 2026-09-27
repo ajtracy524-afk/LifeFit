@@ -13,8 +13,8 @@ import type { AppState, LogEntry, NutritionTarget } from './types';
 
 const TUE = '2026-09-22';
 const target = (kcal: number, protein = 150): NutritionTarget => ({ id: 't', validFrom: '2026-01-01', method: 'formula', kcal, protein, carbs: 250, fat: 70 });
-const min = (amount: number): Reference => ({ kind: 'min', amount, unit: 'g', personalized: true, basis: '' });
-const max = (amount: number): Reference => ({ kind: 'max', amount, unit: 'g', personalized: false, basis: '' });
+const min = (amount: number): Reference => ({ kind: 'min', amount, unit: 'g', personalized: true, basis: '', role: 'Tagesziel' });
+const max = (amount: number): Reference => ({ kind: 'max', amount, unit: 'g', personalized: false, basis: '', role: 'Obergrenze' });
 
 describe('personal references – from the person, not one value for all', () => {
   it('kcal, protein, carbs, fat are the day target; fiber and sugar scale with it; salt is the same for adults', () => {

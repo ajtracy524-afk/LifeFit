@@ -8,6 +8,7 @@ import { plannedMealMacros, recipeAllowed, recipeMacros, recipeMicros } from '..
 import { matchingTastes } from '../../domain/preferences';
 import { replacementHistory, type Replacement } from '../../domain/replacements';
 import { minutesOf } from '../../domain/schedule';
+import { DUE_BEFORE_MIN } from '../../domain/today';
 import type { PlannedMeal, Product, Recipe } from '../../domain/types';
 import { mealAlternatives } from '../../domain/week';
 import { fmt } from '../../lib/format';
@@ -26,7 +27,6 @@ import styles from './nutrition.module.css';
 type Mode = 'suggest' | 'barcode' | 'manual';
 
 /** A meal counts as "now or earlier" 30 min before its time – replacing it means "I eat/ate this instead". */
-const DUE_BEFORE_MIN = 30;
 
 /**
  * "Ersetzen": what replaces a planned meal. Suggestions come from the planner

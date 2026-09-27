@@ -21,8 +21,12 @@ export interface DayOverview {
   date: ISODate;
   kcal: number;
   protein: number;
+  carbs: number;
+  fat: number;
   kcalRef?: number;
   proteinRef?: number;
+  carbsRef?: number;
+  fatRef?: number;
   kcalTone: Tone;
   proteinTone: Tone;
   meals: number;
@@ -42,8 +46,10 @@ export function dayOverview(day: PlanDay, today: ISODate, slots: MealSlot[], pri
   // What the day really is: eaten values for a past day, plan (eaten + still planned) otherwise.
   const kcal = past ? day.eaten.kcal : day.planned.kcal;
   const protein = past ? day.eaten.protein : day.planned.protein;
-  const kcalRating = kcalRef ? rate(kcal, { kind: 'range', amount: kcalRef, unit: 'kcal', tolerance: calorieTolerance(kcalRef), personalized: true, basis: '' }, { finished: past }) : undefined;
-  const proteinRating = proteinRef ? rate(protein, { kind: 'min', amount: proteinRef, unit: 'g', personalized: true, basis: '' }, { finished: past }) : undefined;
+  const carbs = past ? day.eaten.carbs : day.planned.carbs;
+  const fat = past ? day.eaten.fat : day.planned.fat;
+  const kcalRating = kcalRef ? rate(kcal, { kind: 'range', amount: kcalRef, unit: 'kcal', tolerance: calorieTolerance(kcalRef), personalized: true, basis: '', role: 'Zielbereich' }, { finished: past }) : undefined;
+  const proteinRating = proteinRef ? rate(protein, { kind: 'min', amount: proteinRef, unit: 'g', personalized: true, basis: '', role: 'Tagesziel' }, { finished: past }) : undefined;
   const cost = active.length
     ? ingredientCostRange(
         active.flatMap((m) => (getRecipe(m.recipeId)?.ingredients ?? []).map((i) => ({ foodId: i.foodId, grams: i.grams * m.servings }))),
@@ -60,5 +66,5 @@ export function dayOverview(day: PlanDay, today: ISODate, slots: MealSlot[], pri
   else if (!kcalRating) status = { tone: 'none', text: `${active.length} Mahlzeiten geplant` };
   else status = kcalRating.tone === 'green' ? { tone: 'green', text: 'Plan passt' } : { tone: 'orange', text: `Plan: ${kcalRating.message.replace(/^Noch /, '− ').replace(/ über dem Ziel$/, ' zu viel')}` };
 
-  return { date: day.date, kcal, protein, kcalRef, proteinRef, kcalTone: kcalRating?.tone ?? 'none', proteinTone: proteinRating?.tone ?? 'none', meals: active.length, eaten, cost, status };
+  return { date: day.date, kcal, protein, carbs, fat, kcalRef, proteinRef, carbsRef: day.target ? Math.round(day.target.carbs * share) : undefined, fatRef: day.target ? Math.round(day.target.fat * share) : undefined, kcalTone: kcalRating?.tone ?? 'none', proteinTone: proteinRating?.tone ?? 'none', meals: active.length, eaten, cost, status };
 }

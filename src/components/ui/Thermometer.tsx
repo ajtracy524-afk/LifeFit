@@ -15,6 +15,8 @@ interface Props {
   ratio?: number;
   /** For 'range': half band width relative to the reference (tolerance / reference). */
   band?: number;
+  /** What the reference IS ("Tagesziel", "Obergrenze", "Referenz (NRV)" …) – shown next to the status. */
+  tag?: string;
   note?: string;
 }
 
@@ -28,7 +30,7 @@ const TONE_WORD: Record<ThermoTone, string> = { green: 'im Bereich', orange: 'be
  * limit: the limit line; for a range: the green band), and the words. The
  * colour is never the only signal (dot + text + aria).
  */
-export function Thermometer({ label, value, message, tone, kind = 'min', ratio, band, note }: Props) {
+export function Thermometer({ label, value, message, tone, kind = 'min', ratio, band, tag, note }: Props) {
   const fill = ratio === undefined ? 0 : Math.min(SCALE, Math.max(0, ratio)) / SCALE;
   const mark = 1 / SCALE;
   return (
@@ -48,6 +50,7 @@ export function Thermometer({ label, value, message, tone, kind = 'min', ratio, 
       <div className={styles.status}>
         <span className={styles.dot} aria-hidden />
         <span>{message}</span>
+        {tag && <span className={styles.tag}>{tag}</span>}
       </div>
       {note && <p className={styles.note}>{note}</p>}
     </div>

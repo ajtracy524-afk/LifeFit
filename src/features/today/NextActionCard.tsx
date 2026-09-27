@@ -1,10 +1,10 @@
 import { useMemo, type ReactNode } from 'react';
 import { getRecipe } from '../../data/recipes';
 import { formatCostRange, priceLookup, recipeCostRange } from '../../domain/costs';
-import { plannedMealMacros } from '../../domain/nutrition';
+import { daySummary, plannedMealMacros } from '../../domain/nutrition';
 import { today } from '../../domain/dates';
-import { minutesOf } from '../../domain/schedule';
-import type { NextAction } from '../../domain/today';
+import { dayTargetFor } from '../../domain/week';
+import { mealTimeState, type NextAction } from '../../domain/today';
 import { estimateMinutes } from '../../domain/training';
 import type { WorkoutTemplate } from '../../domain/types';
 import { fmt, SLOT_LABEL } from '../../lib/format';
@@ -94,19 +94,25 @@ export function NextActionCard({ action, onPlanWeek, onStart, onOpenMeal, onRepl
         </Shell>
       );
 
-    case 'done':
-      return <Shell eyebrow="Heute" title="Alles erledigt ✓" text="Für heute ist nichts mehr offen." />;
+    case 'done': {
+      // Nothing planned is open – but if protein is clearly short, say so (a hint, not a task).
+      const t = today();
+      const goal = dayTargetFor(state, t)?.protein;
+      const left = goal ? goal - daySummary(state.logEntries, t).day.macros.protein : 0;
+      const text = left >= PROTEIN_HINT_G ? `Für heute ist nichts mehr offen. Noch ${fmt.int(left)} g Protein bis zum Tagesziel.` : 'Für heute ist nichts mehr offen.';
+      return <Shell eyebrow="Heute" title="Alles erledigt ✓" text={text} />;
+    }
   }
 }
 
-/** Hours after its time a due meal counts as "noch offen" (to catch up on) rather than "jetzt". */
-const OVERDUE_AFTER_MIN = 120;
+/** Below this, the remaining protein is noise, not worth a line. */
+const PROTEIN_HINT_G = 10;
 
-/** "Jetzt" around the meal time, "Noch offen" long after it, "Als Nächstes" before it. */
+/** "Jetzt" around the meal time, "Noch offen" long after it, "Als Nächstes" before it (domain/today.ts: mealTimeState). */
 function mealStatus(due: boolean, time: string, date: string): string {
   if (!due) return 'Als Nächstes';
   const now = new Date();
-  return date < today() || now.getHours() * 60 + now.getMinutes() > minutesOf(time) + OVERDUE_AFTER_MIN ? 'Noch offen' : 'Jetzt';
+  return mealTimeState(date, time, today(), now.getHours() * 60 + now.getMinutes()) === 'overdue' ? 'Noch offen' : 'Jetzt';
 }
 
 function Shell({ eyebrow, title, text, children }: { eyebrow: string; title: ReactNode; text: string; children?: ReactNode }) {

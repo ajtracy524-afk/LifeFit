@@ -10,7 +10,7 @@ import type { Macros, MacroKey, MicroNutrient, Micros, NutritionTarget } from '.
  * entry's real values and the day's totals. At most ONE line per entry, so it
  * stays special. Facts, no judgement, no health claims.
  *
- * Priority: a goal reached > sugar information > protein > fiber > a vitamin/
+ * Priority: a goal reached (protein, calorie zone, fiber) > sugar information > protein > fiber > a vitamin/
  * mineral reaching its reference > balance.
  */
 export const FEEDBACK_RULES = {
@@ -26,7 +26,7 @@ export const FEEDBACK_RULES = {
 } as const;
 
 export interface FoodFeedback {
-  kind: 'protein_goal' | 'calorie_zone' | 'sugar' | 'protein' | 'fiber' | 'micro' | 'balanced';
+  kind: 'protein_goal' | 'calorie_zone' | 'fiber_goal' | 'sugar' | 'protein' | 'fiber' | 'micro' | 'balanced';
   icon: string;
   text: string;
   /** The number behind it (g protein / g fiber of the entry, g sugar of the day) – for the celebration line. */
@@ -63,6 +63,14 @@ export function foodFeedback({ entry, before, sugarBefore, microsBefore = {}, ta
     const was = calorieStatus({ eaten: before.kcal, planned: 0, targetKcal: target.kcal, finished: false });
     const now = calorieStatus({ eaten: before.kcal + m.kcal, planned: 0, targetKcal: target.kcal, finished: false });
     if (was?.key !== 'in_zone' && now?.key === 'in_zone') return { kind: 'calorie_zone', icon: '🎯', text: 'Kalorien jetzt im Ziel' };
+  }
+  // Fiber day goal (the one reference of nutrientReport: 14 g per 1'000 kcal) reached with this entry.
+  // A partial day sum is a lower bound – reaching it with the known part is real.
+  const fiberGoal = references(target, undefined).fiber?.amount;
+  const fiberIn = entry.micros?.fiber;
+  if (fiberGoal && fiberIn !== undefined && fiberIn > 0) {
+    const was = microsBefore.fiber ?? 0;
+    if (was < fiberGoal && was + fiberIn >= fiberGoal) return { kind: 'fiber_goal', icon: '🌱', text: 'Ballaststoff-Tagesziel erreicht', amount: Math.round(was + fiberIn) };
   }
   const sugar = entry.micros?.sugar;
   if (sugar !== undefined && sugar > 0) {

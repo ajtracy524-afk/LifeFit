@@ -30,6 +30,8 @@ export function BudgetLine({ week, label = 'Diese Woche', className, progressUnt
     () => (progressUntil ? weekFoodCost(state, week, { eatenUntil: progressUntil }) : undefined),
     [state.plannedMeals, state.logEntries, state.products, week, progressUntil],
   );
+  // Heute: what the day costs (planned + eaten + extras, same prices and 80 % rule) against a seventh of the week budget.
+  const dayCost = useMemo(() => (progressUntil && weekDays(week).includes(progressUntil) ? weekFoodCost(state, week, { day: progressUntil }) : undefined), [state.plannedMeals, state.logEntries, state.products, week, progressUntil]);
   const budget = state.plannerSettings.weeklyBudgetChf;
   // Ranges glide to new values like every other number (never below 0, same rounding as formatCostRange).
   const low = useCountUp(cost?.lowChf ?? 0);
@@ -58,6 +60,12 @@ export function BudgetLine({ week, label = 'Diese Woche', className, progressUnt
           {[eaten && `bisher gegessen ${formatCostRange(eaten)}`, left && (left.over ? `${formatCostRange(left.range)} über Budget` : `frei ${formatCostRange(left.range)}`)]
             .filter(Boolean)
             .join(' · ')}
+        </span>
+      )}
+      {progressUntil && dayCost && (
+        <span className={styles.budgetDetail}>
+          Heute {formatCostRange(dayCost)}
+          {budget !== undefined ? ` · Tagesanteil ${formatChf(budget / 7)}` : ''}
         </span>
       )}
     </span>

@@ -82,6 +82,11 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
         <div className={styles.weekDayBars}>
           <DayBar label="kcal" value={o.kcal} max={o.kcalRef} tone={o.kcalTone} format={(v) => fmt.int(v)} />
           <DayBar label="Protein" value={o.protein} max={o.proteinRef ?? 0} tone={o.proteinTone} format={(v) => `${fmt.int(v)} g`} />
+          {o.carbsRef !== undefined && o.fatRef !== undefined && (
+            <p className={styles.weekMacros}>
+              KH {fmt.int(o.carbs)} / {fmt.int(o.carbsRef)} g · Fett {fmt.int(o.fat)} / {fmt.int(o.fatRef)} g
+            </p>
+          )}
         </div>
       )}
 

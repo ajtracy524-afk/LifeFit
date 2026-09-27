@@ -59,7 +59,7 @@ export function MealSheet({ mealId, onClose, startReplacing = false }: MealSheet
       open
       onClose={close}
       title={recipe.title}
-      subtitle={`${SLOT_LABEL[meal.slot]} · ${relativeDay(meal.date)}${eaten ? ' · gegessen' : skipped ? ' · ersetzt' : ''}`}
+      subtitle={`${SLOT_LABEL[meal.slot]} · ${relativeDay(meal.date)}${eaten ? ' · gegessen' : skipped ? (replacement.length ? ' · ersetzt' : ' · übersprungen') : ''}`}
       footer={
         skipped ? undefined : (
           <>

@@ -103,3 +103,20 @@ describe('recommendations use own dishes', () => {
     expect(runEngine(base({ logEntries: [breakfast], customDishes: {} }), { date: SAT, hour: 12, limit: 20 }).some((r) => r.kind === 'own_dish')).toBe(false);
   });
 });
+
+describe('fiber milestone and the kind of every reference', () => {
+  it('the fiber day goal (14 g per 1000 kcal) is celebrated once, when it is crossed – never from unknown fiber', () => {
+    // 2500 kcal → 35 g fiber goal.
+    const f = foodFeedback({ entry: { macros: m(300, 10, 50, 5), micros: { fiber: 8 } }, before, microsBefore: { fiber: 30 }, target });
+    expect(f).toEqual({ kind: 'fiber_goal', icon: '🌱', text: 'Ballaststoff-Tagesziel erreicht', amount: 38 });
+    expect(foodFeedback({ entry: { macros: m(300, 10, 50, 5), micros: { fiber: 8 } }, before, microsBefore: { fiber: 36 }, target })?.kind).not.toBe('fiber_goal');
+    expect(foodFeedback({ entry: { macros: m(300, 10, 50, 5) }, before, microsBefore: { fiber: 34 }, target })?.kind).not.toBe('fiber_goal');
+  });
+
+  it('every reference says what it is: target, minimum, orientation, upper limit or general NRV', () => {
+    const r = references(target, 2000);
+    expect([r.kcal!.role, r.protein!.role, r.fiber!.role, r.sugar!.role, r.salt!.role, r.water!.role]).toEqual(['Zielbereich', 'Tagesziel', 'Mindestwert', 'Orientierungswert', 'Obergrenze', 'Dein Ziel']);
+    expect(r.vitaminC!.role).toBe('Referenz (NRV)');
+    for (const ref of Object.values(r)) expect(ref!.role).toBeTruthy();
+  });
+});

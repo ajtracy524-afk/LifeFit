@@ -1597,7 +1597,7 @@ describe('gamification loop on Heute and Ernährung (action → reaction → pro
     expect(container.querySelectorAll('[aria-label^="Wasser: 250 ml"] path[class*="bottleWave"]')).toHaveLength(1);
     // A normal glass: the small water boost (level 1) – same chip system as protein and fiber.
     expect(chip()!.dataset).toMatchObject({ kind: 'water', level: '1' });
-    expect(chip()!.textContent).toBe('💧Wasser-Boost · +250 mlnoch 0,25 L bis zum Ziel');
+    expect(chip()!.textContent).toBe('💧Hydration-Boost · +250 mlnoch 0,25 L bis zum Ziel');
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
     expect(chip()!.dataset).toMatchObject({ kind: 'water', level: '3' });
     expect(chip()!.textContent).toMatch(/Wasserziel erreicht2 L heute/);
@@ -1606,6 +1606,61 @@ describe('gamification loop on Heute and Ernährung (action → reaction → pro
     await act(async () => (await import('./lib/celebrate')).dismissCelebration());
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml weniger"]')!.click());
     expect(chip()).toBeNull();
+  });
+
+  it('water: three quarters of the own goal is its own milestone ("Tagesziel fast geschafft", level 2)', async () => {
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ water: { [TUE]: 1250 } })));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
+    expect(chip()!.dataset).toMatchObject({ kind: 'water', level: '2' });
+    expect(chip()!.textContent).toBe('💧Tagesziel fast geschafftnoch 0,5 L · Hydration-Boost +250 ml');
+  });
+
+  it('timeline: a long-past open meal is "noch offen", a skipped one is marked and does not count', async () => {
+    const breakfast = { id: 'b', date: TUE, slot: 'breakfast', recipeId: 'overnight-oats', servings: 1, status: 'planned', source: 'suggest' };
+    const lunch = { id: 'l', date: TUE, slot: 'lunch', recipeId: 'bolognese', servings: 1, status: 'skipped', source: 'suggest' };
+    const dinner = { id: 'd', date: TUE, slot: 'dinner', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' };
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ plannedMeals: [breakfast, lunch, dinner] })));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const state = (s: string) => container.querySelector<HTMLElement>(`ol [data-state="${s}"]`);
+    expect(state('overdue')!.textContent).toMatch(/Frühstück · noch offen/);
+    expect(state('skipped')!.textContent).toMatch(/Mittagessen · übersprungen/);
+    expect(state('skipped')!.textContent).toMatch(/zählt nicht in die Tagesbilanz/);
+    // The next meal is the first one still ahead – not the forgotten breakfast.
+    expect(state('next')!.textContent).toMatch(/Abendessen/);
+  });
+
+  it('"Alles erledigt": a clear protein gap is named as a hint, a small one is not', async () => {
+    // Everything of the day is done (a rest day, nothing planned left).
+    const eaten = (['breakfast', 'lunch', 'dinner'] as const).map((slot) => ({ id: slot, date: TUE, slot, recipeId: 'chili', servings: 1, status: 'eaten', source: 'suggest' }));
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ plannedMeals: eaten, logEntries: [quickLog('q', TUE, 1500, 100)] })));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const next = () => container.querySelector('[aria-label="Nächste Aktion"]')!.textContent!;
+    expect(next()).toMatch(/Alles erledigt ✓/);
+    expect(next()).toMatch(/Noch 60 g Protein bis zum Tagesziel\./);
+    // 5 g short is noise – no line.
+    await act(async () => store.update((s) => void s.logEntries.push(quickLog('q2', TUE, 300, 55) as never)));
+    expect(next()).toMatch(/Alles erledigt ✓/);
+    expect(next()).not.toMatch(/Protein/);
+  });
+
+  it('budget: Heute and the Ernährung day view show what today costs next to a seventh of the week budget (CHF)', async () => {
+    const meals = [
+      { id: 'l', date: TUE, slot: 'lunch', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' },
+      { id: 'w', date: '2026-09-23', slot: 'lunch', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' },
+    ];
+    const settings = { priority: 'balanced', weeklyBudgetChf: 70, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' } };
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ plannedMeals: meals, plannerSettings: settings })));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    expect(text()).toMatch(/Heute ca\. CHF [\d.]+–[\d.]+ · Tagesanteil CHF 10\.–/);
+    await act(async () => window.location.assign('#/nutrition'));
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    expect(text()).toMatch(/Heute ca\. CHF [\d.]+–[\d.]+ · Tagesanteil CHF 10\.–/);
+    expect(text()).not.toMatch(/€|EUR|USD|GBP/);
   });
 
   it('day goals close one by one; the last one completes the day – the biggest moment (level 4) and a calm consistency count', async () => {
@@ -1764,8 +1819,23 @@ describe('Nährstoff-Auswertung and the nutrition week plan', () => {
     // Next step from the data: water right here (same boost system).
     await clickInDialog('+250 ml Wasser');
     expect(store.getState().water[TUE]).toBe(1250);
-    expect(document.querySelector<HTMLElement>('[data-testid="celebration"]')!.textContent).toMatch(/Wasser-Boost · \+250 ml/);
+    expect(document.querySelector<HTMLElement>('[data-testid="celebration"]')!.textContent).toMatch(/Hydration-Boost · \+250 ml/);
     expect(row('Wasser')).toBe('Wasser: 1,25 / 2 L, Noch 0,75 L (beobachten)');
+  });
+
+  it('every thermometer says what its reference is (Tagesziel, Obergrenze, Referenz (NRV) …)', async () => {
+    const entries = [log({ macros: { kcal: 1500, protein: 90, carbs: 150, fat: 50 }, micros: { salt: 3, fiber: 14, sugar: 40, vitaminC: 95 } })];
+    localStorage.setItem(KEY, JSON.stringify(withGoal({ logEntries: entries, water: { [TUE]: 1000 } })));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    await click('Nährstoff-Auswertung');
+    const tag = (label: string) => document.querySelector(`dialog[open] [aria-label^="${label}:"] [class*="tag"]`)?.textContent;
+    expect(tag('Protein')).toBe('Tagesziel');
+    expect(tag('Ballaststoffe')).toBe('Mindestwert');
+    expect(tag('Salz')).toBe('Obergrenze');
+    expect(tag('Zucker')).toBe('Orientierungswert');
+    expect(tag('Vitamin C')).toBe('Referenz (NRV)');
+    expect(tag('Wasser')).toBe('Dein Ziel');
   });
 
   it('Heute has the same entry (one report for both pages)', async () => {

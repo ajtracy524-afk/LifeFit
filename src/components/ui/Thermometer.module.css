@@ -130,3 +130,14 @@
     transform: scaleX(0);
   }
 }
+
+/* The kind of reference – quiet, but always there (Tagesziel ≠ Obergrenze ≠ Referenz). */
+.tag {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 11px;
+  white-space: nowrap;
+}

@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { getRecipe } from '../../data/recipes';
-import { addDays } from '../../domain/dates';
+import { addDays, today } from '../../domain/dates';
 import { formatChf, formatCostRange, priceLookup, recipeCostRange } from '../../domain/costs';
 import { explainDay } from '../../domain/explain';
 import { plannedMealMacros } from '../../domain/nutrition';
 import { dayTimeline } from '../../domain/schedule';
+import { mealTimeState } from '../../domain/today';
 import { estimateMinutes, nextScheduled, type PlannedWorkout } from '../../domain/training';
 import type { ISODate, WorkoutTemplate } from '../../domain/types';
-import { weekShopping } from '../../domain/week';
+import { dayContextFor, weekShopping } from '../../domain/week';
 import { fmt, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { href } from '../../lib/router';
 import { useAppState } from '../../store/store';
@@ -49,13 +50,18 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
   const state = useAppState();
   const [why, setWhy] = useState(false);
   const items = dayTimeline(state, date);
-  const meals = items.filter((i) => i.kind !== 'training');
+  // Skipped meals are shown but never counted – "x / y gegessen" is about what is (still) on the plan.
+  const meals = items.filter((i) => i.kind === 'meal' || i.kind === 'replaced');
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const overdue = (i: { meal: { status: string }; time: string }) => i.meal.status === 'planned' && mealTimeState(date, i.time, today(), nowMinutes) === 'overdue';
   const eaten = meals.filter((i) => i.kind === 'replaced' || (i.kind === 'meal' && i.meal.status === 'eaten')).length;
   const hasTraining = items.some((i) => i.kind === 'training');
   // Replacements are shown in the timeline – only real extras are summed here.
   const extrasKcal = state.logEntries.filter((e) => e.date === date && !e.plannedMealId && !e.replacedMealId).reduce((s, e) => s + e.macros.kcal, 0);
   // The next open meal is THE next action of the plan – highlighted, everything done steps back.
-  const nextMealId = items.flatMap((i) => (i.kind === 'meal' && i.meal.status === 'planned' ? [i.meal.id] : []))[0];
+  // Long-past unlogged meals are "noch offen" (their own state) – the next meal is the first one still ahead.
+  const nextMealId = items.flatMap((i) => (i.kind === 'meal' && i.meal.status === 'planned' && !overdue(i) ? [i.meal.id] : []))[0];
   // Costs where known: real prices first, estimates only with reliable coverage (see costs.ts).
   const price = useMemo(() => priceLookup(state.products), [state.products]);
   const upcoming = hasTraining ? undefined : nextScheduled(state.training, state.workouts, addDays(date, 1), weekStartDate, state.workoutOverrides, state.dayContexts);
@@ -124,24 +130,45 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
               </li>
             );
           }
+          if (item.kind === 'skipped') {
+            const out = dayContextFor(state, date).mode === 'eating_out' && item.meal.slot === 'dinner';
+            return (
+              <li key={item.meal.id}>
+                <div className={`${styles.timelineItem} ${styles.timelineSkipped}`} data-state="skipped">
+                  <span className={styles.time}>{item.time}</span>
+                  <span className={styles.skipMark} aria-hidden>
+                    –
+                  </span>
+                  <span className={styles.flex}>
+                    <span className={styles.timelineLabel}>
+                      {SLOT_LABEL[item.meal.slot]} · {out ? 'auswärts' : 'übersprungen'}
+                    </span>
+                    <strong className={styles.timelineTitle}>{recipe?.title ?? 'Mahlzeit'}</strong>
+                    <span className={styles.muted}>Nicht gegessen – zählt nicht in die Tagesbilanz</span>
+                  </span>
+                </div>
+              </li>
+            );
+          }
           const macros = plannedMealMacros(item.meal);
           const done = item.meal.status === 'eaten';
+          const late = overdue(item);
           const next = item.meal.id === nextMealId;
           const role = item.role === 'post' ? ' · nach dem Training' : item.role === 'pre' ? ' · vor dem Training' : '';
           return (
             <li key={item.meal.id}>
               <button
                 type="button"
-                className={[styles.timelineItem, done && styles.timelineDone, next && styles.timelineNext].filter(Boolean).join(' ')}
+                className={[styles.timelineItem, done && styles.timelineDone, next && styles.timelineNext, late && styles.timelineOverdue].filter(Boolean).join(' ')}
                 onClick={() => onOpenMeal(item.meal.id)}
-                data-state={done ? 'eaten' : next ? 'next' : 'planned'}
+                data-state={done ? 'eaten' : late ? 'overdue' : next ? 'next' : 'planned'}
               >
                 <span className={styles.time}>{item.time}</span>
                 <MealMark done={done} emoji={recipe?.emoji} />
                 <span className={styles.flex}>
                   <span className={styles.timelineLabel}>
                     {SLOT_LABEL[item.meal.slot]}
-                    {done ? ' · gegessen' : next ? ' · als Nächstes' : ' · später'}
+                    {done ? ' · gegessen' : late ? ' · noch offen' : next ? ' · als Nächstes' : ' · später'}
                     {role}
                   </span>
                   <strong className={styles.timelineTitle}>

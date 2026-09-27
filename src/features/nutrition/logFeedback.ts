@@ -36,6 +36,8 @@ export function feedbackCelebration(fb: FoodFeedback): CelebrationInput {
       return { kind: 'power', icon: '💪', title: 'Protein-Tagesziel erreicht', level: 3 };
     case 'calorie_zone':
       return { kind: 'target', icon: '🎯', title: 'Im Zielbereich', detail: 'Kalorien heute im Ziel', level: 3 };
+    case 'fiber_goal':
+      return { kind: 'grow', icon: '🌱', title: 'Ballaststoff-Tagesziel erreicht', detail: `${fmt.g(fb.amount ?? 0)} heute`, level: 3 };
     case 'sugar':
       return { kind: 'info', icon: 'ℹ️', title: `Zucker heute bei ${fmt.g(fb.amount ?? 0)}`, detail: `über dem Referenzwert von ${fb.limit ?? 90} g`, level: 1 };
     case 'protein':

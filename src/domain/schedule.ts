@@ -52,6 +52,8 @@ export type TimelineItem =
   | { kind: 'meal'; time: string; meal: PlannedMeal; role?: 'pre' | 'post' }
   /** A planned meal the user replaced ("Ersetzen" with a product or manual entry) – shown in its place. */
   | { kind: 'replaced'; time: string; meal: PlannedMeal; entries: LogEntry[] }
+  /** Skipped without a replacement (not eaten, or eaten out) – shown so the day stays readable, never counted. */
+  | { kind: 'skipped'; time: string; meal: PlannedMeal }
   | { kind: 'training'; time: string; session: PlannedWorkout };
 
 /** "Dein Plan" for a day: meals (or what replaced them) and training in time order. */
@@ -67,7 +69,7 @@ export function dayTimeline(state: AppState, date: ISODate): TimelineItem[] {
       continue;
     }
     const entries = state.logEntries.filter((e) => e.replacedMealId === meal.id);
-    if (entries.length) items.push({ kind: 'replaced', time, meal, entries });
+    items.push(entries.length ? { kind: 'replaced', time, meal, entries } : { kind: 'skipped', time, meal });
   }
   const session = sessionOn(state, date);
   if (session) items.push({ kind: 'training', time: trainingTimeFor(state).time, session });

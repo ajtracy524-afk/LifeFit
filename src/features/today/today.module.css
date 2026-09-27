@@ -827,3 +827,36 @@ button.timelineItem:active {
   transform: scale(0.98);
   transition-duration: 0.06s;
 }
+
+/* Timeline states beyond eaten / next / later: */
+/* noch offen – the time is long past and nothing was logged: a calm amber marker, not an alarm. */
+.timelineOverdue {
+  box-shadow: inset 3px 0 0 var(--tone-watch);
+}
+
+.timelineOverdue .timelineLabel {
+  color: var(--text);
+  font-weight: 650;
+}
+
+/* übersprungen – visible, clearly not eaten, steps back furthest. */
+.timelineSkipped {
+  opacity: 0.6;
+}
+
+.timelineSkipped .timelineTitle {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-3);
+}
+
+.skipMark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--text-3);
+  color: var(--text-3);
+  font-weight: 700;
+  flex-shrink: 0;
+}

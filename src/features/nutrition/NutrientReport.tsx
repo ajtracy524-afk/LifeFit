@@ -145,6 +145,7 @@ function ReportGroup({ group }: { group: NutrientGroup }) {
               kind={r.reference?.kind}
               ratio={r.amount === undefined || !r.reference ? undefined : r.ratio}
               band={r.reference?.kind === 'range' && r.reference.tolerance ? r.reference.tolerance / r.reference.amount : undefined}
+              tag={r.reference?.role}
               note={r.key === 'fiber' ? r.reference?.basis : undefined}
             />
           </div>

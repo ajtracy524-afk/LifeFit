@@ -53,3 +53,25 @@ describe('day overview of the nutrition week plan', () => {
     expect(dayOverview(day(s, TUE), TUE, [...slots], catalogPrice)).toMatchObject({ meals: 2, eaten: 1 });
   });
 });
+
+describe('day overview: carbs, fat and the cost of one day', () => {
+  it('carbs and fat against the day target (planned for open days)', () => {
+    const s = base({ plannedMeals: [meal('a', WED, 'lunch', 1), meal('b', WED, 'dinner', 1)] });
+    const d = day(s, WED);
+    const o = dayOverview(d, TUE, [...slots], catalogPrice);
+    expect(o.carbs).toBe(d.planned.carbs);
+    expect(o.fat).toBe(d.planned.fat);
+    expect(o.carbsRef).toBe(220);
+    expect(o.fatRef).toBe(70);
+  });
+
+  it('weekFoodCost for one day counts only that day (the "Heute" budget line)', async () => {
+    const { weekFoodCost } = await import('./weekPlan');
+    const s = base({ plannedMeals: [meal('a', TUE, 'lunch', 1), meal('b', WED, 'lunch', 1), meal('c', WED, 'dinner', 1)] });
+    const tue = weekFoodCost(s, MON, { day: TUE })!;
+    const wed = weekFoodCost(s, MON, { day: WED })!;
+    const week = weekFoodCost(s, MON)!;
+    expect(wed.lowChf).toBeCloseTo(tue.lowChf * 2, 1);
+    expect(week.lowChf).toBeCloseTo(tue.lowChf + wed.lowChf, 1);
+  });
+});
