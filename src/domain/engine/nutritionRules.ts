@@ -396,7 +396,7 @@ const DISH_PORTIONS = [0.5, 1, 1.5, 2];
  */
 export function ownDishRule(ctx: EngineContext): Recommendation[] {
   const t = ctx.target;
-  const dishes = Object.values(ctx.state.customDishes ?? {});
+  const dishes = Object.values(ctx.state.customDishes ?? {}).filter((d) => !d.archived);
   if (!t || dishes.length === 0) return [];
   const R = NUTRITION_RULES;
   const open = { kcal: t.kcal - ctx.eaten.kcal - ctx.plannedOpenMacros.kcal, protein: t.protein - ctx.eaten.protein - ctx.plannedOpenMacros.protein };

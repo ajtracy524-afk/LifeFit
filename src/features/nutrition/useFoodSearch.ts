@@ -44,7 +44,7 @@ export function useFoodSearch(query: string, { dishes = true }: { dishes?: boole
     if (!q) return { dishes: [], products: [], catalog: [], database: [], loading: false, failed: false };
     const profile = state.nutritionProfile;
     return {
-      dishes: dishes ? Object.values(state.customDishes ?? {}).filter((d) => matchesQuery(d.name, q)) : [],
+      dishes: dishes ? Object.values(state.customDishes ?? {}).filter((d) => !d.archived && matchesQuery(d.name, q)) : [],
       products: Object.values(state.products ?? {}).filter((p) => matchesQuery(`${p.name} ${p.brand ?? ''}`, q)),
       catalog: FOODS.filter((f) => matchesQuery(f.name, q)).sort((a, b) => Number(foodAllowed(b, profile)) - Number(foodAllowed(a, profile))),
       database: db ? searchFoodDb(db, q) : [],

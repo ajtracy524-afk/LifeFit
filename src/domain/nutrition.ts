@@ -1,4 +1,5 @@
 import { getFood } from '../data/foods';
+import { isPersonalFoodId } from '../data/personal';
 import { NUTRIENTS } from '../data/nutrients';
 import { getRecipe } from '../data/recipes';
 import { newId } from '../lib/id';
@@ -87,7 +88,8 @@ const RECIPE_SKIPS: ReadonlySet<MicroNutrient> = new Set(['salt', 'sodium']);
 export function recipeMicros(recipe: Recipe, servings = 1): Micros {
   return sumCompleteMicros(
     recipe.ingredients.map((ing) => ({ micros100: getFood(ing.foodId)?.micros, grams: ing.grams * servings })),
-    RECIPE_SKIPS,
+    // Own dishes list every ingredient (salt included); catalog recipes leave out the unknown cooking salt.
+    recipe.personal ? undefined : RECIPE_SKIPS,
   );
 }
 
@@ -195,6 +197,8 @@ export function targetForDate(targets: NutritionTarget[], date: ISODate): Nutrit
 export function recipeAllowed(recipe: Recipe, profile: NutritionProfile | null): boolean {
   if (!profile) return true;
   return recipe.ingredients.every((ing) => {
+    // An own dish's own products/ingredients are the user's choice; its catalog foods are checked like any recipe.
+    if (recipe.personal && isPersonalFoodId(ing.foodId)) return true;
     const food = getFood(ing.foodId);
     return !!food && foodAllowed(food, profile);
   });

@@ -1,5 +1,6 @@
 import type { Allergen, Food, Micros, ShoppingCategory } from '../domain/types';
 import { FOOD_MICROS } from './foodMicros';
+import { personalFood } from './personal';
 import { consistentMicros, SALT_PER_SODIUM } from './nutrients';
 
 /** Supermarket walking order, used to sort the shopping list. */
@@ -144,6 +145,7 @@ export const FOODS: Food[] = RAW.map(([id, name, category, kcal, protein, carbs,
 
 const BY_ID = new Map(FOODS.map((f) => [f.id, f]));
 
+/** Catalog food, or one of the user's own products / dish ingredients (data/personal.ts). */
 export function getFood(id: string): Food | undefined {
-  return BY_ID.get(id);
+  return BY_ID.get(id) ?? personalFood(id);
 }

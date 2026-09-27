@@ -2,15 +2,16 @@ import { useMemo, useState } from 'react';
 import type { DbFood } from '../../data/foodDb';
 import { formatCostRange, priceLookup } from '../../domain/costs';
 import { dishCostRange, dishNutrition, dishPortionNutrition, ingredientFromDb, ingredientFromFood, ingredientFromProduct, validateDish, type DishErrors } from '../../domain/dishes';
-import type { CustomDish, DishIngredient, Food, Product } from '../../domain/types';
-import { fmt } from '../../lib/format';
+import type { CustomDish, DishIngredient, Food, MealSlot, Product } from '../../domain/types';
+import type { DishDraft } from '../../domain/dishes';
+import { fmt, SLOT_LABEL } from '../../lib/format';
 import { newId } from '../../lib/id';
 import { withUndo } from '../../lib/undo';
 import { celebrate } from '../../lib/celebrate';
 import { deleteDish, saveDish } from '../../store/actions';
 import { useAppState } from '../../store/store';
 import { Button, IconButton } from '../../components/ui/Button';
-import { Field, Stepper } from '../../components/ui/Controls';
+import { Chip, Field, Stepper } from '../../components/ui/Controls';
 import { Icon } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
 import { MicroLine, NutrientGrid } from './ProductConfirm';
@@ -22,7 +23,9 @@ import styles from './nutrition.module.css';
 let lastSaved: { id: string; at: number } | undefined;
 const isFresh = (id: string) => !!lastSaved && lastSaved.id === id && Date.now() - lastSaved.at < 8000;
 
-const SOURCE_LABEL: Record<DishIngredient['source'], string> = { catalog: 'Katalog', database: 'Datenbank', product: 'Produkt' };
+const PLAN_SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+const SOURCE_LABEL: Record<DishIngredient['source'], string> = { catalog: 'Katalog', database: 'Datenbank', product: 'Produkt', manual: 'Eigene Angabe' };
 const perPortionLine = (dish: CustomDish) => {
   const m = dishPortionNutrition(dish, 1).macros;
   return `${fmt.kcal(m.kcal)} · ${fmt.int(m.protein)} g P · ${fmt.int(m.carbs)} g KH · ${fmt.int(m.fat)} g F pro Portion`;
@@ -32,7 +35,7 @@ const perPortionLine = (dish: CustomDish) => {
 export function DishList({ onPick, onCreate }: { onPick: (dish: CustomDish) => void; onCreate: () => void }) {
   const state = useAppState();
   const [filter, setFilter] = useState('');
-  const all = useMemo(() => Object.values(state.customDishes ?? {}).sort((a, b) => a.name.localeCompare(b.name, 'de')), [state.customDishes]);
+  const all = useMemo(() => Object.values(state.customDishes ?? {}).filter((d) => !d.archived).sort((a, b) => a.name.localeCompare(b.name, 'de')), [state.customDishes]);
   const shown = filter.trim() ? all.filter((d) => matchesQuery(d.name, filter)) : all;
   return (
     <section className={styles.dishSection} aria-label="Meine Gerichte">
@@ -130,11 +133,27 @@ export function DishPortionSheet({
  * nutrients are computed live from the ingredients (domain/dishes.ts).
  * Saving never touches entries that were already logged.
  */
-export function DishEditorSheet({ dish, onSaved, onCancel, onClose }: { dish?: CustomDish; onSaved: (dishId: string | undefined) => void; onCancel: () => void; onClose: () => void }) {
-  const [name, setName] = useState(dish?.name ?? '');
-  const [portions, setPortions] = useState(dish?.portions ?? 1);
-  const [ingredients, setIngredients] = useState<DishIngredient[]>(dish?.ingredients.map((i) => ({ ...i })) ?? []);
-  const [picking, setPicking] = useState(!dish);
+export function DishEditorSheet({
+  dish,
+  initial,
+  onSaved,
+  onCancel,
+  onClose,
+}: {
+  dish?: CustomDish;
+  /** Prefilled new dish (e.g. "Als Gericht speichern" from an eaten meal). */
+  initial?: DishDraft;
+  onSaved: (dishId: string | undefined) => void;
+  onCancel: () => void;
+  onClose: () => void;
+}) {
+  const start = dish ?? initial;
+  const [name, setName] = useState(start?.name ?? '');
+  const [portions, setPortions] = useState(start?.portions ?? 1);
+  const [ingredients, setIngredients] = useState<DishIngredient[]>(start?.ingredients.map((i) => ({ ...i })) ?? []);
+  const [slots, setSlots] = useState<MealSlot[]>(start?.slots ?? []);
+  const [prepMin, setPrepMin] = useState(start?.prepMin ?? 15);
+  const [picking, setPicking] = useState(!start?.ingredients.length);
   const [errors, setErrors] = useState<DishErrors>({});
 
   const whole = dishNutrition(ingredients);
@@ -151,7 +170,7 @@ export function DishEditorSheet({ dish, onSaved, onCancel, onClose }: { dish?: C
   const setGrams = (id: string, grams: number) => setIngredients((list) => list.map((i) => (i.id === id ? { ...i, grams } : i)));
 
   const save = () => {
-    const draft = { name, portions, ingredients };
+    const draft: DishDraft = { name, portions, ingredients, ...(slots.length ? { slots, prepMin } : {}) };
     const e = validateDish(draft);
     if (Object.keys(e).length) return setErrors(e);
     let saved: string | undefined;
@@ -238,6 +257,25 @@ export function DishEditorSheet({ dish, onSaved, onCancel, onClose }: { dish?: C
             {someWithoutMicros && <p className={styles.sourceNote}>Nicht jede Zutat hat Mikronährstoff-Daten – diese Werte bleiben offen statt 0.</p>}
           </div>
         )}
+
+        <div className={styles.dishPlan}>
+          <p className={styles.fieldLabel}>Im Wochenplan vorschlagen (optional)</p>
+          <div className={styles.chipRow} role="group" aria-label="Im Wochenplan vorschlagen für">
+            {PLAN_SLOTS.map((slot) => (
+              <Chip key={slot} selected={slots.includes(slot)} onClick={() => setSlots((list) => (list.includes(slot) ? list.filter((x) => x !== slot) : [...list, slot]))}>
+                {SLOT_LABEL[slot]}
+              </Chip>
+            ))}
+          </div>
+          {slots.length > 0 && <Stepper label="Zubereitung" value={prepMin} onChange={setPrepMin} step={5} min={5} max={120} format={(v) => `${v} min`} />}
+          <p className={styles.sourceNote}>
+            {slots.length === 0
+              ? 'Ohne Auswahl erfasst du das Gericht nur selbst – der Planer schlägt es nicht vor.'
+              : portion.unknown.length
+                ? 'Für den Wochenplan braucht jede Zutat Kalorien und Makros – ergänze sie oder wähle andere Zutaten.'
+                : 'Der Planer schlägt es für diese Mahlzeiten vor – bewertet wie jedes Rezept (Ziele, Zeit, Budget, Vorrat, Vorlieben).'}
+          </p>
+        </div>
 
         {dish && (
           <Button

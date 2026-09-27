@@ -61,9 +61,14 @@ export const catalogPrice: PriceLookup = (foodId) => {
 export function priceLookup(products: Record<string, Product> | undefined): PriceLookup {
   const real = new Map<string, { perKgChf: number; at: string }>();
   for (const p of Object.values(products ?? {})) {
-    if (!p.foodId || !p.price || p.price.amount <= 0) continue;
+    if (!p.price || p.price.amount <= 0) continue;
+    const perKg = { perKgChf: (p.price.chf / p.price.amount) * 1000, at: p.price.at };
+    // The product itself (own recipes use it as "product:<barcode>") …
+    real.set(`product:${p.barcode}`, perKg);
+    // … and the catalog food it stands for (the latest price wins).
+    if (!p.foodId) continue;
     const known = real.get(p.foodId);
-    if (!known || p.price.at > known.at) real.set(p.foodId, { perKgChf: (p.price.chf / p.price.amount) * 1000, at: p.price.at });
+    if (!known || p.price.at > known.at) real.set(p.foodId, perKg);
   }
   if (real.size === 0) return catalogPrice;
   return (foodId) => {

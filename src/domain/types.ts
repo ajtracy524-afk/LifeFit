@@ -99,6 +99,8 @@ export interface Recipe {
   tags: string[];
   ingredients: RecipeIngredient[];
   steps: string[];
+  /** An own dish offered to the planner (see domain/personal.ts) – not part of the curated catalog. */
+  personal?: true;
 }
 
 export type Equipment = 'barbell' | 'dumbbell' | 'machine' | 'cable' | 'bodyweight';
@@ -262,7 +264,8 @@ export interface Product {
   /** Whole package in `unit`, if the source states it. */
   packageSize?: number;
   imageUrl?: string;
-  source: 'openfoodfacts';
+  /** openfoodfacts = found by barcode; manual = created by the user in "Meine Produkte". */
+  source: 'openfoodfacts' | 'manual';
   fetchedAt: string;
   /** Catalog food the user said this product is – enables pantry, shopping and learning. */
   foodId?: string;
@@ -430,7 +433,7 @@ export interface DishIngredient {
   /** Amount in g (ml for drinks – weighed like grams). */
   grams: number;
   /** Where the values come from: curated catalog, extended database (FoodData Central) or a scanned product. */
-  source: 'catalog' | 'database' | 'product';
+  source: 'catalog' | 'database' | 'product' | 'manual';
   /** foodId, database id or barcode. */
   ref: string;
   /** Snapshot per 100 g – the dish stays computable offline and does not change when a source changes. */
@@ -450,6 +453,12 @@ export interface CustomDish {
   name: string;
   /** How many portions the ingredients make. */
   portions: number;
+  /** Meal slots the planner may suggest it for – none = only logged by hand, never planned. */
+  slots?: MealSlot[];
+  /** Preparation time in minutes (for the time budget of a day), when planned. */
+  prepMin?: number;
+  /** Deleted, but still referenced by planned/eaten meals: kept for history, never suggested or listed. */
+  archived?: true;
   ingredients: DishIngredient[];
   createdAt: string;
   updatedAt: string;

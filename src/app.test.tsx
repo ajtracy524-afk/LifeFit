@@ -1801,3 +1801,150 @@ describe('Nährstoff-Auswertung and the nutrition week plan', () => {
     expect(mon.querySelector('[class*="weekDayMeals"]')!.textContent).toMatch(/Chili/);
   });
 });
+
+describe('personal products, CHF prices and own dishes in the planner (UI)', () => {
+  const OFF = {
+    status: 1,
+    product: { product_name: 'Haferflocken fein', brands: 'M-Classic', nutriments: { 'energy-kcal_100g': 370, proteins_100g: 13, carbohydrates_100g: 59, fat_100g: 7 }, product_quantity: 500, product_quantity_unit: 'g' },
+  };
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 21, 9, 0)); // Monday 09:00
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 0)));
+  const setField = async (labelStart: string, value: string) => {
+    const lbl = [...document.querySelectorAll('dialog[open] label')].find((l) => l.textContent?.startsWith(labelStart));
+    const input = (lbl && (document.getElementById((lbl as HTMLLabelElement).htmlFor) as HTMLInputElement | null)) ?? lbl?.querySelector('input');
+    if (!input) throw new Error(`Field ${labelStart} not found`);
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      set.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const byLabel = async (label: string) => {
+    const b = document.querySelector<HTMLButtonElement>(`dialog[open] button[aria-label="${label}"]`);
+    if (!b) throw new Error(`Button ${label} not found`);
+    await act(async () => b.click());
+  };
+
+  it('barcode → CHF pack price → "Meine Produkte" → edit → one pack into the pantry → rescan is recognised without a request', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(OFF), { status: 200 }));
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Barcode');
+    await type('Barcode-Nummer', '7610000000011');
+    await click('Produkt suchen');
+    await settle();
+    await setField('Packungspreis', '4.49');
+    await clickInDialog('Hinzufügen');
+    expect(store.getState().products['7610000000011']!.price).toMatchObject({ chf: 4.49, amount: 500 });
+
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    const library = document.querySelector('dialog[open] [aria-label="Meine Produkte"]')!;
+    expect(library.textContent).toMatch(/Haferflocken feinM-Classic · 500 g · 4\.49 CHF/);
+    expect(library.textContent).not.toMatch(/€|EUR|USD/);
+    await byLabel('Haferflocken fein bearbeiten');
+    await setField('Packungspreis', '3.95');
+    await clickInDialog('Speichern');
+    expect(store.getState().products['7610000000011']!.price).toMatchObject({ chf: 3.95, amount: 500 });
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    await byLabel('Haferflocken fein bearbeiten');
+    await clickInDialog('1 Packung in den Vorrat');
+    // No catalog link → the pantry keeps it as the product itself (one product model, one pantry).
+    expect(store.getState().pantry['product:7610000000011']!.quantityG).toBe(500);
+
+    // Scanning it again: known from the local cache – no second request, the user's pack and price are shown.
+    await click('Lebensmittel hinzufügen');
+    await click('Barcode');
+    await type('Barcode-Nummer', '7610000000011');
+    await click('Produkt suchen');
+    await settle();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('dialog[open]')!.textContent).toMatch(/✓ Bekanntes Produkt · M-Classic · 500 g · 3\.95 CHF/);
+  });
+
+  it('removing the price and deleting a product; eaten entries keep their values', async () => {
+    const product = { barcode: '1', name: 'Skyr', per100: { kcal: 63, protein: 11, carbs: 4, fat: 0.2 }, micros100: {}, unit: 'g', packageSize: 450, price: { chf: 1.95, amount: 450, at: '2026-09-20T08:00:00Z' }, source: 'openfoodfacts', fetchedAt: '2026-09-20T08:00:00Z' };
+    const entry = { id: 'e', date: '2026-09-21', slot: 'breakfast', loggedAt: '2026-09-21T08:00:00Z', name: 'Skyr', barcode: '1', grams: 150, method: 'barcode', macros: { kcal: 95, protein: 16.5, carbs: 6, fat: 0.3 }, costChf: 0.65 };
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), products: { '1': product }, logEntries: [entry] }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    await byLabel('Skyr bearbeiten');
+    await clickInDialog('Preis entfernen');
+    expect(store.getState().products['1']!.price).toBeUndefined();
+    await clickInDialog('Produkt löschen');
+    expect(store.getState().products['1']).toBeUndefined();
+    expect(store.getState().logEntries[0]).toEqual(entry);
+  });
+
+  it('own dish offered to the planner: meal slots in the editor; deleting a planned dish archives it (history stays)', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Manuell');
+    await click('Eigenes Gericht erstellen');
+    await type('Name', 'Chicken-Reis-Bowl');
+    const fill = async (value: string) => {
+      const input = document.querySelector<HTMLInputElement>('dialog[open] input[placeholder^="Zutat suchen"]')!;
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      await act(async () => {
+        set.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    await fill('Hähnchenbrust');
+    await byLabel('Hähnchenbrust als Zutat hinzufügen');
+    await click('Zutat hinzufügen');
+    await fill('Basmatireis');
+    await byLabel('Basmatireis als Zutat hinzufügen');
+    const slots = document.querySelector('dialog[open] [aria-label="Im Wochenplan vorschlagen für"]')!;
+    await act(async () => [...slots.querySelectorAll('button')].find((b) => b.textContent?.includes('Mittagessen'))!.click());
+    expect(document.querySelector('dialog[open]')!.textContent).toMatch(/Der Planer schlägt es für diese Mahlzeiten vor/);
+    await clickInDialog('Speichern');
+    const dish = Object.values(store.getState().customDishes)[0]!;
+    expect(dish).toMatchObject({ name: 'Chicken-Reis-Bowl', slots: ['lunch'], prepMin: 15 });
+    const { getRecipe } = await import('./data/recipes');
+    expect(getRecipe(`dish:${dish.id}`)).toMatchObject({ title: 'Chicken-Reis-Bowl', personal: true });
+
+    // Planned (past and future), then deleted: archived, the future plan entry is removed, the past one stays readable.
+    const { update } = store;
+    await act(async () =>
+      update((s) => {
+        s.plannedMeals.push({ id: 'past', date: '2026-09-20', slot: 'lunch', recipeId: `dish:${dish.id}`, servings: 1, status: 'eaten', source: 'user' });
+        s.plannedMeals.push({ id: 'next', date: '2026-09-23', slot: 'lunch', recipeId: `dish:${dish.id}`, servings: 1, status: 'planned', source: 'user' });
+      }),
+    );
+    const { deleteDish } = await import('./store/actions');
+    await act(async () => void deleteDish(dish.id));
+    expect(store.getState().customDishes[dish.id]).toMatchObject({ archived: true });
+    expect(store.getState().plannedMeals.map((m) => m.id)).toEqual(['past']);
+    expect(getRecipe(`dish:${dish.id}`)!.title).toBe('Chicken-Reis-Bowl');
+  });
+
+  it('"Als Gericht speichern" on an eaten meal opens the editor prefilled with what was eaten', async () => {
+    const entry = { id: 'e', date: '2026-09-21', slot: 'breakfast', loggedAt: '2026-09-21T08:00:00Z', name: 'Bananen', foodId: 'banana', grams: 120, method: 'food', macros: { kcal: 112, protein: 1.4, carbs: 24, fat: 0.2 } };
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), logEntries: [entry] }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Als Gericht speichern');
+    expect(document.querySelector('dialog[open] [aria-label="Zutaten"]')!.textContent).toMatch(/Bananen/);
+    await type('Name', 'Bananen-Snack');
+    await clickInDialog('Speichern');
+    expect(Object.values(store.getState().customDishes)[0]).toMatchObject({ name: 'Bananen-Snack', slots: ['breakfast'], ingredients: [{ name: 'Bananen', grams: 120, foodId: 'banana' }] });
+  });
+});

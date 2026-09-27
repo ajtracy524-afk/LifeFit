@@ -24,6 +24,7 @@ import { Sheet } from '../../components/ui/Sheet';
 import { BarcodeLookup } from './BarcodeLookup';
 import { ManualForm } from './ManualForm';
 import { DishEditorSheet, DishList, DishPortionSheet } from './Dishes';
+import { ProductEditSheet, ProductList } from './Products';
 import { runLog, type CelebrationInput } from './logFeedback';
 import { useFoodSearch } from './useFoodSearch';
 import { MicroLine, NutrientGrid, ProductConfirm } from './ProductConfirm';
@@ -47,6 +48,7 @@ type Step =
   | { kind: 'manual'; initial: ManualInput }
   | { kind: 'dish'; dish: CustomDish }
   | { kind: 'dishEdit'; dish?: CustomDish; back: Step }
+  | { kind: 'productEdit'; product?: Product; back: Step }
   | null;
 
 /**
@@ -123,12 +125,28 @@ export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
       />
     );
   }
+  if (step?.kind === 'productEdit') {
+    const back = step.back;
+    return (
+      <ProductEditSheet
+        product={step.product}
+        onClose={close}
+        onCancel={() => setStep(back)}
+        // Back to where the user came from – with the saved product data (or the list after deleting).
+        onDone={(barcode) => {
+          const saved = barcode ? getState().products?.[barcode] : undefined;
+          setStep(back?.kind === 'product' && saved ? { kind: 'product', product: saved } : null);
+        }}
+      />
+    );
+  }
   if (step?.kind === 'product') {
     const product = step.product;
     return (
       <Sheet open onClose={close} title="Produkt prüfen" subtitle={subtitle}>
         <ProductConfirm
           product={product}
+          onEdit={() => setStep({ kind: 'productEdit', product, back: step })}
           onComplete={() => setStep({ kind: 'manual', initial: manualFromProduct(product) })}
           footer={(choice) => (
             <>
@@ -188,6 +206,7 @@ export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
       {activeMode === 'manual' && (
         <>
           <DishList onPick={(dish) => setStep({ kind: 'dish', dish })} onCreate={() => setStep({ kind: 'dishEdit', back: null })} />
+          <ProductList onPick={(product) => setStep({ kind: 'product', product })} onEdit={(product) => setStep({ kind: 'productEdit', product, back: null })} onCreate={() => setStep({ kind: 'productEdit', back: null })} />
           <p className={styles.listCaption}>Einzelnes Lebensmittel mit Verpackungswerten</p>
           <ManualForm initial={EMPTY_MANUAL} onSubmit={(entry, id) => done(`${entry.name} erfasst`, () => logEntry(target.date, activeSlot, entry, { id }), entry)} />
         </>
@@ -341,7 +360,7 @@ function SearchPanel({
     for (const e of [...state.logEntries].reverse()) {
       const key = e.dishId ?? e.barcode ?? e.foodId;
       if (!key || seen.has(key)) continue;
-      if (e.dishId && state.customDishes?.[e.dishId]) items.push({ kind: 'dish', dish: state.customDishes[e.dishId]! });
+      if (e.dishId && state.customDishes?.[e.dishId] && !state.customDishes[e.dishId]!.archived) items.push({ kind: 'dish', dish: state.customDishes[e.dishId]! });
       else if (e.barcode && state.products[e.barcode]) items.push({ kind: 'product', product: state.products[e.barcode]! });
       else if (e.foodId && e.method === 'food' && getFood(e.foodId)) items.push({ kind: 'food', food: getFood(e.foodId)! });
       else continue;

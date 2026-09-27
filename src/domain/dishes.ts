@@ -3,7 +3,9 @@ import { SALT_PER_SODIUM } from '../data/nutrients';
 import { ingredientCostRange, type CostRange, type PriceLookup } from './costs';
 import type { EntryContent } from './foodEntry';
 import { consistentMicros, roundMacros, scaleMacros, scaleMicros, sumCompleteMicros } from './nutrition';
-import type { CustomDish, DishIngredient, Food, MacroKey, Macros, Micros, Product } from './types';
+import { getFood } from '../data/foods';
+import { getRecipe } from '../data/recipes';
+import type { AppState, CustomDish, DishIngredient, Food, LogEntry, MacroKey, Macros, MealSlot, Micros, Product } from './types';
 
 /**
  * Own dishes ("Meine Gerichte"): nutrients are ALWAYS computed from the
@@ -52,10 +54,24 @@ export function dishPortionNutrition(dish: CustomDish, portions = 1): DishNutrit
   return dishNutrition(dish.ingredients, portionFactor(dish, portions));
 }
 
-/** Price items for the central cost logic: catalog-linked ingredients priced, the rest counts as unpriced weight. */
+export const productFoodId = (barcode: string) => `product:${barcode}`;
+
+/**
+ * The food id an ingredient is planned, bought, priced and kept in the pantry
+ * under: the catalog food if linked, otherwise the own product / database /
+ * manual ingredient (registered as a personal food, see domain/personal.ts).
+ */
+export function ingredientFoodId(i: DishIngredient): string {
+  if (i.foodId) return i.foodId;
+  if (i.source === 'product') return productFoodId(i.ref);
+  if (i.source === 'database') return i.ref; // "fdc:<id>"
+  return `manual:${i.id}`;
+}
+
+/** Price items for the central cost logic: every ingredient under its food id (real product prices, catalog estimates, or unpriced). */
 export function dishCostItems(dish: CustomDish, portions = 1): { foodId: string; grams: number }[] {
   const f = portionFactor(dish, portions);
-  return dish.ingredients.map((i) => ({ foodId: i.foodId ?? '', grams: Math.round(i.grams * f) }));
+  return dish.ingredients.map((i) => ({ foodId: ingredientFoodId(i), grams: Math.round(i.grams * f) }));
 }
 
 /** "ca. 2–3 CHF" range – only with enough price data (80 % rule), otherwise undefined. */
@@ -117,6 +133,9 @@ export interface DishDraft {
   name: string;
   portions: number;
   ingredients: DishIngredient[];
+  /** Offer it in the week plan for these meals (optional). */
+  slots?: MealSlot[];
+  prepMin?: number;
 }
 
 export type DishErrors = Partial<Record<'name' | 'ingredients' | 'portions', string>>;
@@ -148,4 +167,53 @@ export function dbFoodEntry(food: DbFood, grams: number): EntryContent {
 /** Per-100 g micros of a database food as used everywhere (salt from sodium). */
 export function dbFoodMicros(food: DbFood): Micros {
   return consistentMicros(food.per100, withSalt(food.micros)) ?? {};
+}
+
+// ---------- "Als Gericht speichern" (from what was really eaten) ----------
+
+/** Per-100 values from an entry's own snapshot (exact inverse of the scaling) – only known values. */
+function snapshotPer100(e: LogEntry): { per100: Partial<Macros>; micros100: Micros } {
+  const f = 100 / (e.grams ?? 1);
+  const unknown = new Set(e.unknown ?? []);
+  const per100: Partial<Macros> = { kcal: Math.round(e.macros.kcal * f * 10) / 10 };
+  for (const k of ['protein', 'carbs', 'fat'] as const) if (!unknown.has(k)) per100[k] = Math.round(e.macros[k] * f * 100) / 100;
+  const micros100: Micros = {};
+  for (const [k, v] of Object.entries(e.micros ?? {})) micros100[k as keyof Micros] = (v as number) * f;
+  return { per100, micros100 };
+}
+
+/**
+ * Turns the entries of an eaten meal into a dish draft – only with data the
+ * app really has: recipe and dish ingredients, catalog foods and products
+ * with their amount, database/manual entries with grams (from their own
+ * snapshot). Entries without an amount cannot become ingredients and are
+ * named in `skipped` – never guessed.
+ */
+export function draftFromEntries(entries: LogEntry[], state: Pick<AppState, 'products' | 'customDishes'>, newIdFn: () => string): { draft: DishDraft; skipped: string[] } {
+  const ingredients: DishIngredient[] = [];
+  const skipped: string[] = [];
+  for (const e of entries) {
+    const dish = e.dishId ? state.customDishes?.[e.dishId] : undefined;
+    const recipe = !dish && e.recipeId ? getRecipe(e.recipeId) : undefined;
+    const product = e.barcode ? state.products?.[e.barcode] : undefined;
+    if (dish) {
+      const f = portionFactor(dish, e.servings ?? 1);
+      for (const i of dish.ingredients) ingredients.push({ ...i, id: newIdFn(), grams: Math.round(i.grams * f) });
+    } else if (recipe) {
+      for (const i of recipe.ingredients) {
+        const food = getFood(i.foodId);
+        if (food) ingredients.push(ingredientFromFood(food, Math.round(i.grams * (e.servings ?? 1)), newIdFn()));
+      }
+    } else if (e.foodId && e.method === 'food' && e.grams && getFood(e.foodId)) {
+      ingredients.push(ingredientFromFood(getFood(e.foodId)!, e.grams, newIdFn()));
+    } else if (product && e.grams) {
+      const ing = ingredientFromProduct(product, e.grams, newIdFn());
+      if (ing) ingredients.push(ing);
+      else skipped.push(e.name);
+    } else if (e.grams && (e.fdc !== undefined || e.unit === 'g' || e.unit === 'ml')) {
+      const { per100, micros100 } = snapshotPer100(e);
+      ingredients.push({ id: newIdFn(), name: e.name, grams: e.grams, source: e.fdc !== undefined ? 'database' : 'manual', ref: e.fdc !== undefined ? `fdc:${e.fdc}` : e.id, per100, micros100 });
+    } else skipped.push(e.name);
+  }
+  return { draft: { name: '', portions: 1, ingredients }, skipped };
 }

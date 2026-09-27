@@ -9,6 +9,8 @@ import { newId } from '../../lib/id';
 import { useAppState } from '../../store/store';
 import { Chip, Field, Stepper, parseNumber } from '../../components/ui/Controls';
 import { Icon } from '../../components/ui/Icon';
+import { isKnownProduct, productMeta } from './Products';
+import { Button } from '../../components/ui/Button';
 import styles from './nutrition.module.css';
 
 export interface ProductChoice {
@@ -29,6 +31,8 @@ interface Props {
   onComplete: () => void;
   /** "purchase": amount defaults to the package, pantry toggle is not shown. */
   purpose?: 'eat' | 'purchase';
+  /** Opens the own-data editor (name, pack, CHF price) – shown for products already in "Meine Produkte". */
+  onEdit?: () => void;
 }
 
 /**
@@ -36,7 +40,9 @@ interface Props {
  * free), nutrients recalculated for that amount, and – optionally – which
  * LifeFit food it is, so pantry, shopping and learning can use it.
  */
-export function ProductConfirm({ product, footer, onComplete, purpose = 'eat' }: Props) {
+export function ProductConfirm({ product, footer, onComplete, purpose = 'eat', onEdit }: Props) {
+  // Scanned before: it came from the local cache (no request) – say so, with the user's own pack and price.
+  const known = isKnownProduct(product.barcode);
   const state = useAppState();
   const options = productAmountOptions(product);
   const initial = purpose === 'purchase' ? (product.packageSize ?? 100) : (product.servingSize ?? 100);
@@ -66,6 +72,16 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat' }:
 
   return (
     <>
+      {known && (
+        <div className={styles.knownProduct}>
+          <span>✓ Bekanntes Produkt · {productMeta(product)}</span>
+          {onEdit && (
+            <Button size="sm" variant="ghost" icon="edit" onClick={onEdit}>
+              Preis & Packung
+            </Button>
+          )}
+        </div>
+      )}
       <div className={styles.productHead}>
         {product.imageUrl ? (
           <img className={styles.productImage} src={product.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />

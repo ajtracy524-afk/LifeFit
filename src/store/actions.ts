@@ -282,6 +282,8 @@ export function saveDish(draft: DishDraft, id?: string): string | undefined {
       name: draft.name.trim(),
       portions: draft.portions,
       ingredients: draft.ingredients.map((i) => ({ ...i })),
+      ...(draft.slots?.length ? { slots: [...draft.slots] } : {}),
+      ...(draft.prepMin ? { prepMin: draft.prepMin } : {}),
       createdAt: before?.createdAt ?? now,
       updatedAt: now,
     };
@@ -289,11 +291,19 @@ export function saveDish(draft: DishDraft, id?: string): string | undefined {
   return dishId;
 }
 
-/** Removes the dish – logged entries keep their own values. */
+/**
+ * Removes the dish – logged entries keep their own values. If meals still
+ * refer to it (planned via the planner), it is archived instead: past days keep
+ * their plan, open future meals of it are removed, it is never suggested again.
+ */
 export function deleteDish(id: string): boolean {
   if (!getState().customDishes?.[id]) return false;
+  const recipeId = `dish:${id}`;
+  const t = today();
   update((s) => {
-    delete s.customDishes[id];
+    s.plannedMeals = s.plannedMeals.filter((m) => !(m.recipeId === recipeId && m.status === 'planned' && m.date >= t));
+    if (s.plannedMeals.some((m) => m.recipeId === recipeId)) s.customDishes[id] = { ...s.customDishes[id]!, archived: true };
+    else delete s.customDishes[id];
   });
   return true;
 }
@@ -303,6 +313,60 @@ export function logDish(date: ISODate, slot: MealSlot, dishId: string, portions:
   const dish = getState().customDishes?.[dishId];
   if (!dish || !(portions > 0)) return false;
   return logEntry(date, slot, dishEntry(dish, portions), opts);
+}
+
+// ---------- Own products ("Meine Produkte") ----------
+
+export interface ProductPatch {
+  name?: string;
+  brand?: string;
+  /** Pack size in the product's unit (g/ml); null removes it. */
+  packageSize?: number | null;
+  /** CHF for the whole pack (packageSize) – null removes the price. */
+  packPriceChf?: number | null;
+}
+
+/**
+ * Edits the user's data of a product: name, brand, pack size, price in CHF.
+ * Nutrients stay as the source (or the user, for own products) gave them.
+ * Log entries are snapshots and do not change.
+ */
+export function updateProduct(barcode: string, patch: ProductPatch): boolean {
+  const p = getState().products?.[barcode];
+  if (!p) return false;
+  update((s) => {
+    const d = { ...s.products[barcode]! };
+    if (patch.name !== undefined && patch.name.trim()) d.name = patch.name.trim();
+    if (patch.brand !== undefined) {
+      if (patch.brand.trim()) d.brand = patch.brand.trim();
+      else delete d.brand;
+    }
+    if (patch.packageSize === null) delete d.packageSize;
+    else if (patch.packageSize !== undefined && patch.packageSize > 0) d.packageSize = patch.packageSize;
+    if (patch.packPriceChf === null) delete d.price;
+    else if (patch.packPriceChf !== undefined && patch.packPriceChf > 0 && d.packageSize) d.price = { chf: Math.round(patch.packPriceChf * 100) / 100, amount: d.packageSize, at: new Date().toISOString() };
+    s.products[barcode] = d;
+  });
+  return true;
+}
+
+/** Removes a product from "Meine Produkte" – eaten entries and own dishes keep their values. */
+export function deleteProduct(barcode: string): boolean {
+  if (!getState().products?.[barcode]) return false;
+  update((s) => {
+    delete s.products[barcode];
+  });
+  return true;
+}
+
+/** A product the user creates by hand (no barcode): values per 100 g/ml from the pack. Returns its key. */
+export function createProduct(input: Omit<Product, 'barcode' | 'source' | 'fetchedAt'>): string {
+  const key = `manual-${newId()}`;
+  update((s) => {
+    s.products ??= {};
+    s.products[key] = { ...input, barcode: key, source: 'manual', fetchedAt: new Date().toISOString() };
+  });
+  return key;
 }
 
 export function removeLogEntry(id: string): void {

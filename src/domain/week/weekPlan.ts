@@ -8,6 +8,7 @@ import { getFood } from '../../data/foods';
 import { ingredientCostRange, priceLookup, purchaseCost, type CostItem, type CostRange } from '../costs';
 import { getRecipe } from '../../data/recipes';
 import { pantryEstimate } from './pantry';
+import { syncPersonal } from '../personal';
 import { applyRestock, restockRules } from './restock';
 
 /**
@@ -62,6 +63,7 @@ export function availablePantry(state: AppState, from: ISODate, today: ISODate, 
 
 /** Shopping list of a week: gross need from the plan minus free pantry and purchases. */
 export function weekShopping(state: AppState, week: ISODate, today: ISODate, estimate = pantryEstimate(state)): ShoppingListItem[] {
+  syncPersonal(state); // own products / dishes on the list like catalog foods (no-op when unchanged)
   const { from, to } = shoppingRange(week, today);
   const available = availablePantry(state, from, today, estimate);
   const purchased = state.shopping[week]?.purchased ?? {};

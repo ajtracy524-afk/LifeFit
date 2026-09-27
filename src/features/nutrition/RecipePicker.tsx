@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { RECIPES } from '../../data/recipes';
+import { allRecipes } from '../../data/recipes';
 import { today } from '../../domain/dates';
 import { recipeAllowed, recipeMacros } from '../../domain/nutrition';
 import { dayTargetFor } from '../../domain/week';
@@ -45,7 +45,7 @@ export function RecipePicker({ target, onClose }: RecipePickerProps) {
   const list = useMemo(() => {
     if (!target) return [];
     const q = query.trim().toLowerCase();
-    return RECIPES.filter((r) => recipeAllowed(r, state.nutritionProfile))
+    return allRecipes().filter((r) => recipeAllowed(r, state.nutritionProfile))
       .filter((r) => !q || r.title.toLowerCase().includes(q) || r.tags.some((t) => t.toLowerCase().includes(q)))
       .sort((a, b) => Number(b.slots.includes(target.slot)) - Number(a.slots.includes(target.slot)));
   }, [target, query, state.nutritionProfile]);

@@ -4,7 +4,7 @@ import { MEAL_STYLES } from '../data/tastes';
 import { weekdayLong, weekdayShort } from '../lib/format';
 import { addDays, weekStart, weekdayIndex } from './dates';
 import { affinityIndex, learnedTrainingDays, learnedTrainingHour, LEARNING, preferenceOf, prefKey } from './learning';
-import { formatChf } from './costs';
+import { formatChf, formatCostRange, priceLookup, recipeCostRange } from './costs';
 import { plannedMealMacros } from './nutrition';
 import { matchingTastes, recipeStyle } from './preferences';
 import { effectivePrepMin } from './planner';
@@ -78,6 +78,10 @@ export function explainMeal(state: AppState, meal: PlannedMeal, today: ISODate):
     .map((i) => ({ food: getFood(i.foodId), p: preferenceOf(prefs[prefKey.food(i.foodId)]) }))
     .filter((x) => x.food && x.food.category !== 'pantry' && x.p.confidence >= LEARNING.showFromConfidence && x.p.score > 0.3);
   if (oftenEaten.length) reasons.push(`Enthält, was du oft isst: ${oftenEaten.slice(0, 2).map((x) => x.food!.name).join(', ')}`);
+  // Cost only with a real basis (your CHF product prices, or reliable estimates for ≥ 80 % of the weight) – never invented.
+  const cost = recipeCostRange(recipe, meal.servings, priceLookup(state.products));
+  if (cost) reasons.push(`${formatCostRange(cost)} für diese Mahlzeit`);
+  if (recipe.personal) reasons.unshift('Dein eigenes Gericht');
 
   return reasons;
 }

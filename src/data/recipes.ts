@@ -1,4 +1,5 @@
 import type { Recipe } from '../domain/types';
+import { personalCandidates, personalRecipe } from './personal';
 
 /**
  * Curated recipes. Ingredient grams are for ONE serving; the planner scales
@@ -468,6 +469,16 @@ export const RECIPES: Recipe[] = [
 
 const BY_ID = new Map(RECIPES.map((r) => [r.id, r]));
 
+/** Catalog recipe, or an own dish registered for the planner (data/personal.ts). */
 export function getRecipe(id: string): Recipe | undefined {
-  return BY_ID.get(id);
+  return BY_ID.get(id) ?? personalRecipe(id);
+}
+
+let allCache: { personal: Recipe[]; all: Recipe[] } | undefined;
+/** The planner's candidates: the curated catalog plus the user's plannable own dishes. */
+export function allRecipes(): Recipe[] {
+  const personal = personalCandidates();
+  if (!personal.length) return RECIPES;
+  if (allCache?.personal !== personal) allCache = { personal, all: [...RECIPES, ...personal] };
+  return allCache.all;
 }

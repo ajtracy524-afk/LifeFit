@@ -1,5 +1,5 @@
 import { getFood } from '../data/foods';
-import { RECIPES, getRecipe } from '../data/recipes';
+import { allRecipes, getRecipe } from '../data/recipes';
 import { newId } from '../lib/id';
 import { LEFTOVER_DAYS, LEFTOVER_PREP_MIN, MEAL_PREP_TAG, TIME_BUDGETS } from './timeBudget';
 import { recipeAllowed, recipeMacros, roundServings, plannedMealMacros, sumMacros } from './nutrition';
@@ -22,7 +22,7 @@ export function slotsFor(mealsPerDay: 3 | 4): MealSlot[] {
 }
 
 export function recipesForSlot(slot: MealSlot, profile: NutritionProfile | null): Recipe[] {
-  return RECIPES.filter((r) => r.slots.includes(slot) && recipeAllowed(r, profile));
+  return allRecipes().filter((r) => r.slots.includes(slot) && recipeAllowed(r, profile));
 }
 
 /** Servings so that one meal fills its usual share of the daily target. */

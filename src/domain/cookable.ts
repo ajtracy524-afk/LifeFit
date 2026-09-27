@@ -1,4 +1,4 @@
-import { RECIPES } from '../data/recipes';
+import { allRecipes } from '../data/recipes';
 import { getFood } from '../data/foods';
 import { dayTotals, recipeAllowed, recipeMacros } from './nutrition';
 import { SLOT_ORDER, servingsForSlot } from './planner';
@@ -45,7 +45,7 @@ export function atHome(state: AppState): string[] {
 
 /** All ingredients of the recipes the user may eat – the choices of the picker. */
 export function cookIngredients(state: AppState): string[] {
-  const ids = new Set(RECIPES.filter((r) => allowed(state, r)).flatMap((r) => r.ingredients.map((i) => i.foodId)));
+  const ids = new Set(allRecipes().filter((r) => allowed(state, r)).flatMap((r) => r.ingredients.map((i) => i.foodId)));
   return [...ids].filter((id) => getFood(id)).sort((a, b) => getFood(a)!.name.localeCompare(getFood(b)!.name, 'de'));
 }
 
@@ -60,7 +60,7 @@ export function cookableRecipes(state: AppState, date: ISODate, have: ReadonlySe
   const maxPrep = TIME_BUDGETS[effectiveTimeBudget(dayContextFor(state, date))].maxPrepMin;
   const openKcal = target ? Math.max(0, target.kcal - dayTotals(state.logEntries, date).kcal) : undefined;
 
-  return RECIPES.filter((r) => allowed(state, r))
+  return allRecipes().filter((r) => allowed(state, r))
     .map((recipe): CookOption | undefined => {
       const ids = recipe.ingredients.map((i) => i.foodId);
       const haveIds = ids.filter((id) => have.has(id));

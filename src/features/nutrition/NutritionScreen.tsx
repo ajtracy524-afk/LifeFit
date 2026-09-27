@@ -6,7 +6,7 @@ import { SLOT_ORDER } from '../../domain/planner';
 import { activeWorkouts } from '../../domain/training';
 import { excludedSlots } from '../../domain/timeBudget';
 import { buildWeekPlan, dayContextFor, dayTargetFor } from '../../domain/week';
-import type { ISODate, LogEntry } from '../../domain/types';
+import type { ISODate, LogEntry, MealSlot } from '../../domain/types';
 import { fmt, formatDateLong, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { href, navigate, useRoute } from '../../lib/router';
 import { withUndo } from '../../lib/undo';
@@ -36,6 +36,10 @@ import { WeekDayCard } from './WeekDayCard';
 import { dayOverview } from '../../domain/week/dayOverview';
 import { priceLookup } from '../../domain/costs';
 import { CookSheet } from './CookSheet';
+import { DishEditorSheet } from './Dishes';
+import { draftFromEntries, type DishDraft } from '../../domain/dishes';
+import { newId } from '../../lib/id';
+import { showToast } from '../../lib/toast';
 import { CalorieStatusBadge } from './CalorieStatusBadge';
 import styles from './nutrition.module.css';
 
@@ -107,6 +111,12 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
 
   const go = (d: ISODate) => navigate('nutrition', { view: 'day', date: d === today() ? undefined : d }, { replace: true });
   const [cooking, setCooking] = useState(false);
+  const [dishDraft, setDishDraft] = useState<DishDraft | null>(null);
+  const saveAsDish = (slot: MealSlot) => {
+    const { draft, skipped } = draftFromEntries(state.logEntries.filter((e) => e.date === date && e.slot === slot), state, newId);
+    if (skipped.length) showToast(`Nicht übernommen (ohne Mengenangabe): ${skipped.join(', ')}`);
+    setDishDraft({ ...draft, slots: [slot] });
+  };
 
   return (
     <>
@@ -163,6 +173,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
         </Button>
       )}
       <CookSheet date={date} open={cooking} onClose={() => setCooking(false)} />
+      {dishDraft && <DishEditorSheet initial={dishDraft} onSaved={() => setDishDraft(null)} onCancel={() => setDishDraft(null)} onClose={() => setDishDraft(null)} />}
 
       {slots.map((slot) => {
         const slotMeals = meals.filter((m) => m.slot === slot);
@@ -206,6 +217,12 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
               <Button variant="ghost" size="sm" icon="calendar" onClick={() => onPick({ date, slot })}>
                 {date >= today() ? 'Rezept einplanen' : 'Rezept nachtragen'}
               </Button>
+              {/* What was really eaten here can become an own dish – only on the user's tap. */}
+              {eaten.entries > 0 && (
+                <Button variant="ghost" size="sm" icon="plus" onClick={() => saveAsDish(slot)}>
+                  Als Gericht speichern
+                </Button>
+              )}
             </div>
           </Card>
         );

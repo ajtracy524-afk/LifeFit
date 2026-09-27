@@ -7,6 +7,7 @@ import type { AppState, ISODate, Macros, MealSlot, PlannedMeal } from '../types'
 import { dayTargetFor } from './dayTargets';
 import { availablePantry, dayContextFor } from './weekPlan';
 import { effectiveTimeBudget, excludedSlots } from '../timeBudget';
+import { syncPersonal } from '../personal';
 
 /**
  * Inputs every planning path shares: free pantry, personalization (learned +
@@ -14,6 +15,8 @@ import { effectiveTimeBudget, excludedSlots } from '../timeBudget';
  * the week planner and the slot suggestions can never disagree.
  */
 function plannerContext(state: AppState, dates: ISODate[], today: ISODate) {
+  // Own dishes/products are candidates like catalog recipes (no-op when the state is unchanged).
+  syncPersonal(state);
   const first = dates[0]!;
   return {
     // Meals of this week are part of the score (context), so only stock that
