@@ -11,6 +11,7 @@ import { applyWeekChange, closeCompletedDays, dayContextFor, fillWeek, type Casc
 import { recordEvent } from '../domain/learning';
 import { productEntry, type EntryContent } from '../domain/foodEntry';
 import { dbFoodEntry, dishEntry, validateDish, type DishDraft } from '../domain/dishes';
+import { slotRepeat } from '../domain/repeatMeal';
 import type { DbFood } from '../data/foodDb';
 import { addWater } from '../domain/water';
 import { effectiveTimeBudget } from '../domain/timeBudget';
@@ -328,6 +329,25 @@ export function eatSuggestion(date: ISODate, slot: MealSlot, recipeId: string, s
   if (replaceMealId) return replaceWithRecipe(replaceMealId, recipeId, servings, true);
   // A fixed id per sheet: a second tap is refused by the cascade (no second meal, no double kcal).
   return applyChange({ type: 'addMeal', date, slot, recipeId, servings, eaten: true, ...(id ? { id } : {}) }).ok;
+}
+
+/**
+ * "Wie gestern": logs again what was eaten in `slot` on `fromDate`. If today's
+ * slot still has a planned meal, the first item takes its place (the plan
+ * meal is replaced, never counted twice); the rest is logged alongside.
+ * Returns false if there was nothing to repeat. Callers wrap it in ONE undo.
+ */
+export function repeatSlot(fromDate: ISODate, toDate: ISODate, slot: MealSlot): boolean {
+  const { items } = slotRepeat(getState(), fromDate, slot);
+  if (!items.length) return false;
+  let planned = getState().plannedMeals.find((m) => m.date === toDate && m.slot === slot && m.status === 'planned');
+  for (const item of items) {
+    if (item.kind === 'recipe') eatSuggestion(toDate, slot, item.recipeId, item.servings, planned?.id);
+    else if (planned) replaceWithEntry(planned.id, item.content);
+    else logEntry(toDate, slot, item.content);
+    planned = undefined;
+  }
+  return true;
 }
 
 // ---------- Water ----------

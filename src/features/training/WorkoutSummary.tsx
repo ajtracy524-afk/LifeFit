@@ -8,6 +8,8 @@ import { useAppState } from '../../store/store';
 import { Screen } from '../../components/Screen';
 import { Button, IconButton } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { CoachCard } from '../today/CoachCard';
+import { today } from '../../domain/dates';
 import { EmptyState } from '../../components/ui/Feedback';
 import styles from './training.module.css';
 
@@ -76,6 +78,9 @@ export function WorkoutSummary() {
           ))}
         </ul>
       </Card>
+
+      {/* Fitness → nutrition: right after training, what is still open today and meals that fit (same engine as Ernährung). */}
+      {justFinished && workout.date === today() && <CoachCard domains={['nutrition']} title="Nach dem Training" />}
 
       {justFinished ? (
         <Button block size="lg" onClick={() => navigate('today', undefined, { replace: true })}>

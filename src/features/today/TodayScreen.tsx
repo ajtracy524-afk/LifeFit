@@ -207,8 +207,9 @@ export function TodayScreen() {
       {/* The one next action of the day */}
       <NextActionCard action={action} onPlanWeek={setPlanningWeek} onStart={begin} onOpenMeal={(id) => openMealSheet(id)} onReplaceMeal={(id) => openMealSheet(id, true)} />
 
-      {/* Only safety notices belong on "Heute" – training hints live in Training, plan suggestions in Ernährung. */}
+      {/* Only safety notices belong on "Heute" – plus, once today's training is done, what to eat now (fitness → nutrition). */}
       <CoachCard domains={['safety']} />
+      {isCompletedOn(state.workouts, t) && <CoachCard domains={['nutrition']} title="Nach deinem Training" />}
 
       {/* The day as a timeline – meals and training in time order */}
       {weekHasMeals && (

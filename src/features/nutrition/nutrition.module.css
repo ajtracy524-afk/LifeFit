@@ -1510,3 +1510,61 @@
   transform: scale(0.85);
   transition-duration: 0.06s;
 }
+
+/* "Wie gestern": a known meal, one tap. */
+.suggestionRepeat {
+  background: var(--surface-2);
+  border-radius: 14px;
+  padding: 12px;
+  border-bottom: 0;
+  margin-bottom: 6px;
+}
+
+/* ---------- "Was kann ich kochen?" ---------- */
+.cookChoices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 38vh;
+  overflow-y: auto;
+  margin: 8px 0 12px;
+  padding-right: 2px;
+}
+
+.cookList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cookItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cookActions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.cookMissing {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.cookAll {
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.cookButton {
+  align-self: stretch;
+  min-height: 44px;
+}

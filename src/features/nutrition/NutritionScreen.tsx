@@ -32,6 +32,7 @@ import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { WaterControl } from './WaterControl';
 import { MicronutrientPanel } from './MicronutrientPanel';
 import { BudgetLine } from './BudgetLine';
+import { CookSheet } from './CookSheet';
 import { CalorieStatusBadge } from './CalorieStatusBadge';
 import styles from './nutrition.module.css';
 
@@ -102,6 +103,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
   const isFuture = date > today();
 
   const go = (d: ISODate) => navigate('nutrition', { view: 'day', date: d === today() ? undefined : d }, { replace: true });
+  const [cooking, setCooking] = useState(false);
 
   return (
     <>
@@ -152,6 +154,12 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
 
       {/* Plan suggestions for today – each one is a plan change (cascade), no tips. */}
       {date === today() && <CoachCard domains={['nutrition', 'shopping', 'body']} title="Vorschläge für deinen Plan" />}
+      {date === today() && (
+        <Button variant="secondary" icon="sparkle" className={styles.cookButton} onClick={() => setCooking(true)}>
+          Was kann ich kochen?
+        </Button>
+      )}
+      <CookSheet date={date} open={cooking} onClose={() => setCooking(false)} />
 
       {slots.map((slot) => {
         const slotMeals = meals.filter((m) => m.slot === slot);

@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import type { DbFood } from '../../data/foodDb';
 import { getFood } from '../../data/foods';
 import { getRecipe } from '../../data/recipes';
-import { today } from '../../domain/dates';
+import { addDays, today } from '../../domain/dates';
+import { slotRepeat } from '../../domain/repeatMeal';
 import { formatCostRange, priceLookup, recipeCostRange, type PriceLookup } from '../../domain/costs';
 import { explainMeal } from '../../domain/explain';
 import { dbFoodEntry, dbFoodMicros, dishEntry, dishPortionNutrition } from '../../domain/dishes';
@@ -12,7 +13,7 @@ import type { CustomDish, Food, ISODate, MealSlot, PlannedMeal, Product, Recipe 
 import { dayTargetFor, pantryEstimate, slotSuggestions } from '../../domain/week';
 import { fmt, formatGrams, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { newId } from '../../lib/id';
-import { eatSuggestion, logDbFood, logDish, logEntry, logFood, logProduct, markEaten } from '../../store/actions';
+import { eatSuggestion, logDbFood, logDish, logEntry, logFood, logProduct, markEaten, repeatSlot } from '../../store/actions';
 import { searchProducts } from '../../services/foodDatabase';
 import { getState, useAppState } from '../../store/store';
 import { Button } from '../../components/ui/Button';
@@ -212,6 +213,9 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
   const plannedRecipe = planned ? getRecipe(planned.recipeId) : undefined;
   // One id for this sheet: a double tap on a suggestion adds the meal once.
   const [mealId] = useState(newId);
+  // "Wie gestern": the same slot yesterday, as it was really eaten – one tap.
+  const yesterday = addDays(date, -1);
+  const again = useMemo(() => slotRepeat(state, yesterday, slot), [state.plannedMeals, state.logEntries, yesterday, slot]);
 
   return (
     <>
@@ -219,6 +223,23 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
         <p className={styles.openLine}>
           Heute noch offen: <strong>{fmt.kcal(open.kcal)}</strong> · <strong>{fmt.g(open.protein)} Protein</strong>
         </p>
+      )}
+      {again.items.length > 0 && (
+        <div className={`${styles.suggestion} ${styles.suggestionRepeat}`}>
+          <span className={styles.mealEmoji} aria-hidden>
+            ↺
+          </span>
+          <span className={styles.mealText}>
+            <span className={styles.mealLabel}>Wie gestern</span>
+            <span className={styles.mealTitle}>{again.items.map((i) => i.name).join(', ')}</span>
+            <span className={styles.mealMeta}>
+              {fmt.kcal(again.macros.kcal)} · {fmt.g(again.macros.protein)} Protein
+            </span>
+          </span>
+          <Button size="sm" icon="check" onClick={() => onDone('Wie gestern erfasst', () => repeatSlot(yesterday, date, slot), { macros: again.macros })}>
+            Übernehmen
+          </Button>
+        </div>
       )}
       {planned && plannedRecipe && (
         <div className={`${styles.suggestion} ${styles.suggestionPlanned}`}>

@@ -21,6 +21,8 @@ import type { AppState, Food, LogEntry } from '../types';
 export function entryIngredients(entry: LogEntry): { foodId: string; grams: number }[] {
   if (entry.fromPantry === false) return [];
   if (entry.foodId && entry.grams) return [{ foodId: entry.foodId, grams: entry.grams }];
+  // An own dish: its catalog-linked ingredients (unlinked ones have no pantry item).
+  if (entry.ingredients?.length) return entry.ingredients.filter((i) => i.foodId && i.grams > 0);
   if (entry.recipeId) {
     const recipe = getRecipe(entry.recipeId);
     const servings = entry.servings ?? 1;

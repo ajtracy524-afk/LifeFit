@@ -1639,3 +1639,79 @@ describe('gamification loop on Heute and Ernährung (action → reaction → pro
     expect(protein.textContent).toMatch(/Protein ✓170 \/ 160 g/);
   });
 });
+
+describe('must-haves: "Wie gestern", "Was kann ich kochen?", training → nutrition', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 7, 30)); // Tuesday 07:30
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const MON = '2026-09-21';
+  const TUE = '2026-09-22';
+
+  it('"Wie gestern": yesterday\'s breakfast in one tap – today\'s planned breakfast is replaced, not counted twice; undo restores all', async () => {
+    const yesterday = { id: 'y', date: MON, slot: 'breakfast', loggedAt: `${MON}T08:00:00Z`, name: 'Bananen', foodId: 'banana', grams: 120, method: 'food', macros: { kcal: 112, protein: 1.4, carbs: 24, fat: 0.2 } };
+    const planned = { id: 'p', date: TUE, slot: 'breakfast', recipeId: 'overnight-oats', servings: 1, status: 'planned', source: 'suggest' };
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: [planned], logEntries: [yesterday] }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Lebensmittel hinzufügen'); // breakfast, "Vorschlag" opens first
+    expect(text()).toMatch(/Wie gesternBananen112 kcal · 1 g Protein/);
+    await click('Übernehmen');
+    const s = store.getState();
+    expect(s.plannedMeals.find((m) => m.id === 'p')!.status).toBe('skipped');
+    const copy = s.logEntries.find((e) => e.date === TUE)!;
+    expect(copy).toMatchObject({ name: 'Bananen', foodId: 'banana', grams: 120, slot: 'breakfast', replacedMealId: 'p', macros: yesterday.macros });
+    expect(s.logEntries.filter((e) => e.date === TUE)).toHaveLength(1);
+    await click('Rückgängig');
+    expect(store.getState().logEntries.filter((e) => e.date === TUE)).toEqual([]);
+    expect(store.getState().plannedMeals.find((m) => m.id === 'p')!.status).toBe('planned');
+  });
+
+  it('"Was kann ich kochen?": the pantry is preselected, recipes come ranked, one tap plans it and the missing items go on the shopping list', async () => {
+    const at = `${MON}T08:00:00Z`;
+    const pantry = Object.fromEntries(['egg', 'spinach', 'feta', 'tomato', 'onion'].map((id) => [id, { foodId: id, quantityG: 400, updatedAt: at }]));
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), pantry }));
+    window.history.replaceState(null, '', '/#/nutrition');
+    const store = await startApp();
+    await click('Was kann ich kochen?');
+    const choices = container.querySelector('[aria-label="Zutaten zuhause"]')!;
+    // Exactly the pantry foods are preselected.
+    expect([...choices.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent).sort()).toEqual(['Blattspinat (TK)', 'Eier', 'Feta', 'Tomaten', 'Zwiebeln']);
+    const list = container.querySelector('[aria-label="Passende Rezepte"]')!;
+    const first = list.querySelector('li')!;
+    const title = first.querySelector('[class*="mealTitle"]')!.textContent!;
+    expect(first.textContent).toMatch(/Zutaten da|Alle Zutaten da ✓/);
+    await act(async () => [...first.querySelectorAll('button')].find((b) => b.textContent === 'Einplanen')!.click());
+    const recipe = (await import('./data/recipes')).RECIPES.find((r) => r.title === title)!;
+    const meal = store.getState().plannedMeals.find((m) => m.date === TUE && m.recipeId === recipe.id);
+    expect(meal).toBeDefined();
+    // Plan → shopping: what is not at home is on the list, what is at home is not bought again.
+    const { weekShopping } = await import('./domain/week');
+    const shopping = weekShopping(store.getState(), '2026-09-21', TUE).filter((i) => i.state === 'open').map((i) => i.foodId);
+    for (const ing of recipe.ingredients) if (!pantry[ing.foodId]) expect(shopping).toContain(ing.foodId);
+    expect(document.querySelector<HTMLElement>('[data-testid="celebration"]')!.textContent).toMatch(/Eingeplant/);
+  });
+
+  it('training done today → Heute shows what to eat now (same engine), before that it does not', async () => {
+    const plain = { ...completeState(), training: { programId: 'full-body', weekdays: [1, 3, 5] } };
+    localStorage.setItem(KEY, JSON.stringify(plain));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    expect(text()).not.toMatch(/Nach deinem Training/);
+    await act(async () => root?.unmount());
+    root = undefined;
+    const workout = { id: 'w', date: TUE, templateId: 'fb-a', name: 'Ganzkörper A', startedAt: `${TUE}T06:00:00Z`, endedAt: `${TUE}T07:00:00Z`, status: 'completed', exercises: [] };
+    localStorage.setItem(KEY, JSON.stringify({ ...plain, workouts: [workout] }));
+    await startApp();
+    expect(text()).toMatch(/Nach deinem Training/);
+    expect(text()).toMatch(/Heute fehlen noch [\d.]+ kcal und \d+ g Protein/);
+  });
+});
