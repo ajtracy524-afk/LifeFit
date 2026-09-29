@@ -4,6 +4,8 @@ import { DIFFICULTY_LABEL, EQUIPMENT_LABEL, MUSCLE_LABEL, TYPE_LABEL } from '../
 import { formatSet, lastSetsFor } from '../../domain/training';
 import { bestSet, exerciseHistory } from '../../domain/trainingHistory';
 import { useAppState } from '../../store/store';
+import { setExercisePreference } from '../../store/actions';
+import { Chip } from '../../components/ui/Controls';
 import { Sheet } from '../../components/ui/Sheet';
 import { BodyMap } from './BodyMap';
 import { MiniChart } from './MiniChart';
@@ -58,6 +60,8 @@ export function ExerciseSheet({ exerciseId, onClose, action }: Props) {
           </div>
 
           <p className={styles.detailLead}>{ex.description}</p>
+
+          {state.training && <PreferenceChips exerciseId={ex.id} />}
 
           {(last || best) && (
             <div className={styles.personal} role="group" aria-label="Deine Werte">
@@ -121,5 +125,25 @@ export function ExerciseSheet({ exerciseId, onClose, action }: Props) {
         </div>
       )}
     </Sheet>
+  );
+}
+
+/** "Mag ich" / "lieber nicht" / "nicht möglich" – used by replacements, the check-in and later the plan. */
+function PreferenceChips({ exerciseId }: { exerciseId: string }) {
+  const t = useAppState().training!;
+  const current = t.likedExercises?.includes(exerciseId) ? 'like' : t.dislikedExercises?.includes(exerciseId) ? 'dislike' : t.limitations?.excludedExercises.includes(exerciseId) ? 'exclude' : null;
+  const options = [
+    { value: 'like', label: 'Mag ich' },
+    { value: 'dislike', label: 'Lieber nicht' },
+    { value: 'exclude', label: 'Nicht möglich' },
+  ] as const;
+  return (
+    <div className={styles.prefs} role="group" aria-label="Deine Einstellung zu dieser Übung">
+      {options.map((o) => (
+        <Chip key={o.value} selected={current === o.value} onClick={() => setExercisePreference(exerciseId, current === o.value ? null : o.value)}>
+          {o.label}
+        </Chip>
+      ))}
+    </div>
   );
 }

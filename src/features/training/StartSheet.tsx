@@ -32,17 +32,21 @@ export function StartSheet({ template, onClose }: { template: WorkoutTemplate | 
 function StartSheetInner({ template, onClose }: { template: WorkoutTemplate; onClose: () => void }) {
   const state = useAppState();
   const planned = estimateMinutes(template);
-  const [minutes, setMinutes] = useState<number | undefined>(undefined);
+  // The usual session time from the profile – preselected only when the plan is clearly longer (a proposal follows, nothing is changed).
+  const usual = state.training?.sessionMinutes;
+  const [minutes, setMinutes] = useState<number | undefined>(usual && usual < planned - 2 ? usual : undefined);
   // Discomfort from the feedback of a session in the last 7 days is preselected – visible and removable.
   const carried = useMemo(() => {
     const last = state.workouts.filter((w) => w.status === 'completed' && w.date >= addDays(today(), -7)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
     return last?.feedback?.discomfort ?? [];
   }, []);
-  const [areas, setAreas] = useState<BodyArea[]>(carried);
+  // Lasting limitations from the profile, plus discomfort reported after a recent session – visible and removable.
+  const lasting = state.training?.limitations?.areas ?? [];
+  const [areas, setAreas] = useState<BodyArea[]>(() => [...new Set([...lasting, ...carried])]);
   const [energy, setEnergy] = useState<Energy | undefined>(undefined);
   const [decisions, setDecisions] = useState<Record<string, 'accepted' | 'skipped'>>({});
   const checkIn: SessionCheckIn = { ...(minutes ? { minutes } : {}), ...(areas.length ? { discomfort: areas } : {}), ...(energy ? { energy } : {}) };
-  const proposals = useMemo(() => proposeAdaptations(template, checkIn, { history: state.workouts, equipment: state.training?.equipment }), [template, minutes, areas, energy, state.workouts]);
+  const proposals = useMemo(() => proposeAdaptations(template, checkIn, { history: state.workouts, equipment: state.training?.equipment, setup: state.training }), [template, minutes, areas, energy, state.workouts]);
   const accepted = proposals.filter((p) => decisions[p.id] === 'accepted');
   const options = [...new Set([25, 35, 45, 60, 75, planned].filter((m) => m <= planned + 30))].sort((a, b) => a - b);
 
@@ -103,6 +107,7 @@ function StartSheetInner({ template, onClose }: { template: WorkoutTemplate; onC
             ))}
           </section>
         )}
+        {lasting.length > 0 && <p className={styles.note}>Dauerhafte Einschränkungen aus deinem Profil sind vorausgewählt.</p>}
         {carried.length > 0 && <p className={styles.note}>Beschwerden vom letzten Training übernommen – tipp auf „Keine“, wenn es wieder passt.</p>}
         {areas.length > 0 && <p className={styles.note}>{DISCOMFORT_NOTE}</p>}
       </div>

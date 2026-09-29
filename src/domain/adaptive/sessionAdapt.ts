@@ -1,7 +1,9 @@
 import { getExercise, loadsArea } from '../../data/exercises';
 import { alternativesFor } from '../exerciseLibrary';
-import { estimateMinutes, fitTemplateToTime, formatKg, isWorkSet } from '../training';
-import type { AppliedAdaptation, BodyArea, MuscleGroup, SessionCheckIn, TrainingEquipment, Workout, WorkoutTemplate } from '../types';
+import { effortText } from '../effort';
+import { isExcluded } from '../trainingProfile';
+import { estimateMinutes, fitTemplateToTime, isWorkSet } from '../training';
+import type { AppliedAdaptation, BodyArea, MuscleGroup, SessionCheckIn, TrainingEquipment, TrainingSetup, Workout, WorkoutTemplate } from '../types';
 
 /**
  * Before the session: what the user says today (time, discomfort, energy)
@@ -53,26 +55,38 @@ export function lastLoad(template: WorkoutTemplate, history: Workout[]): { hard:
   if (effort === 'hard' || effort === 'too_hard') return { hard: true, text: `Letztes Training war „${effort === 'hard' ? 'hart' : 'zu hart'}“` };
   const rpes = last.exercises.flatMap((e) => e.sets.filter(isWorkSet).map((s) => s.rpe)).filter((r): r is number => typeof r === 'number');
   const avg = rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : undefined;
-  if (avg !== undefined && avg >= HARD_RPE) return { hard: true, text: `Letztes Training war bei hoher Belastung (RPE ${formatKg(Math.round(avg * 10) / 10)})` };
+  if (avg !== undefined && avg >= HARD_RPE) return { hard: true, text: `Letztes Training war bei hoher Belastung (${effortText(avg)})` };
   return { hard: false };
 }
 
 const nameOf = (id: string) => getExercise(id)?.name ?? 'Übung';
 const isStrength = (id: string) => getExercise(id)?.type === 'strength';
 
-export function proposeAdaptations(template: WorkoutTemplate, input: SessionCheckIn, ctx: { history: Workout[]; equipment?: TrainingEquipment }): AdaptationProposal[] {
+export function proposeAdaptations(template: WorkoutTemplate, input: SessionCheckIn, ctx: { history: Workout[]; equipment?: TrainingEquipment; setup?: TrainingSetup | null }): AdaptationProposal[] {
   const out: AdaptationProposal[] = [];
   const areas = input.discomfort ?? [];
 
+  // 0. Exercises marked as "nicht möglich" in the profile: an alternative (or leave out).
+  template.exercises.forEach((e, index) => {
+    if (!isExcluded(ctx.setup, e.exerciseId)) return;
+    const alt = alternativesFor(e.exerciseId, ctx.setup ?? ctx.equipment)[0];
+    out.push(
+      alt
+        ? { id: `swap:${index}`, kind: 'swap', index, toExerciseId: alt.id, title: `${alt.name} statt ${nameOf(e.exerciseId)}`, reason: `Du hast ${nameOf(e.exerciseId)} in deinem Profil als „nicht möglich“ markiert.` }
+        : { id: `drop:${index}`, kind: 'drop', index, title: `${nameOf(e.exerciseId)} auslassen`, reason: `Du hast ${nameOf(e.exerciseId)} als „nicht möglich“ markiert – eine passende Alternative gibt es in der Bibliothek nicht.` },
+    );
+  });
+
   // 1. Discomfort: alternative or leave out – per exercise, the user decides.
   template.exercises.forEach((e, index) => {
+    if (out.some((p) => p.index === index)) return;
     const hit = areas.filter((a) => loadsArea(e.exerciseId, a));
     if (!hit.length) return;
     const where = hit.map((a) => AREA_LABEL[a]).join(' & ');
     // Same main muscle, no notable load on the area – and no alternative when the exercise targets that area itself (shoulder press with shoulder discomfort).
     const primary = getExercise(e.exerciseId)?.primary;
     const targetsArea = hit.some((area) => primary !== undefined && AREA_TARGET[area].includes(primary));
-    const alt = targetsArea ? undefined : alternativesFor(e.exerciseId, ctx.equipment).find((a) => a.primary === primary && !areas.some((area) => loadsArea(a.id, area)));
+    const alt = targetsArea ? undefined : alternativesFor(e.exerciseId, ctx.setup ?? ctx.equipment).find((a) => a.primary === primary && !areas.some((area) => loadsArea(a.id, area)));
     out.push(
       alt
         ? {

@@ -4,7 +4,9 @@ import { programsFor, recommendationReason, recommendProgram } from '../../domai
 import { today } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
 import { slotsFor } from '../../domain/planner';
-import type { ActivityLevel, Allergen, DietType, Experience, GoalType, MealStyle, Sex, TrainingEquipment } from '../../domain/types';
+import type { ActivityLevel, Allergen, DietType, EquipmentItem, GoalType, MealStyle, Sex, TrainingEquipment } from '../../domain/types';
+import { DEFAULT_ITEMS, defaultFocus, experienceFrom } from '../../domain/trainingProfile';
+import { EquipmentItemsField, TrainingProfileFields, type TrainingProfileDraft } from '../training/TrainingProfileFields';
 import { fmt } from '../../lib/format';
 import { navigate } from '../../lib/router';
 import { showToast } from '../../lib/toast';
@@ -35,24 +37,41 @@ interface BodyForm {
   height: string;
   weight: string;
   targetWeight: string;
+  /** Optional, in %; an estimate is stored as such (shown as a range). */
+  bodyFat: string;
+  bodyFatEstimate: boolean;
 }
 
 export function Onboarding() {
   const [step, setStep] = useState<Step>('welcome');
   const [goal, setGoal] = useState<GoalType>('muscle_gain');
-  const [body, setBody] = useState<BodyForm>({ name: '', sex: 'male', age: '', height: '', weight: '', targetWeight: '' });
+  const [body, setBody] = useState<BodyForm>({ name: '', sex: 'male', age: '', height: '', weight: '', targetWeight: '', bodyFat: '', bodyFatEstimate: false });
   const [errors, setErrors] = useState<Partial<Record<keyof BodyForm, string>>>({});
   const [activity, setActivity] = useState<ActivityLevel>('sedentary');
   const [weekdays, setWeekdays] = useState<number[]>(DEFAULT_DAYS[3]!);
-  const [experience, setExperience] = useState<Experience>('beginner');
+  const [tp, setTp] = useState<TrainingProfileDraft>({ trainingYears: 0, freeWeights: 'some', focus: defaultFocus('muscle_gain'), musclePriorities: [], limitationAreas: [] });
+  // The level follows from training age and free-weight skill (one source: domain/trainingProfile).
+  const experience = experienceFrom(tp.trainingYears, tp.freeWeights);
   const [diet, setDiet] = useState<DietType>('omnivore');
   const [excluded, setExcluded] = useState<Allergen[]>([]);
   const [mealsPerDay, setMealsPerDay] = useState<'3' | '4'>('4');
   const [tastes, setTastes] = useState<{ favorites: string[]; avoided: string[] }>({ favorites: [], avoided: [] });
   const [mealStyle, setMealStyle] = useState<MealStyle | null>(null);
   const [programId, setProgramId] = useState<string | null>(null);
-  const [equipment, setEquipment] = useState<TrainingEquipment>('gym');
+  const [equipment, setEquipmentProfile] = useState<TrainingEquipment>('gym');
+  const [items, setItems] = useState<EquipmentItem[]>(DEFAULT_ITEMS.gym);
+  const setEquipment = (v: TrainingEquipment) => {
+    setEquipmentProfile(v);
+    setItems(DEFAULT_ITEMS[v]);
+  };
   const [adjust, setAdjust] = useState({ kcal: 0, protein: 0 });
+
+  // The focus proposal follows the goal (the training step comes later and can change it).
+  const pickGoal = (g: GoalType) => {
+    setGoal(g);
+    setTp((t) => ({ ...t, focus: defaultFocus(g) }));
+  };
+  const bodyFat = body.bodyFat.trim() && parseNumber(body.bodyFat) >= 3 && parseNumber(body.bodyFat) <= 60 ? { value: parseNumber(body.bodyFat), method: body.bodyFatEstimate ? ('estimate' as const) : ('measured' as const) } : undefined;
 
   const index = STEPS.indexOf(step);
   // Block body on purpose: newer browsers return a Promise from scrollTo(),
@@ -99,6 +118,7 @@ export function Onboarding() {
     if (!Number.isFinite(age) || age < 14 || age > 100) e.age = 'Bitte gib ein Alter zwischen 14 und 100 an.';
     if (!Number.isFinite(height) || height < 120 || height > 230) e.height = 'Bitte gib deine Größe in cm an (120–230).';
     if (!Number.isFinite(weight) || weight < 30 || weight > 300) e.weight = 'Bitte gib dein Gewicht in kg an (30–300).';
+    if (body.bodyFat.trim() && !(parseNumber(body.bodyFat) >= 3 && parseNumber(body.bodyFat) <= 60)) e.bodyFat = 'Bitte einen Wert zwischen 3 und 60 % angeben – oder leer lassen.';
     if (target !== undefined) {
       if (!Number.isFinite(target) || target < 30 || target > 300) e.targetWeight = 'Bitte prüfe dein Zielgewicht.';
       else if (goal === 'muscle_gain' && target <= weight) e.targetWeight = 'Für Muskelaufbau sollte das Ziel über deinem Gewicht liegen.';
@@ -129,7 +149,7 @@ export function Onboarding() {
             experience,
             createdAt: new Date().toISOString(),
           },
-          goal: { type: goal, startWeightKg: weight, targetWeightKg: goal === 'maintain' ? undefined : target, startedAt: today() },
+          goal: { type: goal, startWeightKg: weight, targetWeightKg: goal === 'maintain' || goal === 'recomp' ? undefined : target, startedAt: today() },
           nutritionProfile: {
             diet,
             excluded,
@@ -138,7 +158,20 @@ export function Onboarding() {
             avoided: tastes.avoided,
             mealStyle: effectiveStyle,
           },
-          training: { programId: effectiveProgram, weekdays: [...weekdays].sort((a, b) => a - b), equipment, startedAt: today() },
+          training: {
+            programId: effectiveProgram,
+            weekdays: [...weekdays].sort((a, b) => a - b),
+            equipment,
+            startedAt: today(),
+            trainingYears: tp.trainingYears,
+            freeWeights: tp.freeWeights,
+            ...(tp.sessionMinutes ? { sessionMinutes: tp.sessionMinutes } : {}),
+            equipmentItems: items,
+            focus: tp.focus,
+            ...(tp.musclePriorities.length ? { musclePriorities: tp.musclePriorities } : {}),
+            ...(tp.limitationAreas.length ? { limitations: { areas: tp.limitationAreas, excludedExercises: [] } } : {}),
+          },
+          ...(bodyFat ? { bodyFat } : {}),
           target: finalTarget,
           weightKg: weight,
         });
@@ -209,9 +242,10 @@ export function Onboarding() {
           <>
             <StepTitle title="Was ist dein Ziel?" text="Danach richten wir Kalorien, Protein und Training aus." />
             <div className={styles.stack}>
-              <OptionCard emoji="💪" title="Muskelaufbau" description="Stärker werden, sauber zunehmen" selected={goal === 'muscle_gain'} onClick={() => setGoal('muscle_gain')} />
-              <OptionCard emoji="🔥" title="Fett verlieren" description="Abnehmen und Muskeln erhalten" selected={goal === 'fat_loss'} onClick={() => setGoal('fat_loss')} />
-              <OptionCard emoji="⚖️" title="Fit bleiben" description="Gewicht halten, fitter werden" selected={goal === 'maintain'} onClick={() => setGoal('maintain')} />
+              <OptionCard emoji="💪" title="Muskelaufbau" description="Stärker werden, sauber zunehmen" selected={goal === 'muscle_gain'} onClick={() => pickGoal('muscle_gain')} />
+              <OptionCard emoji="🔥" title="Fett verlieren" description="Abnehmen und Muskeln erhalten" selected={goal === 'fat_loss'} onClick={() => pickGoal('fat_loss')} />
+              <OptionCard emoji="🔄" title="Recomposition" description="Muskeln aufbauen und Fett verlieren – Gewicht bleibt etwa gleich" selected={goal === 'recomp'} onClick={() => pickGoal('recomp')} />
+              <OptionCard emoji="⚖️" title="Fit bleiben" description="Gewicht halten, fitter werden" selected={goal === 'maintain'} onClick={() => pickGoal('maintain')} />
             </div>
           </>
         )}
@@ -239,7 +273,7 @@ export function Onboarding() {
               </div>
               <div className={styles.row}>
                 <Field label="Gewicht" inputMode="decimal" suffix="kg" value={body.weight} error={errors.weight} onChange={(e) => setBody({ ...body, weight: e.target.value })} />
-                {goal !== 'maintain' && (
+                {goal !== 'maintain' && goal !== 'recomp' && (
                   <Field
                     label="Zielgewicht"
                     inputMode="decimal"
@@ -251,6 +285,21 @@ export function Onboarding() {
                   />
                 )}
               </div>
+              <Field
+                label="Körperfett (optional)"
+                inputMode="decimal"
+                suffix="%"
+                placeholder="leer lassen, wenn unbekannt"
+                value={body.bodyFat}
+                error={errors.bodyFat}
+                hint={body.bodyFatEstimate ? 'Grobe Schätzung – LifeFit zeigt dafür nur einen Bereich an.' : 'Z. B. aus einer Messung (Waage, Caliper, DEXA).'}
+                onChange={(e) => setBody({ ...body, bodyFat: e.target.value })}
+              />
+              {body.bodyFat.trim() && (
+                <Chip selected={body.bodyFatEstimate} onClick={() => setBody({ ...body, bodyFatEstimate: !body.bodyFatEstimate })}>
+                  Nur geschätzt
+                </Chip>
+              )}
               <p className={styles.privacy}>🔒 Deine Daten bleiben auf diesem Gerät und werden nicht geteilt.</p>
             </div>
           </>
@@ -276,16 +325,7 @@ export function Onboarding() {
               </div>
               <p className={styles.label}>An welchen Tagen?</p>
               <WeekdayPicker value={weekdays} onChange={setWeekdays} />
-              <p className={styles.label}>Erfahrung im Krafttraining</p>
-              <Segmented
-                label="Erfahrung"
-                value={experience}
-                onChange={setExperience}
-                options={[
-                  { value: 'beginner', label: 'Unter 1 Jahr' },
-                  { value: 'intermediate', label: '1 Jahr oder mehr' },
-                ]}
-              />
+              <TrainingProfileFields value={tp} onChange={setTp} />
             </div>
           </>
         )}
@@ -354,6 +394,7 @@ export function Onboarding() {
                   { value: 'bodyweight', label: 'Ohne Geräte' },
                 ]}
               />
+              <EquipmentItemsField items={items} onChange={setItems} />
               {programsFor(equipment).map((p) => (
                 <OptionCard
                   key={p.id}
@@ -511,5 +552,6 @@ function StepTitle({ title, text }: { title: string; text?: string }) {
 function resultText(goal: GoalType): string {
   if (goal === 'muscle_gain') return 'Ein leichter Überschuss für sauberen Muskelaufbau – mit viel Protein.';
   if (goal === 'fat_loss') return 'Ein moderates Defizit, damit du Fett verlierst und Muskeln behältst.';
+  if (goal === 'recomp') return 'Knapp unter deinem Verbrauch und viel Protein – Muskeln kommen aus dem Training, Fett geht langsam.';
   return 'So viel, wie du verbrauchst – mit genug Protein für dein Training.';
 }

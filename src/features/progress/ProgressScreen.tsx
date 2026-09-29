@@ -24,6 +24,7 @@ const GOAL_LABEL: Record<GoalType, string> = {
   muscle_gain: 'Muskelaufbau',
   fat_loss: 'Fett verlieren',
   maintain: 'Fit bleiben',
+  recomp: 'Recomposition',
 };
 
 type Range = '28' | '90' | 'all';

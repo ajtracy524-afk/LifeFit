@@ -1040,3 +1040,48 @@
   gap: 4px;
   color: var(--text-2);
 }
+
+/* ---------- Training profile fields ---------- */
+.profileFields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* RIR right after a set, inside the rest timer – optional, one tap. */
+.restRir {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.rirRow {
+  display: flex;
+  gap: 6px;
+}
+
+.rir,
+.rirActive {
+  position: relative;
+  min-width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 12%);
+  font-weight: 700;
+}
+
+.rir::after,
+.rirActive::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+}
+
+.rirActive {
+  background: var(--accent);
+  color: var(--on-accent);
+}

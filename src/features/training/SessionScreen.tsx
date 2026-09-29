@@ -6,6 +6,7 @@ import { bestSet } from '../../domain/trainingHistory';
 import { exerciseBests, recordText, setRecord, volumeRecord } from '../../domain/workoutRecords';
 import type { BodyArea, Effort, SetType, Workout, WorkoutExercise, WorkoutSet } from '../../domain/types';
 import { changeLabel } from '../../domain/adaptive/progression';
+import { RIR_OPTIONS, rirChoice, rirLabel, rpeFromRir } from '../../domain/effort';
 import { AREA_LABEL, DISCOMFORT_NOTE } from '../../domain/adaptive/sessionAdapt';
 import { Chip, parseNumber } from '../../components/ui/Controls';
 import { celebrate } from '../../lib/celebrate';
@@ -38,7 +39,6 @@ import { ExerciseSheet } from './ExerciseSheet';
 import { useNow, useWakeLock } from './hooks';
 import styles from './training.module.css';
 
-const RPE_WORD: Record<number, string> = { 6: 'leicht', 8: 'fordernd', 10: 'maximal' };
 const EFFORT: Array<{ value: Effort; label: string }> = [
   { value: 'easy', label: 'Leicht' },
   { value: 'ok', label: 'Passend' },
@@ -49,6 +49,8 @@ const EFFORT: Array<{ value: Effort; label: string }> = [
 interface Rest {
   endsAt: number;
   total: number;
+  /** The set just finished – its RIR can be tapped right in the timer. */
+  set?: { exerciseEntryId: string; setId: string };
   /** "Bankdrücken · Satz 2 · 80 kg × 8" – what comes after the rest. */
   next?: string;
 }
@@ -95,7 +97,6 @@ export function SessionScreen() {
   const total = open.length;
   const done = completedSetCount(workout);
   const elapsed = (now - new Date(workout.startedAt).getTime()) / 1000;
-  const equipment = state.training?.equipment;
   const menuExercise = workout.exercises.find((e) => e.id === exMenu);
   const menuSet = setMenu ? workout.exercises.find((e) => e.id === setMenu.exerciseEntryId)?.sets.find((s) => s.id === setMenu.setId) : undefined;
   const replacing = picker?.mode === 'replace' ? workout.exercises.find((e) => e.id === picker.exerciseEntryId) : undefined;
@@ -108,7 +109,12 @@ export function SessionScreen() {
     // Superset: straight to the next exercise of the group, the rest comes after the last one.
     const group = exercise.supersetGroup ? workout.exercises.filter((e) => e.supersetGroup === exercise.supersetGroup && !e.skipped) : [];
     if (group.length > 1 && group[group.length - 1]!.id !== exercise.id) return setRest(null);
-    setRest({ endsAt: Date.now() + exercise.restSec * 1000, total: exercise.restSec, next: nextSetText(getState().workouts.find((w) => w.id === workout.id) ?? workout) });
+    setRest({
+      endsAt: Date.now() + exercise.restSec * 1000,
+      total: exercise.restSec,
+      next: nextSetText(getState().workouts.find((w) => w.id === workout.id) ?? workout),
+      ...(isTimed(exercise.exerciseId) ? {} : { set: { exerciseEntryId: exercise.id, setId: set.id } }),
+    });
   };
 
   const finish = () => {
@@ -176,7 +182,15 @@ export function SessionScreen() {
         </Button>
       </div>
 
-      {rest && <RestTimer rest={rest} now={now} onChange={setRest} />}
+      {rest && (
+        <RestTimer
+          rest={rest}
+          now={now}
+          onChange={setRest}
+          rpe={rest.set ? workout.exercises.find((e) => e.id === rest.set!.exerciseEntryId)?.sets.find((s) => s.id === rest.set!.setId)?.rpe : undefined}
+          onRir={rest.set ? (rpe) => setSetRpe(workout.id, rest.set!.exerciseEntryId, rest.set!.setId, rpe) : undefined}
+        />
+      )}
 
       {/* Set options: type, skip, remove. */}
       <Sheet open={!!menuSet} onClose={() => setSetMenu(null)} title="Satz" subtitle={menuSet ? formatSet(menuSet) : undefined}>
@@ -202,15 +216,9 @@ export function SessionScreen() {
               ))}
             </div>
             <p className={styles.muted}>Aufwärmsätze zählen nicht fürs Volumen und nicht für Rekorde.</p>
-            <p className={styles.planLabel}>Anstrengung (RPE, optional)</p>
-            <div className={styles.planDays} role="group" aria-label="RPE">
-              {[6, 7, 8, 9, 10].map((r) => (
-                <Chip key={r} selected={menuSet.rpe === r} onClick={() => setSetRpe(workout.id, setMenu.exerciseEntryId, setMenu.setId, menuSet.rpe === r ? null : r)}>
-                  {`${r}${RPE_WORD[r] ? ` · ${RPE_WORD[r]}` : ''}`}
-                </Chip>
-              ))}
-            </div>
-            <p className={styles.muted}>10 = nichts mehr drin, 8 = noch 2 Wiederholungen möglich. Hilft bei den nächsten Vorschlägen.</p>
+            <p className={styles.planLabel}>Wie viele Wiederholungen wären noch gegangen? (RIR, optional)</p>
+            <RirChips rpe={menuSet.rpe} onPick={(rpe) => setSetRpe(workout.id, setMenu.exerciseEntryId, setMenu.setId, rpe)} />
+            <p className={styles.muted}>0 = nichts mehr drin, 2 = noch zwei Wiederholungen möglich. Hilft bei den nächsten Vorschlägen.</p>
             <Button
               variant="secondary"
               block
@@ -271,7 +279,7 @@ export function SessionScreen() {
           replacing && (
             <div className={styles.alternatives}>
               <p className={styles.planLabel}>Trainiert dasselbe</p>
-              {alternativesFor(replacing.exerciseId, equipment)
+              {alternativesFor(replacing.exerciseId, state.training)
                 .slice(0, 4)
                 .map((a) => (
                   <button
@@ -629,7 +637,27 @@ function NumberCell({ value, placeholder, label, integer, disabled, onCommit }: 
 // ---------------------------------------------------------------------------
 
 /** Starts by itself after a set; −30 / +30 s adjust it, "Überspringen" ends it. */
-function RestTimer({ rest, now, onChange }: { rest: Rest; now: number; onChange: (r: Rest | null) => void }) {
+/** RIR 0 / 1 / 2 / 3 / 4+ – stored as RPE (domain/effort.ts); tapping the chosen one again clears it. */
+function RirChips({ rpe, onPick, compact }: { rpe: number | undefined; onPick: (rpe: number | null) => void; compact?: boolean }) {
+  const chosen = rirChoice(rpe);
+  return (
+    <div className={compact ? styles.rirRow : styles.planDays} role="group" aria-label="Wiederholungen in Reserve">
+      {RIR_OPTIONS.map((r) =>
+        compact ? (
+          <button key={r} type="button" className={chosen === r ? styles.rirActive : styles.rir} aria-pressed={chosen === r} aria-label={`RIR ${rirLabel(r)}`} onClick={() => onPick(chosen === r ? null : rpeFromRir(r))}>
+            {rirLabel(r)}
+          </button>
+        ) : (
+          <Chip key={r} selected={chosen === r} onClick={() => onPick(chosen === r ? null : rpeFromRir(r))}>
+            {rirLabel(r)}
+          </Chip>
+        ),
+      )}
+    </div>
+  );
+}
+
+function RestTimer({ rest, now, onChange, rpe, onRir }: { rest: Rest; now: number; onChange: (r: Rest | null) => void; rpe?: number; onRir?: (rpe: number | null) => void }) {
   // `now` ticks once per second and can be up to 1 s old when the set is ticked – never show more than the rest itself.
   const remaining = Math.min(rest.total, Math.ceil((rest.endsAt - now) / 1000));
   const over = remaining <= 0;
@@ -652,6 +680,12 @@ function RestTimer({ rest, now, onChange }: { rest: Rest; now: number; onChange:
         <span className={styles.restLabel}>{over ? 'Pause vorbei – weiter geht’s' : 'Pause'}</span>
         {rest.next && <span className={styles.restNext}>Als Nächstes: {rest.next}</span>}
       </div>
+      {onRir && !over && (
+        <div className={styles.restRir}>
+          <span>Wie viele wären noch gegangen?</span>
+          <RirChips rpe={rpe} onPick={onRir} compact />
+        </div>
+      )}
       <div className={styles.restControls}>
         {!over && <strong className={styles.restTime}>{formatClock(remaining)}</strong>}
         {!over && (

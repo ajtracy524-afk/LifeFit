@@ -57,7 +57,7 @@ export const TRAINING_RULES = {
   /** Hours a primary region should rest before the next hard session. */
   recoveryDays: 1,
   /** Upper weekly set volume per region (general hypertrophy guidance). */
-  weeklyCap: { beginner: 14, intermediate: 20 } satisfies Record<Experience, number>,
+  weeklyCap: { beginner: 14, intermediate: 20, advanced: 22 } satisfies Record<Experience, number>,
   /** Legs and arms bundle several muscles – higher cap. */
   regionFactor: { legs: 1.5, arms: 1.2, core: 0.8, chest: 1, back: 1, shoulders: 1 } satisfies Record<Region, number>,
   /** Stall: no e1RM progress over this many sessions … */

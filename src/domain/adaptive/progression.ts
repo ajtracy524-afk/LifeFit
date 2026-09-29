@@ -1,5 +1,6 @@
 import { getExercise } from '../../data/exercises';
 import { daysBetween } from '../dates';
+import { effortText } from '../effort';
 import { formatKg, isTimed, isWorkSet, weightStep } from '../training';
 import type { Prescription, TemplateExercise, Workout, WorkoutSet } from '../types';
 
@@ -69,7 +70,8 @@ export function exerciseSessions(history: Workout[], exerciseId: string): Exerci
 
 const roundTo = (kg: number, step: number) => Math.round(kg / step) * step;
 const repsText = (sets: WorkoutSet[]) => sets.map((s) => s.reps ?? 0).join(' / ');
-const rpeText = (rpe: number) => `RPE ${formatKg(rpe)}`;
+/** Shown as RIR (stored as RPE – see domain/effort.ts). */
+const rpeText = (rpe: number) => effortText(rpe);
 
 export interface PrescriptionResult extends Prescription {
   /** Target per set (same weight, reps may differ). */

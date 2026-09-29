@@ -155,7 +155,8 @@ export function calculateTargets(
   const factor = ACTIVITY_BASE[profile.activity] + 0.04 * trainingDaysPerWeek;
   const tdee = bmr * factor;
 
-  const goalFactor = goalType === 'muscle_gain' ? 1.1 : goalType === 'fat_loss' ? 0.8 : 1;
+  // Recomposition: close to maintenance, slightly below – muscle is built from training and protein, fat is lost slowly.
+  const goalFactor = goalType === 'muscle_gain' ? 1.1 : goalType === 'fat_loss' ? 0.8 : goalType === 'recomp' ? 0.95 : 1;
   const kcal = Math.round(Math.max(tdee * goalFactor, calorieFloor(profile, weightKg)) / 10) * 10;
 
   const proteinPerKg = goalType === 'maintain' ? 1.8 : 2;

@@ -1,5 +1,6 @@
 import { EXERCISES, getExercise } from '../data/exercises';
-import type { Difficulty, Equipment, Exercise, ExerciseType, MuscleGroup, SetType, TrainingEquipment } from './types';
+import { availableEquipment, isExcluded, preferenceRank } from './trainingProfile';
+import type { Difficulty, Equipment, Exercise, ExerciseType, MuscleGroup, SetType, TrainingEquipment, TrainingSetup } from './types';
 
 /** Labels and filters of the exercise library – one place for every screen (library, picker, detail). */
 
@@ -82,24 +83,23 @@ export function filterExercises(filter: ExerciseFilter, list: Exercise[] = EXERC
   return hits.sort((a, b) => primary(a) - primary(b));
 }
 
-/** Equipment available with the training setup – gym has everything. */
-const AVAILABLE: Record<TrainingEquipment, Equipment[] | undefined> = {
-  gym: undefined,
-  home: ['dumbbell', 'bodyweight', 'band', 'kettlebell'],
-  bodyweight: ['bodyweight', 'band'],
-};
+type Profile = Pick<TrainingSetup, 'equipment' | 'equipmentItems' | 'limitations' | 'likedExercises' | 'dislikedExercises'>;
 
 /**
  * Replacements for an exercise: its curated alternatives first, then other
  * exercises with the same primary muscle and type – filtered to what the
- * user can train with. Never the exercise itself.
+ * user can train with (single items or the gym / home profile), never an
+ * exercise marked as not possible; liked ones first, disliked ones last.
+ * Never the exercise itself.
  */
-export function alternativesFor(exerciseId: string, equipment: TrainingEquipment = 'gym'): Exercise[] {
+export function alternativesFor(exerciseId: string, profile: TrainingEquipment | Profile | null | undefined = 'gym'): Exercise[] {
   const ex = getExercise(exerciseId);
   if (!ex) return [];
-  const allowed = AVAILABLE[equipment];
-  const ok = (e: Exercise) => e.id !== exerciseId && (!allowed || allowed.includes(e.equipment));
+  const setup: Profile | undefined = typeof profile === 'string' ? { equipment: profile } : (profile ?? undefined);
+  const allowed = availableEquipment(setup);
+  const ok = (e: Exercise) => e.id !== exerciseId && (!allowed || allowed.includes(e.equipment)) && !isExcluded(setup, e.id);
   const curated = ex.alternatives.map((id) => getExercise(id)).filter((e): e is Exercise => !!e && ok(e));
   const similar = EXERCISES.filter((e) => ok(e) && e.type === ex.type && e.primary === ex.primary && !curated.includes(e));
-  return [...curated, ...similar];
+  // Stable: within the same preference the curated order stays.
+  return [...curated, ...similar].map((e, i) => ({ e, i })).sort((x, y) => preferenceRank(setup, x.e.id) - preferenceRank(setup, y.e.id) || x.i - y.i).map(({ e }) => e);
 }

@@ -1,4 +1,5 @@
 import { getExercise } from '../data/exercises';
+import { effortText } from './effort';
 import { estimateOneRepMax, exerciseVolume, formatKg, formatSet, isWorkSet } from './training';
 import type { ISODate, Workout, WorkoutExercise } from './types';
 
@@ -54,7 +55,8 @@ export function plannedText(p: NonNullable<WorkoutExercise['planned']>): string 
 /** What was planned for an exercise and what really happened – deviations are information, not errors. */
 export function planVsActual(ex: WorkoutExercise): PlanVsActual {
   const done = ex.sets.filter(isWorkSet);
-  const actual = done.map((s) => (s.durationMin ? formatSet(s) : s.weightKg ? `${s.reps ?? 0} @ ${formatKg(s.weightKg)}` : `${s.reps ?? 0} Wdh.`)).join(' · ');
+  const rir = (s: (typeof done)[number]) => (s.rpe !== undefined ? ` (${effortText(s.rpe)})` : '');
+  const actual = done.map((s) => (s.durationMin ? formatSet(s) : s.weightKg ? `${s.reps ?? 0} @ ${formatKg(s.weightKg)}${rir(s)}` : `${s.reps ?? 0} Wdh.${rir(s)}`)).join(' · ');
   const planned = ex.planned ? plannedText(ex.planned) : undefined;
   const base = { actual, ...(planned ? { planned } : {}) };
   if (ex.extra) return { ...base, status: 'extra' };

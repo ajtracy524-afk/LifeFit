@@ -9,6 +9,7 @@ import { calculateTargets, foodMacros, logFromMeal, roundMacros, scaleMicros } f
 import { activeWorkouts, createWorkout, detectRecords, lastSetsFor, workoutExercise, workoutVolume } from '../domain/training';
 import { workoutAchievements } from '../domain/adaptive/achievements';
 import { TOPIC_RULES } from '../domain/engine/topics';
+import { experienceFrom } from '../domain/trainingProfile';
 import { applyWeekChange, closeCompletedDays, dayContextFor, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
 import { recordEvent } from '../domain/learning';
 import { productEntry, type EntryContent } from '../domain/foodEntry';
@@ -31,6 +32,7 @@ import type {
   Product,
   Profile,
   AppliedAdaptation,
+  MeasurementEntry,
   Routine,
   SessionCheckIn,
   SetType,
@@ -53,6 +55,7 @@ export interface OnboardingResult {
   training: TrainingSetup;
   target: Macros;
   weightKg: number;
+  bodyFat?: { value: number; method: 'measured' | 'estimate' };
 }
 
 export function completeOnboarding(input: OnboardingResult): void {
@@ -65,6 +68,7 @@ export function completeOnboarding(input: OnboardingResult): void {
     // Existing data (e.g. from an incomplete earlier setup) is kept; for a new user these lists are empty.
     s.targets = [...s.targets.filter((x) => x.validFrom !== t), { id: newId(), validFrom: t, method: 'formula', ...input.target }];
     s.weights = [...s.weights.filter((w) => w.date !== t), { id: newId(), date: t, kg: input.weightKg }];
+    if (input.bodyFat) s.measurements = [...(s.measurements ?? []).filter((m) => !(m.kind === 'body_fat' && m.date === t)), { id: newId(), date: t, kind: 'body_fat', value: Math.round(input.bodyFat.value * 10) / 10, method: input.bodyFat.method }];
     // Same central planner as "Woche vorschlagen" and the weekly check-in.
     fillWeek(s, weekStart(t), t);
   });
@@ -806,11 +810,46 @@ export function updateTraining(setup: TrainingSetup): void {
   update((s) => {
     const prev = s.training;
     const changedProgram = !prev || prev.programId !== setup.programId;
+    // The training profile (equipment, limitations, preferences …) stays; week overrides of the check-in are reset as before.
+    const { weekOverrides: _overrides, ...kept } = prev ?? ({} as Partial<TrainingSetup>);
     s.training = {
-      ...(prev?.equipment ? { equipment: prev.equipment } : {}),
+      ...kept,
       ...setup,
       startedAt: setup.startedAt ?? (changedProgram ? today() : (prev?.startedAt ?? today())),
-    };
+    } as TrainingSetup;
+  });
+}
+
+/** Fields of the extended training profile – merged into the setup; the level follows from training age and skill. */
+export type TrainingProfilePatch = Partial<Pick<TrainingSetup, 'trainingYears' | 'freeWeights' | 'sessionMinutes' | 'equipment' | 'equipmentItems' | 'limitations' | 'likedExercises' | 'dislikedExercises' | 'focus' | 'musclePriorities'>>;
+
+export function updateTrainingProfile(patch: TrainingProfilePatch): void {
+  update((s) => {
+    if (!s.training) return;
+    s.training = { ...s.training, ...patch };
+    if (s.profile && ('trainingYears' in patch || 'freeWeights' in patch)) s.profile.experience = experienceFrom(s.training.trainingYears, s.training.freeWeights);
+  });
+}
+
+/** "Mag ich" / "lieber nicht" / "nicht möglich" for an exercise – one state per exercise, null clears it. */
+export function setExercisePreference(exerciseId: string, pref: 'like' | 'dislike' | 'exclude' | null): void {
+  update((s) => {
+    if (!s.training) return;
+    const without = (list?: string[]) => (list ?? []).filter((id) => id !== exerciseId);
+    const limitations = s.training.limitations ?? { areas: [], excludedExercises: [] };
+    s.training.likedExercises = pref === 'like' ? [...without(s.training.likedExercises), exerciseId] : without(s.training.likedExercises);
+    s.training.dislikedExercises = pref === 'dislike' ? [...without(s.training.dislikedExercises), exerciseId] : without(s.training.dislikedExercises);
+    s.training.limitations = { ...limitations, excludedExercises: pref === 'exclude' ? [...without(limitations.excludedExercises), exerciseId] : without(limitations.excludedExercises) };
+  });
+}
+
+/** A body measurement (body fat now). An estimate is stored as such and shown as a range. */
+export function addMeasurement(entry: Omit<MeasurementEntry, 'id'>): void {
+  if (!(entry.value > 0) || (entry.kind === 'body_fat' && (entry.value < 3 || entry.value > 60))) return;
+  update((s) => {
+    s.measurements ??= [];
+    s.measurements = s.measurements.filter((m) => !(m.kind === entry.kind && m.date === entry.date));
+    s.measurements.push({ ...entry, id: newId(), value: Math.round(entry.value * 10) / 10 });
   });
 }
 

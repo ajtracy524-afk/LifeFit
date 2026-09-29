@@ -318,3 +318,9 @@
   font-size: 10px;
   fill: var(--text-3);
 }
+
+.prefs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

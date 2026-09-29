@@ -2424,7 +2424,7 @@ describe('adaptive training (UI)', () => {
     expect(container.textContent).toMatch(/Heute angepasst: Kompakte Variante · ~25 min/);
   });
 
-  it('suggestion per exercise: reason visible; "Wie letztes Mal" declines it, "Übernehmen" keeps it; RPE is stored', async () => {
+  it('suggestion per exercise: reason visible; "Wie letztes Mal" declines it, "Übernehmen" keeps it; RIR is stored (as RPE, one field)', async () => {
     localStorage.setItem(KEY, JSON.stringify(setup()));
     window.history.replaceState(null, '', '/#/training');
     const store = await startApp();
@@ -2445,10 +2445,16 @@ describe('adaptive training (UI)', () => {
     expect(ohp.textContent).toMatch(/✓ Vorschlag übernommen · 20 kg × 11/);
     const w = () => store.getState().workouts.find((x) => x.status === 'in_progress')!;
     expect(w().exercises.slice(0, 2).map((e) => e.prescription!.decision)).toEqual(['declined', 'accepted']);
-    // RPE for set 1 of the bench press.
+    // RIR 1 for set 1 of the bench press – stored as RPE 9 (no second field).
     await tap(bench().querySelector<HTMLButtonElement>('[aria-label^="Satz 1: Normal"]')!);
-    await tap(inDialog('9'));
+    await clickInDialog('1');
     expect(w().exercises[0]!.sets[0]!.rpe).toBe(9);
+    // Right after a set, the rest timer asks the same question – one tap, optional.
+    await tap(bench().querySelector<HTMLButtonElement>('[aria-label="Satz 2 erledigt"]')!);
+    const timer = container.querySelector('[role="timer"]')!;
+    expect(timer.textContent).toMatch(/Wie viele wären noch gegangen\?/);
+    await tap(timer.querySelector<HTMLButtonElement>('[aria-label="RIR 2"]')!);
+    expect(w().exercises[0]!.sets[1]!.rpe).toBe(8);
   });
 
   it('finish with feedback → stored, shown in the summary, and the discomfort is preselected at the next start', async () => {

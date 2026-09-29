@@ -6,10 +6,11 @@
 /** Local calendar date, `YYYY-MM-DD`. */
 export type ISODate = string;
 
-export type GoalType = 'muscle_gain' | 'fat_loss' | 'maintain';
+/** The ENERGY goal – drives calories and protein. The training focus is separate (TrainingSetup.focus). */
+export type GoalType = 'muscle_gain' | 'fat_loss' | 'maintain' | 'recomp';
 export type Sex = 'male' | 'female';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active';
-export type Experience = 'beginner' | 'intermediate';
+export type Experience = 'beginner' | 'intermediate' | 'advanced';
 export type DietType = 'omnivore' | 'vegetarian' | 'vegan';
 export type Allergen = 'lactose' | 'gluten' | 'nuts' | 'fish';
 export type MealSlot = 'breakfast' | 'snack' | 'lunch' | 'dinner';
@@ -190,6 +191,25 @@ export interface CustomProgram {
 /** What the user can train with – filters the recommendation and replacement suggestions. */
 export type TrainingEquipment = 'gym' | 'home' | 'bodyweight';
 
+/** Single pieces of equipment – finer than the profile above (a home gym with a rack, a bench …). */
+export type EquipmentItem = 'barbell' | 'rack' | 'bench' | 'dumbbells' | 'kettlebell' | 'cable' | 'machines' | 'pullup_bar' | 'bands' | 'cardio';
+
+/** What the training is for – several at once = a combination. */
+export type TrainingFocus = 'muscle' | 'strength' | 'fitness';
+
+/** Confidence with free weights (barbell / dumbbell technique). */
+export type FreeWeightSkill = 'none' | 'some' | 'confident';
+
+/**
+ * Lasting limitations (not today's discomfort): body areas to protect and
+ * exercises that are not possible at all. No diagnosis – only what the user says.
+ */
+export interface TrainingLimitations {
+  areas: BodyArea[];
+  excludedExercises: string[];
+  note?: string;
+}
+
 // ---------- User data ----------
 
 export interface Profile {
@@ -244,6 +264,31 @@ export interface TrainingSetup {
   equipment?: TrainingEquipment;
   /** Day the current program started – "Woche 3 von 12". */
   startedAt?: ISODate;
+  // ---- Extended training profile (all optional – older data stays valid) ----
+  /** Years of regular strength training (0 = less than a year). */
+  trainingYears?: number;
+  freeWeights?: FreeWeightSkill;
+  /** Usual time per session in minutes. */
+  sessionMinutes?: number;
+  /** Single pieces of equipment; missing = derived from `equipment`. */
+  equipmentItems?: EquipmentItem[];
+  limitations?: TrainingLimitations;
+  likedExercises?: string[];
+  dislikedExercises?: string[];
+  focus?: TrainingFocus[];
+  /** Muscle groups to develop especially (library groups, e.g. 'shoulders'). */
+  musclePriorities?: MuscleGroup[];
+}
+
+/** A body measurement over time – body fat now, circumferences later, one log for all. */
+export type MeasurementKind = 'body_fat';
+export interface MeasurementEntry {
+  id: string;
+  date: ISODate;
+  kind: MeasurementKind;
+  value: number;
+  /** 'estimate' is shown as a range, never as an exact number. */
+  method: 'measured' | 'estimate';
 }
 
 export type PlannedMealStatus = 'planned' | 'eaten' | 'skipped';
@@ -619,6 +664,8 @@ export interface AppState {
   customPrograms: Record<string, CustomProgram>;
   /** Activity per day (active kcal, steps) – only days with data. */
   activity: Record<ISODate, DayActivity>;
+  /** Body measurements over time (body fat …). */
+  measurements: MeasurementEntry[];
 }
 
 /** One ingredient of an own dish, with the nutrient values it had when it was added. */

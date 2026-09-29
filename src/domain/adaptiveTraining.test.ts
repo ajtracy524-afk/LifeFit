@@ -65,16 +65,16 @@ describe('progressive overload (next session of an exercise)', () => {
     expect(prescribe(te('bench-press', 3, 6, 10), [workout('2026-09-18', [ex('bench-press', [[80, 8], [80, 8], [80, 8]])])], TODAY)).toMatchObject({ change: 'reps', reps: 9, delta: { reps: 1 } });
     const easy = prescribe(te('bench-press', 3, 6, 10), [workout('2026-09-18', [ex('bench-press', [[80, 9, 7], [80, 9, 7], [80, 8, 7]])])], TODAY);
     expect(easy.sets.map((s) => s.reps)).toEqual([10, 10, 10]);
-    expect(easy.reason).toMatch(/bei RPE 7 – heute bis zu zwei Wiederholungen mehr/);
+    expect(easy.reason).toMatch(/bei RIR 3 – heute bis zu zwei Wiederholungen mehr/);
   });
 
   it('high RPE: 9,5 → hold weight and reps; top reached at RPE 9 → hold once more instead of increasing', () => {
     const hard = prescribe(te('bench-press', 3, 6, 10), [workout('2026-09-18', [ex('bench-press', [[80, 8, 10], [80, 8, 9.5], [80, 8, 9]])])], TODAY);
     expect(hard).toMatchObject({ change: 'hold', weightKg: 80, reps: 8 });
-    expect(hard.reason).toMatch(/Sehr hohe Belastung letztes Mal \(RPE 9,5\)/);
+    expect(hard.reason).toMatch(/Sehr hohe Belastung letztes Mal \(RIR 0–1\)/);
     const top = prescribe(te('bench-press', 3, 6, 10), [workout('2026-09-18', [ex('bench-press', [[80, 10, 9], [80, 10, 9], [80, 10, 9]])])], TODAY);
     expect(top).toMatchObject({ change: 'hold', weightKg: 80, reps: 10 });
-    expect(top.reason).toBe('Oberes Ende erreicht, aber RPE 9 – noch einmal 80 kg, dann steigern.');
+    expect(top.reason).toBe('Oberes Ende erreicht, aber RIR 1 – noch einmal 80 kg, dann steigern.');
   });
 
   it('"zu hart" as feedback → lighter; "hart" at the top → hold', () => {
@@ -165,8 +165,8 @@ describe('check-in before the session (time, discomfort, energy) – proposals o
     const hard = workout('2026-09-18', [ex('bench-press', [[80, 8, 9.5], [80, 8, 9.5]])], { templateId: 'ppl-push' });
     const proposals = proposeAdaptations(push, { minutes: 25 }, { history: [hard] });
     const fewer = proposals.find((p) => p.kind === 'fewer_sets')!;
-    expect(fewer.reason).toBe('Letztes Training war bei hoher Belastung (RPE 9,5) und du hast heute nur 25 min. Die Grundübungen bleiben wie geplant.');
-    expect(proposals.find((p) => p.kind === 'shorten')!.reason).toMatch(/Letztes Training war bei hoher Belastung \(RPE 9,5\)/);
+    expect(fewer.reason).toBe('Letztes Training war bei hoher Belastung (RIR 0–1) und du hast heute nur 25 min. Die Grundübungen bleiben wie geplant.');
+    expect(proposals.find((p) => p.kind === 'shorten')!.reason).toMatch(/Letztes Training war bei hoher Belastung \(RIR 0–1\)/);
     expect(proposeAdaptations(push, { energy: 'low' }, { history: [] })[0]!.reason).toMatch(/^Du fühlst dich heute müde\./);
   });
 });

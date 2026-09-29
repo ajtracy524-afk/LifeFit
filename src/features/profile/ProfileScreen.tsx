@@ -2,11 +2,13 @@ import { useState, type ReactNode } from 'react';
 import { formatChf } from '../../domain/costs';
 import { getProgram, personalPrograms } from '../../data/exercises';
 import { programsFor } from '../../domain/programs';
+import { DEFAULT_ITEMS, defaultFocus } from '../../domain/trainingProfile';
+import { EquipmentItemsField, TrainingProfileFields, type TrainingProfileDraft } from '../training/TrainingProfileFields';
 import { today, weekStart } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
 import { currentWeight } from '../../domain/progress';
 import { slotsFor } from '../../domain/planner';
-import type { ActivityLevel, Allergen, DietType, GoalType, Macros, MealStyle, PlanPriority, TrainingSetup } from '../../domain/types';
+import type { ActivityLevel, Allergen, DietType, EquipmentItem, GoalType, Macros, MealStyle, PlanPriority, TrainingSetup } from '../../domain/types';
 import { getFood } from '../../data/foods';
 import { learnedInsights } from '../../domain/explain';
 import { trainingTimeFor } from '../../domain/schedule';
@@ -29,6 +31,7 @@ import {
   updatePlannerSettings,
   updateProfile,
   updateTraining,
+  updateTrainingProfile,
 } from '../../store/actions';
 import { resetAll, useAppState } from '../../store/store';
 import { Screen, Section } from '../../components/Screen';
@@ -49,7 +52,7 @@ const PRIORITY_HINT: Record<PlanPriority, string> = {
   health: 'Mehr Ballaststoffe (Gemüse, Hülsenfrüchte, Vollkorn).',
 };
 
-const GOAL_LABEL: Record<GoalType, string> = { muscle_gain: 'Muskelaufbau', fat_loss: 'Fett verlieren', maintain: 'Fit bleiben' };
+const GOAL_LABEL: Record<GoalType, string> = { muscle_gain: 'Muskelaufbau', fat_loss: 'Fett verlieren', maintain: 'Fit bleiben', recomp: 'Recomposition' };
 const DIET_LABEL: Record<DietType, string> = { omnivore: 'Alles', vegetarian: 'Vegetarisch', vegan: 'Vegan' };
 const ALLERGENS: [Allergen, string][] = [
   ['lactose', 'Laktose'],
@@ -369,7 +372,7 @@ function GoalForm({ onDone }: { onDone: () => void }) {
     const goalChanged = type !== goal.type;
     updateGoal({
       type,
-      targetWeightKg: type === 'maintain' ? undefined : tw,
+      targetWeightKg: type === 'maintain' || type === 'recomp' ? undefined : tw,
       // A new goal starts from today's weight.
       ...(goalChanged ? { startWeightKg: currentWeight(state.weights) ?? goal.startWeightKg, startedAt: today() } : {}),
     });
@@ -391,9 +394,10 @@ function GoalForm({ onDone }: { onDone: () => void }) {
           { value: 'muscle_gain', label: 'Aufbau' },
           { value: 'fat_loss', label: 'Abnehmen' },
           { value: 'maintain', label: 'Halten' },
+          { value: 'recomp', label: 'Recomp' },
         ]}
       />
-      {type !== 'maintain' && (
+      {type !== 'maintain' && type !== 'recomp' && (
         <Field
           label="Zielgewicht"
           inputMode="decimal"
@@ -512,6 +516,16 @@ function TrainingForm({ onDone }: { onDone: () => void }) {
   const current: TrainingSetup = state.training ?? { programId: 'full-body', weekdays: [0, 2, 4] };
   const [programId, setProgramId] = useState(current.programId);
   const [weekdays, setWeekdays] = useState<number[]>(current.weekdays);
+  // The extended training profile – the same fields as in the onboarding.
+  const [tp, setTp] = useState<TrainingProfileDraft>({
+    trainingYears: current.trainingYears ?? (state.profile?.experience === 'beginner' ? 0 : 1),
+    freeWeights: current.freeWeights ?? 'some',
+    ...(current.sessionMinutes ? { sessionMinutes: current.sessionMinutes } : {}),
+    focus: current.focus ?? defaultFocus(state.goal?.type),
+    musclePriorities: current.musclePriorities ?? [],
+    limitationAreas: current.limitations?.areas ?? [],
+  });
+  const [items, setItems] = useState<EquipmentItem[]>(current.equipmentItems ?? DEFAULT_ITEMS[current.equipment ?? 'gym']);
 
   return (
     <SheetForm>
@@ -520,12 +534,24 @@ function TrainingForm({ onDone }: { onDone: () => void }) {
       ))}
       <p className={styles.label}>Trainingstage</p>
       <WeekdayPicker value={weekdays} onChange={setWeekdays} />
+      <p className={styles.label}>Dein Trainingsprofil</p>
+      <TrainingProfileFields value={tp} onChange={setTp} />
+      <EquipmentItemsField items={items} onChange={setItems} />
       <Button
         block
         size="lg"
         disabled={weekdays.length === 0}
         onClick={() => {
-          updateTraining({ programId, weekdays });
+          updateTraining({ ...current, programId, weekdays, startedAt: programId === current.programId ? current.startedAt : undefined });
+          updateTrainingProfile({
+            trainingYears: tp.trainingYears,
+            freeWeights: tp.freeWeights,
+            sessionMinutes: tp.sessionMinutes,
+            focus: tp.focus,
+            musclePriorities: tp.musclePriorities,
+            equipmentItems: items,
+            limitations: { areas: tp.limitationAreas, excludedExercises: current.limitations?.excludedExercises ?? [] },
+          });
           showToast('Trainingsplan aktualisiert');
           onDone();
         }}

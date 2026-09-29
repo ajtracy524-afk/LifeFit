@@ -32,6 +32,7 @@ export function emptyState(): AppState {
     routines: {},
     customPrograms: {},
     activity: {},
+    measurements: [],
   };
 }
 

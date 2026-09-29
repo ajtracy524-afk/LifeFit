@@ -50,6 +50,8 @@ export const BODY_RULES = {
     fat_loss: { min: -1.0, max: -0.2 },
     muscle_gain: { min: 0.05, max: 0.5 },
     maintain: { min: -0.3, max: 0.3 },
+    // Recomposition: weight roughly stable, slightly down is fine – the change is in the composition.
+    recomp: { min: -0.5, max: 0.2 },
   },
   step: 150,
   /** At least this many days between two adaptive target changes. */
