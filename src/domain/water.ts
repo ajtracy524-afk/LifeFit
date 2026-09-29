@@ -41,4 +41,3 @@ export function formatLitres(ml: number): string {
 export function waterHistory(state: Pick<AppState, 'water'>, dates: ISODate[]): { date: ISODate; ml: number }[] {
   return dates.map((date) => ({ date, ml: waterOn(state, date) }));
 }
-

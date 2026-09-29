@@ -58,4 +58,3 @@ describe('calorie target zone', () => {
     expect(calorieStatus({ eaten: 500, planned: 0, targetKcal: 0, finished: false })).toBeUndefined();
   });
 });
-
