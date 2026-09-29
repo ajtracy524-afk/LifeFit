@@ -10,6 +10,7 @@ import { activeWorkouts, createWorkout, detectRecords, lastSetsFor, workoutExerc
 import { workoutAchievements } from '../domain/adaptive/achievements';
 import { TOPIC_RULES } from '../domain/engine/topics';
 import { experienceFrom } from '../domain/trainingProfile';
+import { ensurePlanBaseline, recordPlanVersion } from '../domain/planVersions';
 import { applyWeekChange, closeCompletedDays, dayContextFor, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
 import { recordEvent } from '../domain/learning';
 import { productEntry, type EntryContent } from '../domain/foodEntry';
@@ -65,6 +66,7 @@ export function completeOnboarding(input: OnboardingResult): void {
     s.goal = input.goal;
     s.nutritionProfile = input.nutritionProfile;
     s.training = input.training;
+    recordPlanVersion(s, 'start', t);
     // Existing data (e.g. from an incomplete earlier setup) is kept; for a new user these lists are empty.
     s.targets = [...s.targets.filter((x) => x.validFrom !== t), { id: newId(), validFrom: t, method: 'formula', ...input.target }];
     s.weights = [...s.weights.filter((w) => w.date !== t), { id: newId(), date: t, kg: input.weightKg }];
@@ -806,8 +808,9 @@ export function updateNutritionProfile(patch: Partial<NutritionProfile>): void {
 }
 
 /** Program / days / equipment (as before: the setup is replaced). A new program starts its "Woche 1" today. */
-export function updateTraining(setup: TrainingSetup): void {
+export function updateTraining(setup: TrainingSetup, change?: { reason: 'coach'; why?: string }): void {
   update((s) => {
+    ensurePlanBaseline(s);
     const prev = s.training;
     const changedProgram = !prev || prev.programId !== setup.programId;
     // The training profile (equipment, limitations, preferences …) stays; week overrides of the check-in are reset as before.
@@ -817,6 +820,8 @@ export function updateTraining(setup: TrainingSetup): void {
       ...setup,
       startedAt: setup.startedAt ?? (changedProgram ? today() : (prev?.startedAt ?? today())),
     } as TrainingSetup;
+    // A new plan version only when program, days or sessions really changed.
+    recordPlanVersion(s, change?.reason ?? (changedProgram ? 'program' : 'days'), today(), change?.why);
   });
 }
 
@@ -876,6 +881,7 @@ export function saveRoutine(draft: RoutineDraft, id?: string): string | undefine
   const now = new Date().toISOString();
   const routineId = id ?? `routine:${newId()}`;
   update((s) => {
+    ensurePlanBaseline(s);
     const prev = s.routines[routineId];
     const exercises = draft.exercises.map((e) => {
       const repMin = clampInt(e.repMin, 0, 100);
@@ -896,6 +902,8 @@ export function saveRoutine(draft: RoutineDraft, id?: string): string | undefine
       exercises,
       updatedAt: now,
     } as Routine;
+    // Only counts when the routine belongs to the active program.
+    recordPlanVersion(s, 'sessions');
   });
   return routineId;
 }
@@ -925,8 +933,10 @@ export function duplicateRoutine(sourceId: string): string | undefined {
 export function deleteRoutine(id: string): boolean {
   if (!getState().routines[id]) return false;
   update((s) => {
+    ensurePlanBaseline(s);
     delete s.routines[id];
     for (const p of Object.values(s.customPrograms)) p.routineIds = p.routineIds.filter((r) => r !== id);
+    recordPlanVersion(s, 'sessions');
   });
   return true;
 }
@@ -936,6 +946,7 @@ export function saveProgram(draft: { name: string; routineIds: string[]; weeks?:
   if (!draft.name.trim() || !draft.routineIds.length) return undefined;
   const programId = id ?? `program:${newId()}`;
   update((s) => {
+    ensurePlanBaseline(s);
     s.customPrograms[programId] = {
       createdAt: s.customPrograms[programId]?.createdAt ?? new Date().toISOString(),
       id: programId,
@@ -943,6 +954,7 @@ export function saveProgram(draft: { name: string; routineIds: string[]; weeks?:
       routineIds: [...draft.routineIds],
       ...(draft.weeks ? { weeks: clampInt(draft.weeks, 1, 52) } : {}),
     };
+    recordPlanVersion(s, 'sessions');
   });
   return programId;
 }
@@ -1033,7 +1045,7 @@ export function applyEngineAction(action: EngineAction): boolean {
     case 'set_program': {
       const setup = getState().training;
       if (!setup) return false;
-      updateTraining({ ...setup, programId: action.programId, weekdays: action.weekdays, startedAt: undefined });
+      updateTraining({ ...setup, programId: action.programId, weekdays: action.weekdays, startedAt: undefined }, { reason: 'coach' });
       if (action.experience) {
         update((d) => {
           if (d.profile) d.profile.experience = action.experience!;

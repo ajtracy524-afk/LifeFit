@@ -666,6 +666,28 @@ export interface AppState {
   activity: Record<ISODate, DayActivity>;
   /** Body measurements over time (body fat …). */
   measurements: MeasurementEntry[];
+  /** History of the training plan (see domain/planVersions.ts). Missing in older data – a v1 is derived. */
+  planVersions?: PlanVersion[];
+}
+
+/** Why a plan version was created. */
+export type PlanChangeReason = 'start' | 'program' | 'days' | 'sessions' | 'coach';
+
+/**
+ * One version of the training plan – a frozen copy of what was planned from
+ * `validFrom` on (until the next version starts). Only for looking back
+ * ("Was hat sich geändert / Warum"); scheduling keeps using the live setup.
+ */
+export interface PlanVersion {
+  id: string;
+  validFrom: ISODate;
+  programId: string;
+  programName: string;
+  weekdays: number[];
+  sessions: WorkoutTemplate[];
+  reason: PlanChangeReason;
+  /** Short free text why (e.g. the coach's reason) – optional. */
+  why?: string;
 }
 
 /** One ingredient of an own dish, with the nutrient values it had when it was added. */

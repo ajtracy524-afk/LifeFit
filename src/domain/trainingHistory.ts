@@ -103,6 +103,8 @@ export interface ExerciseSession {
   e1rm: number;
   volumeKg: number;
   reps: number;
+  /** Mean RPE of the work sets that have one (shown as RIR). */
+  rpe?: number;
 }
 
 /** Every completed session of an exercise, oldest first – the basis of the exercise chart. */
@@ -112,6 +114,7 @@ export function exerciseHistory(workouts: Workout[], exerciseId: string): Exerci
     const entries = w.exercises.filter((e) => e.exerciseId === exerciseId);
     const sets = entries.flatMap((e) => e.sets.filter(isWorkSet)).filter((s) => (s.reps ?? 0) > 0);
     if (!sets.length) continue;
+    const rpes = sets.map((s) => s.rpe).filter((r): r is number => typeof r === 'number');
     const score = (s: (typeof sets)[number]) => ((s.weightKg ?? 0) > 0 ? estimateOneRepMax(s.weightKg!, s.reps!) : s.reps!);
     const best = sets.reduce((a, b) => (score(b) > score(a) ? b : a));
     out.push({
@@ -121,9 +124,63 @@ export function exerciseHistory(workouts: Workout[], exerciseId: string): Exerci
       e1rm: (best.weightKg ?? 0) > 0 ? Math.round(estimateOneRepMax(best.weightKg!, best.reps!) * 10) / 10 : 0,
       volumeKg: Math.round(entries.reduce((v, e) => v + exerciseVolume(e), 0)),
       reps: sets.reduce((n, s) => n + (s.reps ?? 0), 0),
+      ...(rpes.length ? { rpe: Math.round((rpes.reduce((a, b) => a + b, 0) / rpes.length) * 10) / 10 } : {}),
     });
   }
   return out;
+}
+
+export const STALL = {
+  /** Recent sessions compared with the best before them … */
+  sessions: 3,
+  /** … at least this many sessions before them, so there is a best to compare with. */
+  baseline: 1,
+  /** Progress below this share of the earlier best counts as none. */
+  tolerance: 0.005,
+  /** Mean RIR from here on: probably not trained close enough to failure – not a stall of the body. */
+  easyRpe: 7,
+} as const;
+
+export type ProgressStatus = 'insufficient' | 'bodyweight' | 'progress' | 'possible_stall';
+
+export interface ExerciseProgress {
+  status: ProgressStatus;
+  /** Sessions with load that were looked at. */
+  sessions: number;
+  /** Best estimated 1RM before the recent sessions / within them. */
+  before?: number;
+  recent?: number;
+  /** First date of the recent sessions ("seit …"). */
+  since?: ISODate;
+  /** Mean RPE of the recent sessions when logged – low effort explains a plateau differently. */
+  recentRpe?: number;
+  /** The recent sessions felt easy (mean RIR ≥ 3): more effort, not a change of plan. */
+  easy?: boolean;
+}
+
+/**
+ * Data basis for "möglicherweise Stagnation" – read only from the exercise
+ * history (same e1RM as the chart). Only a signal: it never changes a plan by
+ * itself; too few sessions → "insufficient", never a guess.
+ */
+export function exerciseProgress(workouts: Workout[], exerciseId: string, until?: ISODate): ExerciseProgress {
+  if (getExercise(exerciseId)?.bodyweight) return { status: 'bodyweight', sessions: 0 };
+  const h = exerciseHistory(until ? workouts.filter((w) => w.date <= until) : workouts, exerciseId).filter((x) => x.e1rm > 0);
+  if (h.length < STALL.sessions + STALL.baseline) return { status: 'insufficient', sessions: h.length };
+  const recentRows = h.slice(-STALL.sessions);
+  const before = Math.max(...h.slice(0, -STALL.sessions).map((x) => x.e1rm));
+  const recent = Math.max(...recentRows.map((x) => x.e1rm));
+  const rpes = recentRows.map((x) => x.rpe).filter((r): r is number => r !== undefined);
+  const recentRpe = rpes.length ? Math.round((rpes.reduce((a, b) => a + b, 0) / rpes.length) * 10) / 10 : undefined;
+  const stalled = recent <= before * (1 + STALL.tolerance);
+  return {
+    status: stalled ? 'possible_stall' : 'progress',
+    sessions: h.length,
+    before,
+    recent,
+    since: recentRows[0]!.date,
+    ...(recentRpe !== undefined ? { recentRpe, easy: recentRpe <= STALL.easyRpe } : {}),
+  };
 }
 
 /** Best set ever ("Bestleistung") – by estimated 1RM, bodyweight by reps. */

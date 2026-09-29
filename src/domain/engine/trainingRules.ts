@@ -1,8 +1,12 @@
 import { getExercise, getProgram, PROGRAMS } from '../../data/exercises';
+import { MUSCLE_GROUP_OF, type Muscle } from '../../data/muscles';
+import { effortText } from '../effort';
+import { exerciseMuscles } from '../muscles';
+import { exerciseProgress, STALL } from '../trainingHistory';
 import { fmt, weekdayLong } from '../../lib/format';
 import { addDays, weekdayIndex } from '../dates';
 import { appStartDate } from '../progress';
-import { activeWorkouts, estimateMinutes, estimateOneRepMax, fitTemplateToTime, isWorkSet, scheduleForWeek } from '../training';
+import { activeWorkouts, estimateMinutes, fitTemplateToTime, isWorkSet, scheduleForWeek } from '../training';
 import type { Experience, ISODate, MuscleGroup, Workout, WorkoutTemplate } from '../types';
 import type { EngineContext } from './context';
 import type { EngineAction, Recommendation } from './types';
@@ -21,34 +25,6 @@ export const REGION_LABEL: Record<Region, string> = {
   core: 'Bauch',
 };
 
-/** Effective sets per region: 1 = primary mover, 0.5 = strong synergist. */
-const EXERCISE_REGIONS: Record<string, Partial<Record<Region, number>>> = {
-  'bench-press': { chest: 1, shoulders: 0.5, arms: 0.5 },
-  'incline-db-press': { chest: 1, shoulders: 0.5, arms: 0.5 },
-  'overhead-press': { shoulders: 1, arms: 0.5 },
-  'lateral-raise': { shoulders: 1 },
-  'triceps-pushdown': { arms: 1 },
-  dips: { chest: 1, arms: 0.5 },
-  'barbell-row': { back: 1, arms: 0.5 },
-  'lat-pulldown': { back: 1, arms: 0.5 },
-  'pull-up': { back: 1, arms: 0.5 },
-  'cable-row': { back: 1, arms: 0.5 },
-  'face-pull': { shoulders: 1, back: 0.5 },
-  'biceps-curl': { arms: 1 },
-  'hammer-curl': { arms: 1 },
-  squat: { legs: 1, core: 0.25 },
-  deadlift: { legs: 1, back: 0.5 },
-  'romanian-deadlift': { legs: 1, back: 0.25 },
-  'leg-press': { legs: 1 },
-  'leg-curl': { legs: 1 },
-  'leg-extension': { legs: 1 },
-  'split-squat': { legs: 1 },
-  lunges: { legs: 1 },
-  'hip-thrust': { legs: 1 },
-  'calf-raise': { legs: 0.5 },
-  'hanging-leg-raise': { core: 1 },
-};
-
 export const TRAINING_RULES = {
   /** A session "trains" a region from this many effective sets on. */
   hitSets: 4,
@@ -60,10 +36,6 @@ export const TRAINING_RULES = {
   weeklyCap: { beginner: 14, intermediate: 20, advanced: 22 } satisfies Record<Experience, number>,
   /** Legs and arms bundle several muscles – higher cap. */
   regionFactor: { legs: 1.5, arms: 1.2, core: 0.8, chest: 1, back: 1, shoulders: 1 } satisfies Record<Region, number>,
-  /** Stall: no e1RM progress over this many sessions … */
-  stallSessions: 3,
-  /** … compared with the best before them (tolerance). */
-  stallTolerance: 0.005,
   /** From Thursday on, missing regions are pointed out. */
   undertrainedFromWeekday: 3,
 } as const;
@@ -89,22 +61,17 @@ const GROUP_REGION: Record<MuscleGroup, Region | undefined> = {
 };
 
 /**
- * Effective sets per region of an exercise: the tuned table above for the
- * original exercises, otherwise derived from the library (primary 1,
- * secondary 0.5 – calves count half for "legs"). Cardio and mobility add none.
+ * Effective sets per region of an exercise – derived from the muscle model
+ * (data/muscles.ts): the strongest-loaded muscle of a region sets its share,
+ * calves count half for "legs". Cardio and mobility add none.
  */
 export function exerciseRegions(exerciseId: string): Partial<Record<Region, number>> {
-  const known = EXERCISE_REGIONS[exerciseId];
-  if (known) return known;
-  const ex = getExercise(exerciseId);
-  if (!ex || ex.type !== 'strength') return {};
   const out: Partial<Record<Region, number>> = {};
-  const add = (g: MuscleGroup, f: number) => {
+  for (const [m, f] of Object.entries(exerciseMuscles(exerciseId))) {
+    const g = MUSCLE_GROUP_OF[m as Muscle];
     const r = GROUP_REGION[g];
-    if (r) out[r] = Math.max(out[r] ?? 0, g === 'calves' ? f / 2 : f);
-  };
-  for (const g of ex.secondary) add(g, 0.5);
-  add(ex.primary, 1);
+    if (r && f) out[r] = Math.max(out[r] ?? 0, g === 'calves' ? f / 2 : f);
+  }
   return out;
 }
 
@@ -382,28 +349,16 @@ export function timeRule(ctx: EngineContext): Recommendation[] {
   ];
 }
 
-/** No estimated-1RM progress over the last sessions of an exercise → deload / variation. */
+/** No estimated-1RM progress over the last sessions of an exercise → "möglicherweise Stagnation" (a hint, never an automatic change). */
 export function stallRule(ctx: EngineContext): Recommendation[] {
-  const R = TRAINING_RULES;
-  const completed = ctx.state.workouts.filter((w) => w.status === 'completed' && w.date <= ctx.date).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  const completed = ctx.state.workouts.filter((w) => w.status === 'completed' && w.date <= ctx.date);
   const candidates = ctx.todaysSession
     ? ctx.todaysSession.template.exercises.map((e) => e.exerciseId)
     : [...new Set(completed.filter((w) => w.date >= addDays(ctx.date, -14)).flatMap((w) => w.exercises.map((e) => e.exerciseId)))];
 
-  const stalled: { id: string; best: number }[] = [];
-  for (const exerciseId of candidates) {
-    if (getExercise(exerciseId)?.bodyweight) continue;
-    const bests = completed
-      .map((w) => {
-        const sets = w.exercises.filter((e) => e.exerciseId === exerciseId).flatMap((e) => e.sets.filter(isWorkSet));
-        return Math.max(0, ...sets.map((s) => estimateOneRepMax(s.weightKg ?? 0, s.reps ?? 0)));
-      })
-      .filter((v) => v > 0);
-    if (bests.length < R.stallSessions + 1) continue;
-    const before = Math.max(...bests.slice(0, -R.stallSessions));
-    const lastBest = Math.max(...bests.slice(-R.stallSessions));
-    if (lastBest <= before * (1 + R.stallTolerance)) stalled.push({ id: exerciseId, best: before });
-  }
+  const progress = candidates.map((id) => ({ id, p: exerciseProgress(completed, id, ctx.date) }));
+  const stalled = progress.filter((x) => x.p.status === 'possible_stall');
+  const easy = stalled.length > 0 && stalled.every((x) => x.p.easy);
   if (stalled.length === 0) return [];
 
   const names = stalled.slice(0, 3).map((s) => getExercise(s.id)?.name ?? s.id);
@@ -415,11 +370,13 @@ export function stallRule(ctx: EngineContext): Recommendation[] {
       domain: 'training',
       priority: 'low',
       confidence: 'medium',
-      title: `Seit ${R.stallSessions} Einheiten kein Fortschritt: ${names.join(', ')}`,
-      message: cutting
+      title: `Möglicherweise Stagnation: ${names.join(', ')}`,
+      message: easy
+        ? `Seit ${STALL.sessions} Einheiten kein Fortschritt – die Sätze waren aber eher locker (${effortText(stalled[0]!.p.recentRpe!)}). Versuch zuerst, näher an RIR 1–2 zu trainieren.`
+        : cutting
         ? 'Im Kaloriendefizit ist Kraft halten schon ein gutes Ergebnis. Wenn es sich schwer anfühlt: eine Woche mit ~10 % weniger Gewicht, dann wieder steigern.'
         : 'Vorschlag: eine Woche mit ~10 % weniger Gewicht trainieren und danach wieder steigern – oder den Wiederholungsbereich wechseln. Auch Schlaf und Eiweiß spielen mit.',
-      reasons: [],
+      reasons: [`Kein Anstieg des geschätzten 1RM in den letzten ${STALL.sessions} Einheiten gegenüber der Bestleistung davor.`],
       facts: { stalled: stalled.length },
       actions: [],
     },
