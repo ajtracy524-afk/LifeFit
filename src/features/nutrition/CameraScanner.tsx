@@ -11,6 +11,8 @@ const PROBLEM_TEXT: Record<CameraProblem, string> = {
 
 /** Pause between two decode attempts – enough for a phone to keep the preview smooth. */
 const SCAN_INTERVAL_MS = 250;
+/** After this long without a code, help appears (closer, light, type or search instead). */
+export const SCAN_HELP_AFTER_MS = 8000;
 
 interface Props {
   /** Called exactly once with the first valid barcode – the camera is already stopped then. */
@@ -18,6 +20,8 @@ interface Props {
   onCancel: () => void;
   /** Camera not possible → type the number instead. */
   onManualEntry: () => void;
+  /** No code found → search the food by name instead. */
+  onSearch?: () => void;
 }
 
 /**
@@ -26,9 +30,13 @@ interface Props {
  * and on the first hit stops the camera BEFORE reporting – so a code seen in
  * several frames is taken once. Closing or leaving always stops the stream.
  */
-export function CameraScanner({ onDetected, onCancel, onManualEntry }: Props) {
+export function CameraScanner({ onDetected, onCancel, onManualEntry, onSearch }: Props) {
   const video = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<'starting' | 'scanning' | CameraProblem>('starting');
+  const [help, setHelp] = useState(false);
+  // Light: only where the camera offers it (many phones). Focus: continuous where supported.
+  const track = useRef<MediaStreamTrack | undefined>(undefined);
+  const [torch, setTorch] = useState<boolean | undefined>(undefined);
   // The parent re-renders on every store change – the camera must not restart then.
   const report = useRef(onDetected);
   report.current = onDetected;
@@ -36,10 +44,12 @@ export function CameraScanner({ onDetected, onCancel, onManualEntry }: Props) {
   useEffect(() => {
     let stream: MediaStream | undefined;
     let timer: number | undefined;
+    let helpTimer: number | undefined;
     let done = false;
     const stop = () => {
       done = true;
       window.clearTimeout(timer);
+      window.clearTimeout(helpTimer);
       stream?.getTracks().forEach((t) => t.stop());
       if (video.current) video.current.srcObject = null;
     };
@@ -49,9 +59,15 @@ export function CameraScanner({ onDetected, onCancel, onManualEntry }: Props) {
         if (done || !video.current) return stop();
         video.current.srcObject = stream;
         await video.current.play();
+        const t = stream.getVideoTracks?.()[0];
+        track.current = t;
+        const caps = (t?.getCapabilities?.() ?? {}) as MediaTrackCapabilities & { torch?: boolean; focusMode?: string[] };
+        if (caps.focusMode?.includes('continuous')) void t?.applyConstraints({ advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] }).catch(() => undefined);
+        if (caps.torch) setTorch(false);
         const decoder = await createDecoder();
         if (done) return;
         setStatus('scanning');
+        helpTimer = window.setTimeout(() => !done && setHelp(true), SCAN_HELP_AFTER_MS);
         const tick = async () => {
           if (done || !video.current) return;
           let code: string | undefined;
@@ -100,9 +116,42 @@ export function CameraScanner({ onDetected, onCancel, onManualEntry }: Props) {
         <span className={styles.scanFrame} aria-hidden />
       </div>
       <p className={styles.scanHint} role="status">
-        {status === 'starting' ? 'Kamera wird gestartet …' : 'Halte den Strichcode in den Rahmen – er wird automatisch erkannt.'}
+        {status === 'starting'
+          ? 'Kamera wird gestartet …'
+          : help
+            ? 'Noch nichts erkannt: etwas näher ran, Strichcode gerade halten und Spiegelungen vermeiden.'
+            : 'Halte den Strichcode in den Rahmen – er wird automatisch erkannt.'}
       </p>
-      <Button variant="secondary" block onClick={onCancel}>
+      {torch !== undefined && (
+        <Button
+          variant="secondary"
+          block
+          icon="sparkle"
+          aria-pressed={torch}
+          onClick={() => {
+            const next = !torch;
+            void track.current?.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] }).then(
+              () => setTorch(next),
+              () => setTorch(undefined),
+            );
+          }}
+        >
+          {torch ? 'Licht aus' : 'Licht an'}
+        </Button>
+      )}
+      {help && (
+        <div className={styles.scanFallback}>
+          <Button variant="secondary" block onClick={onManualEntry}>
+            Nummer eintippen
+          </Button>
+          {onSearch && (
+            <Button variant="secondary" block icon="search" onClick={onSearch}>
+              Stattdessen suchen
+            </Button>
+          )}
+        </div>
+      )}
+      <Button variant="ghost" block onClick={onCancel}>
         Abbrechen
       </Button>
     </div>

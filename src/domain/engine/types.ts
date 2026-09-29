@@ -9,7 +9,7 @@ import type { Experience, ISODate, Macros, MealSlot, WorkoutTemplate } from '../
  * PROPOSES actions. Nothing is applied without a tap by the user.
  */
 
-export type EngineDomain = 'nutrition' | 'training' | 'shopping' | 'body' | 'safety';
+export type EngineDomain = 'nutrition' | 'training' | 'shopping' | 'body' | 'safety' | 'tips';
 
 export type RecommendationKind =
   | 'nutrition_gap'
@@ -28,6 +28,8 @@ export type RecommendationKind =
   | 'training_cardio'
   | 'pre_workout'
   | 'heavy_meal'
+  | 'tip_habit'
+  | 'tip_progress'
   | 'shopping_missing'
   | 'body_rate'
   | 'safety';
@@ -76,6 +78,8 @@ export interface Recommendation {
   actions: EngineAction[];
   /** True if following it would lower the calorie intake – blocked in safe mode. */
   increasesDeficit?: boolean;
+  /** Recurring subject without date ("tip:fiber:low") – for the coach's memory (see tipRules.ts). */
+  topic?: string;
 }
 
 export interface EngineOptions {

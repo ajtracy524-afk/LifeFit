@@ -14,6 +14,8 @@ interface Props {
   onFound: (product: Product) => void;
   /** "Manuell erfassen" – with the barcode if one was entered. */
   onManual: (barcode?: string) => void;
+  /** No code found by the camera → search by name instead. */
+  onSearch?: () => void;
 }
 
 /**
@@ -21,7 +23,7 @@ interface Props {
  * desktop), the number under the barcode always works. Not found / offline /
  * API error never block anything – the manual entry is always one tap away.
  */
-export function BarcodeLookup({ onFound, onManual }: Props) {
+export function BarcodeLookup({ onFound, onManual, onSearch }: Props) {
   const state = useAppState();
   const [code, setCode] = useState('');
   const [lookup, setLookup] = useState<LookupState>({ kind: 'idle' });
@@ -72,6 +74,7 @@ export function BarcodeLookup({ onFound, onManual }: Props) {
           }}
           onCancel={() => setCamera(false)}
           onManualEntry={typeInstead}
+          onSearch={onSearch}
         />
       ) : (
         cameraAvailable() && (

@@ -201,7 +201,7 @@ export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
         />
       )}
       {activeMode === 'barcode' && (
-        <BarcodeLookup onFound={(product) => setStep({ kind: 'product', product })} onManual={(barcode) => setStep({ kind: 'manual', initial: { ...EMPTY_MANUAL, barcode } })} />
+        <BarcodeLookup onFound={(product) => setStep({ kind: 'product', product })} onManual={(barcode) => setStep({ kind: 'manual', initial: { ...EMPTY_MANUAL, barcode } })} onSearch={() => setMode('search')} />
       )}
       {activeMode === 'manual' && (
         <>

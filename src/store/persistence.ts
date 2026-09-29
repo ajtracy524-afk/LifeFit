@@ -31,6 +31,7 @@ export function emptyState(): AppState {
     customDishes: {},
     routines: {},
     customPrograms: {},
+    activity: {},
   };
 }
 

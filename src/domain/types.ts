@@ -521,6 +521,38 @@ export interface PantryItem {
 /** Adaptive-engine settings. Recommendation ids contain the date, so dismissals expire naturally. */
 export interface CoachState {
   dismissed: Record<string, ISODate>;
+  /**
+   * Memory of recurring tips (keyed by topic, without date): when shown, how
+   * often, and whether the pattern behind it resolved – so a tip is not
+   * repeated for weeks and progress can be acknowledged once.
+   */
+  topics?: Record<string, CoachTopic>;
+  /** Day reviews ("Dein gestriger Tag") the user has read, by reviewed date. */
+  reviewSeen?: Record<ISODate, true>;
+}
+
+export interface CoachTopic {
+  firstShown: ISODate;
+  lastShown: ISODate;
+  /** Distinct days it was on screen. */
+  shownDays: number;
+  status: 'active' | 'resolved' | 'paused';
+  /** When it resolved (the pattern no longer holds) or was paused (shown long, no change). */
+  since?: ISODate;
+  /** Strategy variant – after a pause the tip comes back with another approach. */
+  variant?: number;
+}
+
+/**
+ * Activity of a day beyond the planned training – entered by the user (or,
+ * later, from a health data source). Kept apart from the targets: active
+ * calories are shown and analysed, never automatically "eaten back".
+ */
+export interface DayActivity {
+  activeKcal?: number;
+  steps?: number;
+  source: 'manual' | 'health';
+  updatedAt: string;
 }
 
 /** Evidence behind one learned preference (see domain/learning.ts). */
@@ -581,6 +613,8 @@ export interface AppState {
   routines: Record<string, Routine>;
   /** The user's own programs (rotation of routines), keyed by id. */
   customPrograms: Record<string, CustomProgram>;
+  /** Activity per day (active kcal, steps) – only days with data. */
+  activity: Record<ISODate, DayActivity>;
 }
 
 /** One ingredient of an own dish, with the nutrient values it had when it was added. */

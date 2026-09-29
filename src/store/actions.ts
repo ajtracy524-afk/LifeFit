@@ -8,6 +8,7 @@ import { addDays, today, weekStart } from '../domain/dates';
 import { calculateTargets, foodMacros, logFromMeal, roundMacros, scaleMicros } from '../domain/nutrition';
 import { activeWorkouts, createWorkout, detectRecords, lastSetsFor, workoutExercise, workoutVolume } from '../domain/training';
 import { workoutAchievements } from '../domain/adaptive/achievements';
+import { TOPIC_RULES } from '../domain/engine/topics';
 import { applyWeekChange, closeCompletedDays, dayContextFor, fillWeek, type CascadeResult, type WeekChange } from '../domain/week';
 import { recordEvent } from '../domain/learning';
 import { productEntry, type EntryContent } from '../domain/foodEntry';
@@ -1004,6 +1005,53 @@ export function applyEngineAction(action: EngineAction): boolean {
     case 'open':
       return false;
   }
+}
+
+/**
+ * The coach's memory: tips that were on screen today (once per topic and day)
+ * and topics whose pattern resolved (their "gut umgesetzt" note was shown).
+ * Shown on TOPIC_RULES.pauseAfterDays days while the pattern still holds → the topic pauses and
+ * comes back later with another strategy.
+ */
+export function recordTopics(date: ISODate, shown: string[], resolved: string[]): void {
+  const s = getState();
+  const topics = s.coach.topics ?? {};
+  const changes = shown.some((t) => topics[t]?.lastShown !== date || topics[t]?.status !== 'active') || resolved.some((t) => topics[t]?.status !== 'resolved');
+  if (!changes) return;
+  update((d) => {
+    const all = (d.coach.topics ??= {});
+    for (const t of shown) {
+      const prev = all[t];
+      const restart = !prev || prev.status !== 'active';
+      const days = restart ? 1 : prev.lastShown === date ? prev.shownDays : prev.shownDays + 1;
+      all[t] =
+        days >= TOPIC_RULES.pauseAfterDays
+          ? { firstShown: prev?.firstShown ?? date, lastShown: date, shownDays: days, status: 'paused', since: date, variant: (prev?.variant ?? 0) + 1 }
+          : { firstShown: restart ? date : prev.firstShown, lastShown: date, shownDays: days, status: 'active', ...(prev?.variant ? { variant: prev.variant } : {}) };
+    }
+    for (const t of resolved) {
+      const prev = all[t];
+      if (prev) all[t] = { ...prev, status: 'resolved', since: date };
+    }
+  });
+}
+
+/** "Dein gestriger Tag" read – it does not come back for that date. */
+export function markReviewSeen(date: ISODate): void {
+  update((s) => {
+    s.coach.reviewSeen = { ...(s.coach.reviewSeen ?? {}), [date]: true };
+  });
+}
+
+/** Active calories / steps of a day, entered by the user. Empty values remove the day. */
+export function setActivity(date: ISODate, value: { activeKcal?: number; steps?: number }): void {
+  update((s) => {
+    s.activity ??= {};
+    const activeKcal = value.activeKcal && value.activeKcal > 0 ? Math.min(5000, Math.round(value.activeKcal)) : undefined;
+    const steps = value.steps && value.steps > 0 ? Math.min(100000, Math.round(value.steps)) : undefined;
+    if (activeKcal === undefined && steps === undefined) delete s.activity[date];
+    else s.activity[date] = { ...(activeKcal !== undefined ? { activeKcal } : {}), ...(steps !== undefined ? { steps } : {}), source: 'manual', updatedAt: new Date().toISOString() };
+  });
 }
 
 export function dismissRecommendation(id: string): void {

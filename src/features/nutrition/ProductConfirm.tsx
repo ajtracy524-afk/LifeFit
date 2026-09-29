@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { getFood } from '../../data/foods';
 import { formatChf, PRICE_RANGE_TEXT } from '../../domain/costs';
-import { productAmountOptions, productNutrients, suggestCatalogFoods } from '../../domain/foodEntry';
+import { productAmountOptions, productNutrients, productPortion, suggestCatalogFoods } from '../../domain/foodEntry';
 import type { Macros, MacroKey, Micros, Product } from '../../domain/types';
 import { pantryEstimate } from '../../domain/week';
 import { fmt, formatGrams } from '../../lib/format';
@@ -44,8 +44,11 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat', o
   // Scanned before: it came from the local cache (no request) – say so, with the user's own pack and price.
   const known = isKnownProduct(product.barcode);
   const state = useAppState();
-  const options = productAmountOptions(product);
-  const initial = purpose === 'purchase' ? (product.packageSize ?? 100) : (product.servingSize ?? 100);
+  // Portion intelligence: the stated serving (named: "1 Scheibe"), a piece of the linked catalog food, or a single small pack.
+  const pieceFood = product.foodId ? getFood(product.foodId) : undefined;
+  const portion = productPortion(product, pieceFood);
+  const options = productAmountOptions(product, pieceFood);
+  const initial = purpose === 'purchase' ? (product.packageSize ?? 100) : (portion?.amount ?? 100);
   const [amountText, setAmountText] = useState(String(initial));
   const [id] = useState(newId);
   const suggestions = suggestCatalogFoods(`${product.name} ${product.brand ?? ''}`);
@@ -115,18 +118,20 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat', o
           </Chip>
         ))}
       </div>
-      {product.servingSize && purpose === 'eat' && (
-        // Counting portions (e.g. 2 Becher) – only when the product states its portion size.
+      {portion && purpose === 'eat' && (
+        // Counting in the product's own unit (2 Scheiben, 1 Becher) – only when the portion is known.
         <div className={styles.portionRow}>
-          <span>Portionen à {fmt.dec(product.servingSize)} {u}</span>
+          <span>
+            {portion.plural} à {fmt.dec(portion.amount)} {u}
+          </span>
           <Stepper
-            label="Portionen"
-            value={validAmount ? Math.round((amount / product.servingSize) * 2) / 2 : 1}
-            onChange={(n) => setAmountText(String(Math.round(n * product.servingSize! * 10) / 10))}
+            label={portion.plural}
+            value={validAmount ? Math.round((amount / portion.amount) * 2) / 2 : 1}
+            onChange={(n) => setAmountText(String(Math.round(n * portion.amount * 10) / 10))}
             step={0.5}
             min={0.5}
             max={20}
-            format={(n) => (n === 1 ? '1 Portion' : `${fmt.dec(n)} Portionen`)}
+            format={(n) => (n === 1 ? `1 ${portion.word}` : `${fmt.dec(n)} ${portion.plural}`)}
           />
         </div>
       )}

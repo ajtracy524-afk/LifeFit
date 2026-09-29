@@ -1758,19 +1758,21 @@ describe('must-haves: "Wie gestern", "Was kann ich kochen?", training → nutrit
     expect(document.querySelector<HTMLElement>('[data-testid="celebration"]')!.textContent).toMatch(/Eingeplant/);
   });
 
-  it('training done today → Heute shows what to eat now (same engine), before that it does not', async () => {
+  it('Heute: one prioritized next step – the day\'s gap; right after training it answers the session (same engine)', async () => {
     const plain = { ...completeState(), training: { programId: 'full-body', weekdays: [1, 3, 5] } };
     localStorage.setItem(KEY, JSON.stringify(plain));
     window.history.replaceState(null, '', '/#/today');
     await startApp();
-    expect(text()).not.toMatch(/Nach deinem Training/);
+    const step = () => [...container.querySelectorAll('h2')].find((h) => h.textContent === 'Dein nächster sinnvoller Schritt')?.closest('section, div[class*="card"]') ?? null;
+    expect(step()!.textContent).toMatch(/Heute fehlen noch [\d.]+ kcal und \d+ g Protein/);
+    expect(step()!.querySelectorAll('li[class*="item"]')).toHaveLength(1); // one step, not a list of warnings
     await act(async () => root?.unmount());
     root = undefined;
-    const workout = { id: 'w', date: TUE, templateId: 'fb-a', name: 'Ganzkörper A', startedAt: `${TUE}T06:00:00Z`, endedAt: `${TUE}T07:00:00Z`, status: 'completed', exercises: [] };
+    // Finished 07:00 local time, now 07:30.
+    const workout = { id: 'w', date: TUE, templateId: 'fb-a', name: 'Ganzkörper A', startedAt: `${TUE}T06:00:00`, endedAt: `${TUE}T07:00:00`, status: 'completed', exercises: [] };
     localStorage.setItem(KEY, JSON.stringify({ ...plain, workouts: [workout] }));
     await startApp();
-    expect(text()).toMatch(/Nach deinem Training/);
-    expect(text()).toMatch(/Heute fehlen noch [\d.]+ kcal und \d+ g Protein/);
+    expect(step()!.textContent).toMatch(/Nach dem Training: noch [\d.]+ kcal und \d+ g Protein/);
   });
 });
 
@@ -2602,5 +2604,93 @@ describe('one day, one week: Heute + Ernährung + Training + Einkauf (end to end
     const rest = container.querySelector('[aria-label="Heute Ruhetag: Erholung"]')!;
     expect(rest.textContent).toMatch(/Tagesziel −\d+ kcal – Ausgleich zu den Trainingstagen, die Woche bleibt gleich/);
     expect(goal('Training')).toBe('');
+  });
+});
+
+describe('coach phase 1 (UI): yesterday, next step, tips with memory, activity, portions', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 29, 9, 0)); // Tuesday morning
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const day = (n: number) => {
+    const d = new Date(2026, 8, 29 - n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  // A balanced day (2700 kcal target of completeState) with little fiber.
+  const lowFiberDay = (n: number) => ({ id: `f${n}`, date: day(n), slot: 'lunch', loggedAt: `${day(n)}T12:00:00`, name: 'Eintrag', method: 'quick', macros: { kcal: 2700, protein: 165, carbs: 330, fat: 75 }, micros: { fiber: 12, sugar: 40, salt: 4 } });
+  const state = (patch: Record<string, unknown> = {}) => ({
+    ...completeState(),
+    profile: { ...completeState().profile, createdAt: '2026-08-01T08:00:00' },
+    logEntries: [1, 2, 3, 4, 5, 6, 7].map(lowFiberDay),
+    ...patch,
+  });
+  const card = (title: string) => [...container.querySelectorAll('h2')].find((h) => h.textContent === title)?.closest('section, div[class*="card"]') ?? null;
+
+  it('"Dein gestriger Tag": good points, the pattern, the simplest step, why – and gone after "Verstanden"', async () => {
+    localStorage.setItem(KEY, JSON.stringify(state()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const review = container.querySelector('[aria-label="Dein gestriger Tag"]')!;
+    expect(review.textContent).toMatch(/Was lief gutKalorienziel erreichtProtein-Ziel erreicht/);
+    expect(review.textContent).toMatch(/Was auffälltBallaststoffe lag an 7 von 7 erfassten Tagen der letzten 7 Tage unter deinem persönlichen Bereich\./);
+    expect(review.textContent).toMatch(/Die einfachste VerbesserungTäglich eine zusätzliche Portion Gemüse/);
+    await act(async () => [...review.querySelectorAll('button')].find((b) => b.textContent === 'Warum?')!.click());
+    expect(review.textContent).toMatch(/Ø 12 g bei einem Bereich um 38 g/);
+    await act(async () => [...review.querySelectorAll('button')].find((b) => b.textContent === 'Verstanden')!.click());
+    expect(container.querySelector('[aria-label="Dein gestriger Tag"]')).toBeNull();
+    expect(store.getState().coach.reviewSeen).toEqual({ [day(1)]: true });
+  });
+
+  it('one next step and one tip at a time; the tip shown is remembered for the coach', async () => {
+    localStorage.setItem(KEY, JSON.stringify(state()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const step = card('Dein nächster sinnvoller Schritt')!;
+    expect(step.querySelectorAll('li[class*="item"]')).toHaveLength(1);
+    expect(step.textContent).toMatch(/Heute fehlen noch/);
+    const tips = card('💡 Tipps für dich')!;
+    expect(tips.querySelectorAll('li[class*="item"]')).toHaveLength(1);
+    expect(tips.textContent).toMatch(/🥦 Mehr Ballaststoffe/);
+    expect(store.getState().coach.topics!['tip:fiber:low']).toMatchObject({ shownDays: 1, status: 'active', firstShown: '2026-09-29' });
+  });
+
+  it('activity: entered in two taps, shown on Heute, explicitly not added to the target', async () => {
+    localStorage.setItem(KEY, JSON.stringify(state()));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    await click('Aktivität eintragen (optional)');
+    expect(document.querySelector('dialog[open]')!.textContent).toMatch(/nicht automatisch zu deinem Tagesziel addiert/);
+    await type('Aktive Kalorien', '420');
+    await type('Schritte', '8400');
+    await clickInDialog('Speichern');
+    expect(store.getState().activity['2026-09-29']).toMatchObject({ activeKcal: 420, steps: 8400, source: 'manual' });
+    expect(container.querySelector('[aria-label^="Aktivität heute: 420 kcal, 8.400 Schritte"]')).toBeTruthy();
+  });
+
+  it('portion intelligence: a scanned toast starts at "1 Scheibe", counted in slices', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ status: 1, product: { product_name: 'Toastbrot', nutriments: { 'energy-kcal_100g': 260, proteins_100g: 8, carbohydrates_100g: 48, fat_100g: 3 }, serving_size: '2 slices (50 g)', serving_quantity: 50, product_quantity: 500, product_quantity_unit: 'g' } }), { status: 200 }),
+    );
+    localStorage.setItem(KEY, JSON.stringify(state({ logEntries: [] })));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Barcode');
+    await type('Barcode-Nummer', '4012345678901');
+    await click('Produkt suchen');
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    const dialog = document.querySelector('dialog[open]')!;
+    expect(dialog.querySelector<HTMLInputElement>('input[inputmode="decimal"]')!.value).toBe('25');
+    expect([...dialog.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent)).toContain('1 Scheibe (25 g)');
+    expect(dialog.textContent).toMatch(/Scheiben à 25 g/);
+    expect(dialog.textContent).toMatch(/1 Portion \(50 g\)/);
   });
 });

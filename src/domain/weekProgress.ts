@@ -5,6 +5,7 @@ import { appStartDate } from './progress';
 import { activeWorkouts } from './training';
 import type { AppState, ISODate } from './types';
 import { relativeDay } from '../lib/format';
+import { waterOn } from './water';
 
 /**
  * The week as one story: what was done, what is next, what improved – only
@@ -33,7 +34,8 @@ export function weekProgress(state: AppState, week: ISODate, today: ISODate): We
   const count = (key: 'protein' | 'calories' | 'water') => {
     const withGoal = goals.filter((g) => g.some((x) => x.key === key));
     // A day counts once something was logged (protein / calories) – an empty day is no "miss".
-    const logged = key === 'water' ? withGoal : withGoal.filter((_, i) => dayTotals(state.logEntries, days[i]!).kcal > 0);
+    // A day counts once something was logged for it: food for protein / calories, a water entry for water.
+    const logged = withGoal.filter((_, i) => (key === 'water' ? waterOn(state, days[i]!) > 0 : dayTotals(state.logEntries, days[i]!).kcal > 0));
     return logged.length ? logged.filter((g) => g.find((x) => x.key === key)!.done).length : undefined;
   };
   const sessions = activeWorkouts(state.training, state.workoutOverrides, state.workouts, week, state.dayContexts).filter((s) => s.originalDate >= start || s.date >= start);

@@ -46,11 +46,66 @@ export interface AmountOption {
   amount: number;
 }
 
-/** Quick amounts: 100 g, one serving and the whole package – only those the product states. */
-export function productAmountOptions(product: Product): AmountOption[] {
+/**
+ * Portion intelligence – what "one" of this product is, only from what the
+ * product states (or the catalog food it is linked to), never guessed:
+ *   1. the declared serving, named by its label ("1 slice (25 g)" → "1 Scheibe")
+ *   2. a piece of the linked catalog food (egg, banana: "1 Stück")
+ *   3. a small single package (cup, bar: up to 250 g / ml) – "1 Packung"
+ * Otherwise there is no portion and 100 g / ml stays the default. Always editable.
+ */
+export interface Portion {
+  amount: number;
+  /** Singular / plural word: "Scheibe" / "Scheiben". */
+  word: string;
+  plural: string;
+  source: 'serving' | 'piece' | 'package';
+}
+
+/** Serving words (OFF labels are often English) → German singular / plural. */
+const PORTION_WORDS: Array<[RegExp, string, string]> = [
+  [/^(slices?|scheiben?)$/i, 'Scheibe', 'Scheiben'],
+  [/^(pieces?|stücke?|stück|pcs?)$/i, 'Stück', 'Stück'],
+  [/^(pots?|cups?|becher)$/i, 'Becher', 'Becher'],
+  [/^(bars?|riegel)$/i, 'Riegel', 'Riegel'],
+  [/^(biscuits?|cookies?|kekse?)$/i, 'Keks', 'Kekse'],
+  [/^(eggs?|eier|ei)$/i, 'Ei', 'Eier'],
+  [/^(bottles?|flaschen?)$/i, 'Flasche', 'Flaschen'],
+  [/^(cans?|dosen?)$/i, 'Dose', 'Dosen'],
+  [/^(glass(es)?|gläser|glas)$/i, 'Glas', 'Gläser'],
+  [/^(packs?|packages?|packungen?|beutel)$/i, 'Packung', 'Packungen'],
+  [/^(tbsp|tablespoons?|el|esslöffel)$/i, 'EL', 'EL'],
+  [/^(tsp|teaspoons?|tl|teelöffel)$/i, 'TL', 'TL'],
+];
+export const SINGLE_PACKAGE_MAX = 250;
+
+/** "1 slice (25 g)" / "2 Scheiben (50g)" → one piece of 25 g called "Scheibe". */
+export function parseServingLabel(label: string | undefined, servingSize: number | undefined): Pick<Portion, 'amount' | 'word' | 'plural'> | undefined {
+  const m = label?.trim().match(/^(\d+(?:[.,]\d+)?)\s*([a-zäöüß]+)/i);
+  if (!m || !servingSize) return undefined;
+  const count = Number(m[1]!.replace(',', '.'));
+  const word = PORTION_WORDS.find(([re]) => re.test(m[2]!));
+  if (!word || !(count > 0)) return undefined;
+  return { amount: Math.round((servingSize / count) * 10) / 10, word: word[1], plural: word[2] };
+}
+
+export function productPortion(product: Product, pieceFood?: { pieceG?: number; pieceLabel?: string }): Portion | undefined {
+  const named = parseServingLabel(product.servingLabel, product.servingSize);
+  if (named) return { ...named, source: 'serving' };
+  if (product.servingSize) return { amount: product.servingSize, word: 'Portion', plural: 'Portionen', source: 'serving' };
+  if (pieceFood?.pieceG && product.unit === 'g') return { amount: pieceFood.pieceG, word: pieceFood.pieceLabel ?? 'Stück', plural: pieceFood.pieceLabel ?? 'Stück', source: 'piece' };
+  if (product.packageSize && product.packageSize <= SINGLE_PACKAGE_MAX) return { amount: product.packageSize, word: 'Packung', plural: 'Packungen', source: 'package' };
+  return undefined;
+}
+
+/** Quick amounts: 100 g, one portion (named if possible) and the whole package – only what the product states. */
+export function productAmountOptions(product: Product, pieceFood?: { pieceG?: number; pieceLabel?: string }): AmountOption[] {
   const u = product.unit;
   const options: AmountOption[] = [{ label: `100 ${u}`, amount: 100 }];
-  if (product.servingSize) options.push({ label: `1 Portion (${fmtAmount(product.servingSize)} ${u})`, amount: product.servingSize });
+  const portion = productPortion(product, pieceFood);
+  if (portion && portion.source !== 'package') options.push({ label: `1 ${portion.word} (${fmtAmount(portion.amount)} ${u})`, amount: portion.amount });
+  // A serving label that names a piece ("1 Scheibe") is offered in addition to a serving of several pieces.
+  if (product.servingSize && portion?.source === 'serving' && portion.amount !== product.servingSize) options.push({ label: `1 Portion (${fmtAmount(product.servingSize)} ${u})`, amount: product.servingSize });
   // A package that is exactly one portion (a yoghurt cup) is offered once, as the portion.
   if (product.packageSize && product.packageSize !== 100 && product.packageSize !== product.servingSize) options.push({ label: `Packung (${fmtAmount(product.packageSize)} ${u})`, amount: product.packageSize });
   return options;

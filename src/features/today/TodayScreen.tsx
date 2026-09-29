@@ -8,6 +8,7 @@ import { isCompletedOn, resolveWorkouts } from '../../domain/training';
 import { nextAction } from '../../domain/today';
 import { dayTargetFor, weekShopping } from '../../domain/week';
 import type { MealSlot, WorkoutTemplate } from '../../domain/types';
+import type { RecommendationKind } from '../../domain/engine';
 import { fmt, formatDateLong, greeting, weekdayShort } from '../../lib/format';
 import { href, navigate } from '../../lib/router';
 import { useAppState } from '../../store/store';
@@ -25,6 +26,8 @@ import { BudgetLine } from '../nutrition/BudgetLine';
 import { CalorieStatusBadge } from '../nutrition/CalorieStatusBadge';
 import { DayTypeBadge } from './DayTypeBadge';
 import { DayGoals } from './DayGoals';
+import { DayReviewCard } from './DayReviewCard';
+import { ActivityControl } from './ActivityControl';
 import { WeekProgressCard } from './WeekProgressCard';
 import { calorieStatus } from '../../domain/calorieStatus';
 import { useCrossing, useIncrease, useScreenMount } from '../../lib/motion';
@@ -38,6 +41,10 @@ import { DayPlanCard } from './DayPlanCard';
 import { NextActionCard } from './NextActionCard';
 import { TimeBudgetControl } from './TimeBudgetControl';
 import styles from './today.module.css';
+
+/** What belongs to "the next step" (today) vs. the habit tips (weeks) – each recommendation in one place only. */
+const NEXT_STEP_KINDS: RecommendationKind[] = ['pre_workout', 'heavy_meal', 'nutrition_gap', 'nutrition_over', 'own_dish', 'leftovers'];
+const TIP_KINDS: RecommendationKind[] = ['tip_habit', 'tip_progress', 'protein_pattern'];
 
 export function TodayScreen() {
   useScreenMount();
@@ -151,6 +158,9 @@ export function TodayScreen() {
         </Card>
       )}
 
+      {/* Yesterday, reviewed once: good things, patterns, one simple step – until read. */}
+      <DayReviewCard />
+
       {/* Training or rest day – at a glance, a training day links to the session. */}
       <DayTypeBadge
         session={todaysSession}
@@ -207,6 +217,7 @@ export function TodayScreen() {
           <div className={styles.waterRow}>
             <WaterControl date={t} />
           </div>
+          <ActivityControl date={t} />
           <div className={styles.statusBudget}>
             <TimeBudgetControl date={t} />
           </div>
@@ -214,11 +225,11 @@ export function TodayScreen() {
       )}
 
 
-      {/* Only safety notices belong on "Heute" – plus, once today's training is done, what to eat now (fitness → nutrition). */}
+      {/* Safety first; then ONE prioritized next step (the engine ranks: before / after training, the day's gap …). */}
       <CoachCard domains={['safety']} />
-      {isCompletedOn(state.workouts, t) && <CoachCard domains={['nutrition']} title="Nach deinem Training" />}
-      {/* Nutrition → training: shortly before today's session (carbs so far, a big meal just now). */}
-      {todaysSession && !isCompletedOn(state.workouts, t) && <CoachCard domains={['nutrition']} kinds={['pre_workout', 'heavy_meal']} title="Vor dem Training" />}
+      <CoachCard domains={['nutrition']} kinds={NEXT_STEP_KINDS} title="Dein nächster sinnvoller Schritt" show={1} />
+      {/* Habits from the last weeks – one at a time, with memory (not repeated for weeks). */}
+      <CoachCard domains={['tips', 'nutrition']} kinds={TIP_KINDS} title="💡 Tipps für dich" show={1} />
 
       {/* The day as a timeline – meals and training in time order */}
       {weekHasMeals && (

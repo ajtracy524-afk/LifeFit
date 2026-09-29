@@ -5,7 +5,8 @@ import { leftoversRule, nutritionGapRule, nutritionOverRule, ownDishRule, protei
 import { bodyRateRule, shoppingRule } from './planRules';
 import { frequencyRule, missedRule, programRule, recoveryRule, stallRule, timeRule, undertrainedRule } from './trainingRules';
 import { cardioRule, levelRule, preWorkoutRule } from './adaptiveRules';
-import type { EngineOptions, Priority, Recommendation } from './types';
+import { habitTipsRule } from './tipRules';
+import type { EngineDomain, EngineOptions, Priority, Recommendation } from './types';
 
 export * from './types';
 export { buildContext, type EngineContext } from './context';
@@ -17,7 +18,8 @@ export { suggestMealsForGap } from './nutritionRules';
 type Rule = (ctx: EngineContext) => Recommendation[];
 
 /** Order = tie-breaker within the same priority. */
-export const RULES: { name: string; run: Rule }[] = [
+/** `only`: the rule produces only these domains – skipped when a screen asks for others (the tips read 30 days). */
+export const RULES: { name: string; run: Rule; only?: EngineDomain[] }[] = [
   { name: 'training_time', run: timeRule },
   { name: 'pre_workout', run: preWorkoutRule },
   { name: 'training_recovery', run: recoveryRule },
@@ -34,6 +36,7 @@ export const RULES: { name: string; run: Rule }[] = [
   { name: 'training_program', run: programRule },
   { name: 'training_level', run: levelRule },
   { name: 'training_cardio', run: cardioRule },
+  { name: 'tips', run: habitTipsRule, only: ['tips'] },
   { name: 'nutrition_over', run: nutritionOverRule },
 ];
 
@@ -50,6 +53,7 @@ export function runEngine(state: AppState, options: EngineOptions): Recommendati
 
   const raw: Recommendation[] = [];
   for (const rule of RULES) {
+    if (rule.only && options.domains && !rule.only.some((d) => options.domains!.includes(d))) continue;
     try {
       raw.push(...rule.run(ctx));
     } catch (err) {

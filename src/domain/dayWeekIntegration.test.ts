@@ -105,3 +105,10 @@ describe('one training count everywhere', () => {
     expect(weekStats(s, MON).workoutsDone).toBe(1);
   });
 });
+
+describe('water days count only with a water entry', () => {
+  it('no water logged → no water count at all (not "0 von 2 Tagen")', () => {
+    expect(weekProgress(base({ logEntries: [log(MON, 2600, 160)] }), MON, TUE).water).toBeUndefined();
+    expect(weekProgress(base({ water: { [MON]: 2100 } }), MON, TUE).water).toBe(1);
+  });
+});

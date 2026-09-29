@@ -7,6 +7,8 @@ import { recipesForSlot, servingsForSlot, swapOptions } from '../planner';
 import type { Macros, MealSlot, Recipe } from '../types';
 import { dayContextFor, pantryEstimate, trainingDayBonus, weekFoodCost } from '../week';
 import { recentWorkout, workoutLine } from './adaptiveRules';
+import { PROTEIN_FOODS } from '../review/improvements';
+import { topicDecision } from './topics';
 import { sessionLoad } from '../adaptive/load';
 import { formatCostRange, priceLookup, recipeCostRange, type CostRange } from '../costs';
 import { dishCostRange, dishPortionNutrition } from '../dishes';
@@ -42,8 +44,6 @@ export const NUTRITION_RULES = {
   overBudgetPerChf: 0.03,
 } as const;
 
-/** Ready-to-eat foods that close a protein gap without many calories. */
-const PROTEIN_FOODS = ['skyr', 'quark', 'greek-yogurt', 'cottage', 'whey', 'tofu', 'edamame', 'tuna', 'protein-bar'];
 
 /** Perishables worth using up when their planned meal was skipped. */
 const PERISHABLE = new Set(['produce', 'meat_fish', 'dairy']);
@@ -306,7 +306,9 @@ export function proteinPatternRule(ctx: EngineContext): Recommendation[] {
 
   const avg = logged.reduce((s, x) => s + x.totals.protein, 0) / logged.length;
   const avgTarget = logged.reduce((s, x) => s + x.target!.protein, 0) / logged.length;
-  if (avg >= avgTarget * R.proteinPatternShare) return [];
+  // Same memory as the habit tips: not shown for weeks on end; a resolved pattern rests.
+  const decision = topicDecision(ctx.state.coach?.topics, 'tip:protein', avg < avgTarget * R.proteinPatternShare, ctx.date);
+  if (!decision.show) return [];
 
   const upcoming = ctx.state.plannedMeals.filter((m) => m.status === 'planned' && m.date >= ctx.date && m.date <= addDays(ctx.date, 3));
   const swaps = upcoming
@@ -336,6 +338,7 @@ export function proteinPatternRule(ctx: EngineContext): Recommendation[] {
       reasons: [`${logged.length} erfasste Tage in den letzten 7 Tagen`],
       facts: { avgProtein: Math.round(avg), targetProtein: Math.round(avgTarget), loggedDays: logged.length },
       actions,
+      topic: 'tip:protein',
     },
   ];
 }
