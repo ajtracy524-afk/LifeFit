@@ -98,7 +98,9 @@ export function NextActionCard({ action, onPlanWeek, onStart, onOpenMeal, onRepl
       // Nothing planned is open – but if protein is clearly short, say so (a hint, not a task).
       const t = today();
       const goal = dayTargetFor(state, t)?.protein;
-      const left = goal ? goal - daySummary(state.logEntries, t).day.macros.protein : 0;
+      // Only from complete data: an entry without protein value would make "noch X g" a guess.
+      const proteinUnknown = state.logEntries.some((e) => e.date === t && e.unknown?.includes('protein'));
+      const left = goal && !proteinUnknown ? goal - daySummary(state.logEntries, t).day.macros.protein : 0;
       const text = left >= PROTEIN_HINT_G ? `Für heute ist nichts mehr offen. Noch ${fmt.int(left)} g Protein bis zum Tagesziel.` : 'Für heute ist nichts mehr offen.';
       return <Shell eyebrow="Heute" title="Alles erledigt ✓" text={text} />;
     }

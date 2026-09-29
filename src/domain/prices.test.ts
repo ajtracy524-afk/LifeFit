@@ -49,8 +49,8 @@ describe('CHF format', () => {
   });
 
   it('budget note speaks CHF', () => {
-    expect(budgetNote(50, 55, 'balanced')).toBe('Passt in dein Budget von CHF 55.–.');
-    expect(budgetNote(70, 55, 'balanced')).toMatch(/CHF 55\.–/);
+    expect(budgetNote({ lowChf: 45, highChf: 50 }, 55, 'balanced')).toBe('Passt in dein Budget von CHF 55.–.');
+    expect(budgetNote({ lowChf: 65, highChf: 70 }, 55, 'balanced')).toMatch(/CHF 55\.–/);
   });
 });
 

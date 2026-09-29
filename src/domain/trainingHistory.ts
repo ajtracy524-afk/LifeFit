@@ -76,14 +76,16 @@ export const PLAN_STATUS_LABEL: Record<PlanStatus, string> = {
   unplanned: '',
 };
 
-/** "5 von 6 Übungen wie geplant · 1 ersetzt · 1 ausgelassen" – one honest line. */
+/** "4 von 6 Übungen gemacht · 1 ersetzt · 2 ausgelassen" / "6 von 6 Übungen wie geplant" – one honest line that leads with what was done. */
 export function planSummary(w: Workout): string | undefined {
   const rows = w.exercises.map(planVsActual).filter((r) => r.status !== 'unplanned');
   const planned = rows.filter((r) => r.status !== 'extra').length;
   if (!planned) return undefined;
   const count = (s: PlanStatus) => rows.filter((r) => r.status === s).length;
   const ok = count('as_planned') + count('more');
-  const parts = [`${ok} von ${planned} Übungen wie geplant`];
+  // Lead with what was done; "wie geplant" only when everything done matched the plan.
+  const done = ok + count('less') + count('replaced');
+  const parts = [ok === done ? `${ok} von ${planned} Übungen wie geplant` : `${done} von ${planned} Übungen gemacht`];
   if (count('less')) parts.push(`${count('less')} mit weniger Sätzen/Wdh.`);
   if (count('replaced')) parts.push(`${count('replaced')} ersetzt`);
   if (count('skipped')) parts.push(`${count('skipped')} ausgelassen`);

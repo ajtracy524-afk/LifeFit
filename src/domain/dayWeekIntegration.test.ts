@@ -96,3 +96,12 @@ describe('pantry → meals → training day', () => {
     expect(proteinShare(training)).toBeGreaterThanOrEqual(proteinShare(rest));
   });
 });
+
+describe('one training count everywhere', () => {
+  it('a workout on an unplanned day counts in "Diese Woche" like in the Training tab and Fortschritt', async () => {
+    const { weekStats } = await import('./progress');
+    const s = base({ workouts: [done('x', TUE, 'ppl-push')] }); // Tuesday is a rest day in the plan
+    expect(weekProgress(s, MON, TUE).trainings).toEqual({ done: 1, planned: 2 });
+    expect(weekStats(s, MON).workoutsDone).toBe(1);
+  });
+});

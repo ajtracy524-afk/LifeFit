@@ -164,6 +164,8 @@ export function rate(amount: number | undefined, ref: Reference | undefined, opt
   // range
   const tol = ref.tolerance ?? 0;
   const diff = amount - ref.amount;
+  // A lower bound below the range says nothing; inside or above it, it already is at least that much.
+  if (opts.partial && diff < -tol) return { tone: 'none', message: `mind. ${amountText(amount, unit)} – Daten unvollständig`, ratio };
   if (Math.abs(diff) <= tol) return { tone: 'green', message: 'Im Zielbereich', ratio };
   if (diff > 0) return { tone: diff > 2 * tol ? 'red' : 'orange', message: `${amountText(diff, unit)} über dem Ziel`, ratio };
   return { tone: opts.finished && -diff > 2 * tol ? 'red' : 'orange', message: `Noch ${amountText(-diff, unit)}`, ratio };
@@ -192,8 +194,10 @@ export function nutrientReport(state: AppState, date: ISODate, finished: boolean
   const refs = references(dayTargetFor(state, date), state.nutritionProfile?.waterGoalMl);
   const m = s.macros;
   const eatenAny = s.entries > 0;
-  // Macros are known once something is logged (unknown ones are marked per entry, the sum stays a lower bound).
-  const macro = (k: 'kcal' | 'protein' | 'carbs' | 'fat') => row(k, eatenAny ? m[k] : undefined, refs[k], false, finished, refs[k]?.unit ?? (k === 'kcal' ? 'kcal' : 'g'));
+  // Macros are known once something is logged. An entry without a value for a macro (e.g. a product
+  // without protein data) makes the day's sum a lower bound – rated like a partial micro sum, never as a shortfall.
+  const unknownMacro = (k: 'kcal' | 'protein' | 'carbs' | 'fat') => k !== 'kcal' && state.logEntries.some((e) => e.date === date && e.unknown?.includes(k));
+  const macro = (k: 'kcal' | 'protein' | 'carbs' | 'fat') => row(k, eatenAny ? m[k] : undefined, refs[k], unknownMacro(k), finished, refs[k]?.unit ?? (k === 'kcal' ? 'kcal' : 'g'));
   const energy = [macro('kcal'), macro('protein'), macro('carbs'), macro('fat'), microRow('fiber', s, refs.fiber, finished)];
   const water = refs.water ? [row('water', waterOn(state, date), refs.water, false, finished, 'ml')] : [];
   const limits = [microRow('sugar', s, refs.sugar, finished), microRow('salt', s, refs.salt, finished)];
@@ -228,6 +232,7 @@ function summarize(groups: NutrientGroup[], eatenAny: boolean): string[] {
   else if (eatenAny && kcal && kcal.message.includes('über')) out.push(`Kalorien: ${kcal.message}.`);
   const protein = get('protein');
   if (eatenAny && protein?.tone === 'green') out.push('Protein im Zielbereich.');
+  else if (eatenAny && protein?.partial && protein.amount !== undefined) out.push(`Protein: mindestens ${amountText(protein.amount, 'g')} – bei einem Eintrag fehlt der Proteinwert.`);
   else if (eatenAny && protein?.reference) out.push(`Protein: ${protein.message.replace(/^Noch/, 'noch')} bis zum Ziel.`);
   const fiber = get('fiber');
   if (fiber?.tone === 'green') out.push('Ballaststoffe im Zielbereich.');

@@ -60,7 +60,7 @@ export function ExerciseSheet({ exerciseId, onClose, action }: Props) {
           <p className={styles.detailLead}>{ex.description}</p>
 
           {(last || best) && (
-            <div className={styles.personal} aria-label="Deine Werte">
+            <div className={styles.personal} role="group" aria-label="Deine Werte">
               {last && (
                 <div>
                   <span className={styles.detailLabel}>Letztes Training</span>

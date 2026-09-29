@@ -201,6 +201,7 @@ export function TodayScreen() {
           <DayGoals date={t} />
           <div className={styles.macroRow}>
             <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
+            {day.incomplete > 0 && <span className={styles.partialNote}>Makros teils ohne Angaben – Werte sind Mindestwerte</span>}
             <NutrientReportEntry date={t} onLog={() => setLogTarget({ date: t, slot: logSlot() })} />
           </div>
           <div className={styles.waterRow}>

@@ -150,9 +150,13 @@ describe('estimated costs on the shopping list', () => {
 
 describe('budget note', () => {
   it('says plainly whether the week fits and what would help', () => {
-    expect(budgetNote(50, undefined, 'save')).toBeUndefined();
-    expect(budgetNote(50, 60, 'balanced')).toBe('Passt in dein Budget von CHF 60.–.');
-    expect(budgetNote(80, 60, 'balanced')).toMatch(/Sparen/);
-    expect(budgetNote(80, 60, 'save')).toMatch(/Kalorien und Protein haben Vorrang/);
+    const r = (lowChf: number, highChf: number) => ({ lowChf, highChf });
+    expect(budgetNote(r(45, 50), undefined, 'save')).toBeUndefined();
+    expect(budgetNote(r(45, 50), 60, 'balanced')).toBe('Passt in dein Budget von CHF 60.–.');
+    expect(budgetNote(r(55, 65), 60, 'balanced')).toMatch(/^Liegt etwa bei deinem Budget von CHF 60\.– \(ca\. CHF/);
+    expect(budgetNote(r(75, 80), 60, 'balanced')).toMatch(/Sparen/);
+    expect(budgetNote(r(75, 80), 60, 'save')).toMatch(/Kalorien und Protein haben Vorrang/);
+    // Too few prices → no verdict at all (a partial sum must never say "passt").
+    expect(budgetNote(undefined, 60, 'balanced')).toBe('Zu wenig Preisdaten für einen Vergleich mit deinem Budget von CHF 60.–.');
   });
 });

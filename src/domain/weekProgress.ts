@@ -37,7 +37,8 @@ export function weekProgress(state: AppState, week: ISODate, today: ISODate): We
     return logged.length ? logged.filter((g) => g.find((x) => x.key === key)!.done).length : undefined;
   };
   const sessions = activeWorkouts(state.training, state.workoutOverrides, state.workouts, week, state.dayContexts).filter((s) => s.originalDate >= start || s.date >= start);
-  const done = sessions.filter((s) => s.completedWorkoutId).length;
+  // Same count as the Training tab and Fortschritt: every completed workout of the week (an extra day counts too).
+  const done = state.workouts.filter((w) => w.status === 'completed' && w.date >= week && w.date <= addDays(week, 6)).length;
   const next = sessions.find((s) => !s.completedWorkoutId && s.date >= today);
 
   const improvements: string[] = [];

@@ -558,7 +558,7 @@ function PrescriptionBar({ workoutId, exercise }: { workoutId: string; exercise:
     input?.focus();
   };
   return (
-    <div className={styles.rx} data-change={p.change} aria-label={`Vorschlag: ${value}`}>
+    <div className={styles.rx} data-change={p.change} role="group" aria-label={`Vorschlag: ${value}`}>
       <div className={styles.rxHead}>
         <span aria-hidden>{CHANGE_ICON[p.change]}</span>
         <strong>
@@ -630,7 +630,8 @@ function NumberCell({ value, placeholder, label, integer, disabled, onCommit }: 
 
 /** Starts by itself after a set; −30 / +30 s adjust it, "Überspringen" ends it. */
 function RestTimer({ rest, now, onChange }: { rest: Rest; now: number; onChange: (r: Rest | null) => void }) {
-  const remaining = Math.ceil((rest.endsAt - now) / 1000);
+  // `now` ticks once per second and can be up to 1 s old when the set is ticked – never show more than the rest itself.
+  const remaining = Math.min(rest.total, Math.ceil((rest.endsAt - now) / 1000));
   const over = remaining <= 0;
 
   useEffect(() => {

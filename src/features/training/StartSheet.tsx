@@ -112,7 +112,7 @@ function StartSheetInner({ template, onClose }: { template: WorkoutTemplate; onC
 
 function Proposal({ p, decision, onDecide }: { p: AdaptationProposal; decision?: 'accepted' | 'skipped'; onDecide: (d: 'accepted' | 'skipped') => void }) {
   return (
-    <div className={styles.proposal} data-decision={decision ?? 'open'} aria-label={p.title}>
+    <div className={styles.proposal} data-decision={decision ?? 'open'} role="group" aria-label={p.title}>
       <strong>{p.title}</strong>
       <p className={styles.muted}>{p.reason}</p>
       {p.details && p.details.length > 0 && (

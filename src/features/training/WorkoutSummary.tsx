@@ -60,6 +60,7 @@ export function WorkoutSummary() {
   const previous = state.workouts
     .filter((w) => w.status === 'completed' && w.templateId === workout.templateId && w.startedAt < workout.startedAt)
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+  // Only an improvement is pointed out – less volume than last time is no message (plan vs. reality shows the facts).
   const volumeDelta = previous?.volumeKg && stats.volumeKg ? (stats.volumeKg - previous.volumeKg) / previous.volumeKg : undefined;
   const plan = planSummary(workout);
 
@@ -105,7 +106,7 @@ export function WorkoutSummary() {
         </Card>
       )}
 
-      <div className={styles.statGrid} aria-label="Zusammenfassung">
+      <div className={styles.statGrid} role="group" aria-label="Zusammenfassung">
         <Stat label="Dauer" value={formatDuration(stats.durationMin * 60000)} />
         <Stat label="Übungen" value={String(stats.exercises)} />
         <Stat label="Sätze" value={String(stats.sets)} />
@@ -113,7 +114,7 @@ export function WorkoutSummary() {
           <Stat
             label="Volumen"
             value={`${fmt.int(stats.volumeKg)} kg`}
-            sub={volumeDelta !== undefined ? `${volumeDelta >= 0 ? '+' : '−'}${fmt.int(Math.abs(volumeDelta * 100))} % zum letzten Mal` : undefined}
+            sub={volumeDelta !== undefined && volumeDelta >= 0.01 ? `+${fmt.int(volumeDelta * 100)} % zum letzten Mal` : undefined}
           />
         )}
         {stats.reps > 0 && <Stat label="Wdh." value={fmt.int(stats.reps)} />}

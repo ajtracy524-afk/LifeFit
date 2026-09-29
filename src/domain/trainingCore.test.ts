@@ -8,7 +8,7 @@ import { createWorkout, estimateMinutes, workoutVolume } from './training';
 import { exerciseHistory, planSummary, planVsActual, workoutStats } from './trainingHistory';
 import { syncTraining } from './trainingPersonal';
 import { detectRecords, recordText } from './workoutRecords';
-import type { AppState, Workout, WorkoutSet } from './types';
+import type { AppState, Workout, WorkoutExercise, WorkoutSet } from './types';
 
 /** Training premium core: library, sessions (plan vs. reality), records, history, routines, programs. */
 
@@ -241,7 +241,7 @@ describe('plan vs. reality and history (through the real actions)', () => {
     ]);
     expect(planVsActual(done.exercises[0]!)).toMatchObject({ planned: '3 × 6–10 @ 80 kg', actual: '9 @ 80 · 9 @ 80 · 7 @ 80 · 7 @ 80' }); // "+ Satz" copies the last set
     expect(planVsActual(done.exercises[2]!)).toMatchObject({ replacedFrom: 'Schrägbankdrücken (KH)', actual: '10 @ 50 · 10 @ 50' });
-    expect(planSummary(done)).toBe('1 von 5 Übungen wie geplant · 1 mit weniger Sätzen/Wdh. · 1 ersetzt · 2 ausgelassen · 1 zusätzlich');
+    expect(planSummary(done)).toBe('3 von 5 Übungen gemacht · 1 mit weniger Sätzen/Wdh. · 1 ersetzt · 2 ausgelassen · 1 zusätzlich');
     // Warm-up is kept, but not counted; the skipped set is gone from the history.
     expect(done.exercises[3]!.sets.map((s) => s.type)).toEqual(['warmup', 'working']);
     const stats = workoutStats(done);
@@ -283,5 +283,23 @@ describe('plan vs. reality and history (through the real actions)', () => {
     expect(store.getState().customPrograms[program]!.routineIds).toEqual([builtIn]);
     expect(findTemplate(id)).toBeUndefined();
     store.commit(emptyState());
+  });
+});
+
+describe('plan line leads with what was done', () => {
+  it('everything as planned → "wie geplant"; stopping early → "gemacht", never "0 von 5 wie geplant"', async () => {
+    const { planSummary } = await import('./trainingHistory');
+    const planned = (exerciseId: string, reps: number[]) => ({
+      id: exerciseId,
+      exerciseId,
+      repMin: 6,
+      repMax: 10,
+      restSec: 90,
+      planned: { exerciseId, sets: 2, repMin: 6, repMax: 10 },
+      sets: reps.map((r, i) => ({ id: `${exerciseId}${i}`, weightKg: 50, reps: r, done: true, type: 'working' as const })),
+    });
+    const w = (exercises: WorkoutExercise[]) => ({ id: 'w', date: '2026-09-22', templateId: 'x', name: 'x', startedAt: '2026-09-22T10:00', status: 'completed' as const, exercises });
+    expect(planSummary(w([planned('bench-press', [8, 8]), planned('squat', [8, 8])]))).toBe('2 von 2 Übungen wie geplant');
+    expect(planSummary(w([planned('bench-press', [8]), { ...planned('squat', []), skipped: true }]))).toBe('1 von 2 Übungen gemacht · 1 mit weniger Sätzen/Wdh. · 1 ausgelassen');
   });
 });

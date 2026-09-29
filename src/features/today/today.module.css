@@ -938,3 +938,9 @@ button.timelineItem:active {
   display: inline-flex;
   align-items: center;
 }
+
+.partialNote {
+  display: block;
+  font-size: 12px;
+  color: var(--text-3);
+}

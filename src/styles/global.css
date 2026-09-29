@@ -5,8 +5,8 @@
   --surface: #ffffff;
   --surface-2: #efefea;
   --text: #151716;
-  --text-2: #5f6662;
-  --text-3: #8d938f;
+  --text-2: #4d534f;
+  --text-3: #666c68; /* ≥ 4.5 : 1 on surface and surface-2 (WCAG AA for small text) */
   --border: #e4e4de;
   --accent: #1f7a5a;
   --accent-soft: #e2f0e9;
@@ -47,7 +47,7 @@
     --surface-2: #232725;
     --text: #eceeed;
     --text-2: #a4aba7;
-    --text-3: #737a76;
+    --text-3: #8f9692; /* ≥ 4.5 : 1 on surface and surface-2 */
     --border: #2a2f2c;
     --accent: #4cc393;
     --accent-soft: #1b3228;
@@ -151,6 +151,8 @@ input::-webkit-inner-spin-button {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    /* An endless spinner would flicker at 0.01 ms per turn – it stops at its end state instead. */
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

@@ -52,7 +52,9 @@ export function dayGoals(state: AppState, date: ISODate): DayGoals {
   if (target) {
     const inZone = calorieStatus({ eaten: eaten.kcal, planned: 0, targetKcal: target.kcal, finished: false })?.key === 'in_zone';
     goals.push({ key: 'calories', icon: '🎯', label: 'Kalorien', done: inZone, detail: `${int(eaten.kcal)} / ${int(target.kcal)} kcal` });
-    goals.push({ key: 'protein', icon: '💪', label: 'Protein', done: eaten.protein >= target.protein, detail: `${int(eaten.protein)} / ${int(target.protein)} g` });
+    // An entry without protein value makes the sum a lower bound: reaching the target is still real, the number is "mind.".
+    const partial = state.logEntries.some((e) => e.date === date && e.unknown?.includes('protein'));
+    goals.push({ key: 'protein', icon: '💪', label: 'Protein', done: eaten.protein >= target.protein, detail: `${partial ? 'mind. ' : ''}${int(eaten.protein)} / ${int(target.protein)} g` });
   }
   const waterGoal = state.nutritionProfile?.waterGoalMl;
   if (waterGoal) {

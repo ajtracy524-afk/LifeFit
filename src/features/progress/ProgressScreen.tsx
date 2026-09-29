@@ -155,7 +155,8 @@ export function ProgressScreen() {
         <WaterWeek start={start} today={t} />
         {lastWeek.workoutsDone > 0 && thisWeek.volumeKg > 0 && (
           <p className={styles.compare}>
-            Trainingsvolumen {thisWeek.volumeKg >= lastWeek.volumeKg ? 'über' : 'unter'} Vorwoche ({fmt.int(lastWeek.volumeKg)} kg)
+            {/* The running week is compared with a finished one – only an already reached value is a statement. */}
+            {thisWeek.volumeKg >= lastWeek.volumeKg ? `Trainingsvolumen schon über der Vorwoche (${fmt.int(lastWeek.volumeKg)} kg)` : `Vorwoche: ${fmt.int(lastWeek.volumeKg)} kg Volumen`}
           </p>
         )}
       </Section>

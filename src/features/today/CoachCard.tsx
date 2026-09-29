@@ -27,8 +27,9 @@ export function CoachCard({ domains, title = 'Für dich', kinds }: { domains: En
   const t = today();
   const now = new Date();
   const hour = now.getHours();
-  // Minutes matter for "Training in 45 min" – refreshed per quarter hour, not every render.
-  const minute = Math.floor(now.getMinutes() / 15) * 15;
+  // The exact minute: "Training in 45 min" and "Nach dem Training" (ended 17:58) depend on it. The card only
+  // recomputes when the data changes (the engine takes ~1 ms), so there is nothing to save by rounding.
+  const minute = now.getMinutes();
   const [expanded, setExpanded] = useState(false);
   const key = `${domains.join()}|${kinds?.join() ?? ''}`;
 

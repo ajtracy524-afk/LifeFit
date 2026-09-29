@@ -187,3 +187,26 @@ describe('data audit: food → portion → meal → day → reference', () => {
     expect(REPORT_RULES).toMatchObject({ fiberPer1000Kcal: 14, sugarReferenceG: 90, saltLimitG: 5, sodiumLimitMg: 2000 });
   });
 });
+
+describe('unknown macros make a lower bound, never a shortfall', () => {
+  it('a product without protein data: protein is "mind. …", not "Noch … g" in orange – summary says why', async () => {
+    const { nutrientReport } = await import('./nutrientReport');
+    const { emptyState } = await import('../store/persistence');
+    const date = '2026-09-22';
+    const state = {
+      ...emptyState(),
+      targets: [{ id: 't', validFrom: '2026-01-01', method: 'formula' as const, kcal: 2500, protein: 150, carbs: 300, fat: 80 }],
+      logEntries: [
+        { id: 'a', date, slot: 'lunch' as const, loggedAt: `${date}T12:00:00`, name: 'Produkt', method: 'barcode' as const, macros: { kcal: 600, protein: 0, carbs: 80, fat: 20 }, unknown: ['protein' as const] },
+        { id: 'b', date, slot: 'snack' as const, loggedAt: `${date}T15:00:00`, name: 'Skyr', method: 'quick' as const, macros: { kcal: 200, protein: 30, carbs: 10, fat: 1 } },
+      ],
+    };
+    const r = nutrientReport(state, date, false);
+    const protein = r.groups[0]!.rows.find((x) => x.key === 'protein')!;
+    expect(protein).toMatchObject({ partial: true, tone: 'none', message: 'mind. 30 g – Daten unvollständig' });
+    expect(r.summary).toContain('Protein: mindestens 30 g – bei einem Eintrag fehlt der Proteinwert.');
+    // Complete data → the normal rating.
+    const complete = nutrientReport({ ...state, logEntries: [state.logEntries[1]!] }, date, false).groups[0]!.rows.find((x) => x.key === 'protein')!;
+    expect(complete).toMatchObject({ partial: false, tone: 'orange', message: 'Noch 120 g' });
+  });
+});

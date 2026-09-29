@@ -2272,7 +2272,7 @@ describe('training premium core (UI)', () => {
     const summary = container.querySelector('[aria-label="Zusammenfassung"]')!.textContent!;
     expect(summary).toMatch(/Übungen3/);
     expect(summary).toMatch(/Sätze5/); // 3 bench + 1 incline (warm-up not counted) + 1 machine
-    expect(text()).toMatch(/1 von 5 Übungen wie geplant · 1 mit weniger Sätzen\/Wdh\. · 1 ersetzt · 2 ausgelassen/);
+    expect(text()).toMatch(/3 von 5 Übungen gemacht · 1 mit weniger Sätzen\/Wdh\. · 1 ersetzt · 2 ausgelassen/);
     const item = (name: string) => [...container.querySelectorAll('li[data-status]')].find((li) => li.querySelector('strong')!.textContent === name)!;
     expect(item('Bankdrücken').textContent).toMatch(/Geplant: 3 × 6–10 @ 80 kgGemacht: 9 @ 80 · 9 @ 80 · 7 @ 80/);
     expect(item('Schulterpresse (Maschine)').textContent).toMatch(/Ersetztstatt Schulterdrücken \(KH\)/);

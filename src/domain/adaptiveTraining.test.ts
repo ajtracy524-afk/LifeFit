@@ -319,3 +319,13 @@ describe('achievements (only from data)', () => {
     expect(workoutAchievements(same, { ...s, workouts: [prev[2]!, same] })).toEqual([]);
   });
 });
+
+describe('post-workout timing is exact to the minute', () => {
+  it('finished at 17:58, looked at 17:59 → "Nach dem Training"; before the end it is not', () => {
+    const s = base({ training: { programId: 'push-pull-legs', weekdays: [0, 2, 4] } });
+    const w = workout(MON, [ex('squat', [[100, 8]])], { startedAt: `${MON}T17:00:00`, endedAt: `${MON}T17:58:00` });
+    const at = (hour: number, minute: number) => runEngine({ ...s, workouts: [w] }, { date: MON, hour, minute, domains: ['nutrition'] }).find((r) => r.kind === 'nutrition_gap')!.title;
+    expect(at(17, 59)).toMatch(/^Nach dem Training: noch /);
+    expect(at(17, 45)).toMatch(/^Heute fehlen noch /);
+  });
+});

@@ -4,7 +4,7 @@ import { MEAL_STYLES } from '../data/tastes';
 import { weekdayLong, weekdayShort } from '../lib/format';
 import { addDays, weekStart, weekdayIndex } from './dates';
 import { affinityIndex, learnedTrainingDays, learnedTrainingHour, LEARNING, preferenceOf, prefKey } from './learning';
-import { formatChf, formatCostRange, priceLookup, recipeCostRange } from './costs';
+import { formatChf, formatCostRange, priceLookup, recipeCostRange, type CostRange } from './costs';
 import { plannedMealMacros } from './nutrition';
 import { matchingTastes, recipeStyle } from './preferences';
 import { effectivePrepMin } from './planner';
@@ -121,9 +121,17 @@ export function formatChfEstimate(chf: number): string {
  * recipes, the calorie/protein targets and variety allow – say so instead of
  * pretending the budget was met.
  */
-export function budgetNote(costChf: number, budgetChf: number | undefined, priority: PlanPriority): string | undefined {
-  if (budgetChf === undefined || costChf <= 0) return undefined;
-  if (costChf <= budgetChf) return `Passt in dein Budget von ${formatChf(budgetChf)}.`;
+/**
+ * The week against the budget – with the SAME number the budget line uses
+ * (weekFoodCost: the value of all food of the week, a range). "Passt" only
+ * when even the upper end fits; a range across the budget is said as such;
+ * without enough prices there is no verdict (never a partial sum).
+ */
+export function budgetNote(cost: CostRange | undefined, budgetChf: number | undefined, priority: PlanPriority): string | undefined {
+  if (budgetChf === undefined) return undefined;
+  if (!cost) return `Zu wenig Preisdaten für einen Vergleich mit deinem Budget von ${formatChf(budgetChf)}.`;
+  if (cost.highChf <= budgetChf) return `Passt in dein Budget von ${formatChf(budgetChf)}.`;
+  if (cost.lowChf <= budgetChf) return `Liegt etwa bei deinem Budget von ${formatChf(budgetChf)} (${formatCostRange(cost)}).`;
   return priority === 'save'
     ? `Über deinem Budget von ${formatChf(budgetChf)} – günstige Rezepte sind schon bevorzugt, Kalorien und Protein haben Vorrang.`
     : `Über deinem Budget von ${formatChf(budgetChf)} – mit dem Schwerpunkt „Sparen“ (Profil) wird die Woche günstiger.`;
