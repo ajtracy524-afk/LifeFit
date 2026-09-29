@@ -9,6 +9,10 @@ interface Props {
   session?: PlannedWorkout;
   completed?: Workout;
   running?: Workout;
+  /** Day target minus the stored target (kcal) – training bonus or the rest-day share of it. */
+  targetDelta?: number;
+  /** "Beintag", "Oberkörper" … of today's session. */
+  load?: string;
 }
 
 /**
@@ -16,7 +20,8 @@ interface Props {
  * already: the running session, the finished workout or the Training tab –
  * a rest day is plain information, nothing to tap.
  */
-export function DayTypeBadge({ session, completed, running }: Props) {
+export function DayTypeBadge({ session, completed, running, targetDelta, load }: Props) {
+  const delta = targetDelta ? `Tagesziel ${targetDelta > 0 ? '+' : '−'}${Math.abs(targetDelta)} kcal` : undefined;
   if (running || completed || session) {
     const target = running ? href('session') : completed ? href('workout', { id: completed.id }) : href('training');
     const title = running?.name ?? completed?.name ?? session?.template.name ?? 'Training';
@@ -29,6 +34,7 @@ export function DayTypeBadge({ session, completed, running }: Props) {
         <span className={styles.dayTypeText}>
           <span className={styles.dayTypeKicker}>Training{meta ? ` · ${meta}` : ''}</span>
           <strong>{title}</strong>
+          {(load || delta) && <span className={styles.dayTypeNote}>{[load, delta && `${delta} (vor allem Kohlenhydrate)`].filter(Boolean).join(' · ')}</span>}
         </span>
         <Icon name="chevronRight" size={18} />
       </a>
@@ -42,6 +48,7 @@ export function DayTypeBadge({ session, completed, running }: Props) {
       <span className={styles.dayTypeText}>
         <span className={styles.dayTypeKicker}>Ruhetag · kein Training geplant</span>
         <strong>Erholung</strong>
+        {delta && <span className={styles.dayTypeNote}>{delta} – Ausgleich zu den Trainingstagen, die Woche bleibt gleich</span>}
       </span>
     </div>
   );

@@ -1,4 +1,5 @@
-import { addDays } from './dates';
+import { addDays, weekStart } from './dates';
+import { activeWorkouts, isCompletedOn } from './training';
 import { calorieStatus } from './calorieStatus';
 import { dayTotals } from './nutrition';
 import type { AppState, ISODate, LogEntry } from './types';
@@ -14,10 +15,11 @@ import { waterOn } from './water';
  * - Kalorien: inside the target zone (the one zone of calorieStatus).
  * - Protein: the day's protein target reached.
  * - Wasser: the user's own water goal reached. Only when a goal is set.
+ * - Training: on a training day, the session is done. Rest days have no training goal.
  *
  * A goal without data behind it is not shown at all – never a fake "done".
  */
-export type DayGoalKey = 'meals' | 'calories' | 'protein' | 'water';
+export type DayGoalKey = 'meals' | 'calories' | 'protein' | 'water' | 'training';
 
 export interface DayGoal {
   key: DayGoalKey;
@@ -57,6 +59,10 @@ export function dayGoals(state: AppState, date: ISODate): DayGoals {
     const ml = waterOn(state, date);
     goals.push({ key: 'water', icon: '💧', label: 'Wasser', done: ml >= waterGoal, detail: `${(ml / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} / ${(waterGoal / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} L` });
   }
+  // Training belongs to the day like the meals: a planned (or already done) session is a goal of that day.
+  const trained = isCompletedOn(state.workouts, date);
+  const session = activeWorkouts(state.training, state.workoutOverrides, state.workouts, weekStart(date), state.dayContexts).find((s) => s.date === date);
+  if (trained || session) goals.push({ key: 'training', icon: '🏋️', label: 'Training', done: !!trained, detail: trained ? `${trained.name} ✓` : session!.template.name });
   const done = goals.filter((g) => g.done).length;
   return { goals, done, complete: goals.length >= 2 && done === goals.length };
 }

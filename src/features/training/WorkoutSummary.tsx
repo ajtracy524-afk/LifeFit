@@ -37,7 +37,9 @@ export function WorkoutSummary() {
   useEffect(() => {
     if (!justFinished) return;
     if (records.length) celebrate({ kind: 'power', icon: '🏆', title: records.length === 1 ? 'Neue Bestleistung' : `${records.length} neue Bestleistungen`, detail: workout?.name, level: 3 });
-    else if (achievements[0]) celebrate({ kind: achievements[0].kind === 'streak' ? 'sparkle' : 'power', icon: achievements[0].icon, title: achievements[0].title, detail: achievements[0].detail, level: 2 });
+    else if (achievements[0]) celebrate({ kind: achievements[0].kind === 'streak' || achievements[0].kind === 'week_complete' ? 'sparkle' : 'power', icon: achievements[0].icon, title: achievements[0].title, detail: achievements[0].detail, level: achievements[0].kind === 'week_complete' ? 3 : 2 });
+    // Always a small, calm confirmation – finishing is itself the real event.
+    else if (workout) celebrate({ kind: 'check', icon: '✓', title: 'Training abgeschlossen', detail: `${workoutStats(workout).sets} Sätze · ${formatDuration(workoutStats(workout).durationMin * 60000)}`, level: 2 });
     // Only on arrival.
   }, []);
 

@@ -204,3 +204,14 @@
   color: var(--text-2);
   font-size: 13px;
 }
+
+/* Touch target (audit at 320 px): the visual pill stays, the tap area reaches 44 px. */
+.sourceBtn {
+  position: relative;
+}
+
+.sourceBtn::after {
+  content: '';
+  position: absolute;
+  inset: -7px 0;
+}

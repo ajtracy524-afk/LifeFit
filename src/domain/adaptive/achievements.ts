@@ -16,6 +16,7 @@ import { exerciseSessions } from './progression';
  *                (not repeated when it is already an all-time weight record)
  *   💪 volume    more kg × reps than the last session of the same workout
  *   ⚡ faster    at least 10 % quicker than last time with at least the same sets
+ *   🗓️ week      this workout completes every planned session of its week (≥ 2)
  */
 
 export const STREAK_FROM = 3;
@@ -25,6 +26,12 @@ const STREAK_WEEKS = 12;
 export function workoutAchievements(workout: Workout, state: StreakState): Achievement[] {
   const history = state.workouts.filter((w) => w.status === 'completed' && w.id !== workout.id && w.startedAt < workout.startedAt);
   const out: Achievement[] = [];
+
+  if (state.training) {
+    const week = resolveWorkouts(state.training, state.workoutOverrides, state.workouts, weekStart(workout.date), state.dayContexts).filter((s) => s.status !== 'skipped');
+    const own = week.find((s) => s.completedWorkoutId === workout.id);
+    if (own && week.length >= 2 && week.every((s) => s.completedWorkoutId)) out.push({ kind: 'week_complete', icon: '🗓️', title: `Alle ${week.length} Trainings dieser Woche erledigt`, detail: 'Dein Wochenplan ist komplett.' });
+  }
 
   const streak = plannedStreak(workout, state);
   if (streak >= STREAK_FROM) out.push({ kind: 'streak', icon: '🔥', title: `${streak}. Training in Folge`, detail: 'Alle geplanten Einheiten gemacht – ohne Lücke.' });

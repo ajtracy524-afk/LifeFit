@@ -93,6 +93,11 @@ function CookSheetInner({ date, onClose }: { date: ISODate; onClose: () => void 
                   <span className={styles.mealMeta}>
                     {[fmt.kcal(o.macros.kcal), `${fmt.int(o.macros.protein)} g Protein`, `${o.recipe.prepMin} min${o.fitsTime ? '' : ' (länger als heute geplant)'}`, cost && formatCostRange(cost)].filter(Boolean).join(' · ')}
                   </span>
+                  {o.because.map((b) => (
+                    <span key={b} className={styles.cookAll}>
+                      {b}
+                    </span>
+                  ))}
                 </span>
                 <span className={styles.cookActions}>
                   <Button

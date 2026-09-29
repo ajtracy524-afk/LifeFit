@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { addDays, daysBetween, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
-import { daySummary } from '../../domain/nutrition';
+import { daySummary, targetForDate } from '../../domain/nutrition';
+import { sessionLoad } from '../../domain/adaptive/load';
 import { SLOT_ORDER } from '../../domain/planner';
 import { goalProgress, latestWeight } from '../../domain/progress';
 import { isCompletedOn, resolveWorkouts } from '../../domain/training';
@@ -24,6 +25,7 @@ import { BudgetLine } from '../nutrition/BudgetLine';
 import { CalorieStatusBadge } from '../nutrition/CalorieStatusBadge';
 import { DayTypeBadge } from './DayTypeBadge';
 import { DayGoals } from './DayGoals';
+import { WeekProgressCard } from './WeekProgressCard';
 import { calorieStatus } from '../../domain/calorieStatus';
 import { useCrossing, useIncrease, useScreenMount } from '../../lib/motion';
 import { MealSheet } from '../nutrition/MealSheet';
@@ -150,7 +152,13 @@ export function TodayScreen() {
       )}
 
       {/* Training or rest day – at a glance, a training day links to the session. */}
-      <DayTypeBadge session={todaysSession} completed={isCompletedOn(state.workouts, t)} running={running} />
+      <DayTypeBadge
+        session={todaysSession}
+        completed={isCompletedOn(state.workouts, t)}
+        running={running}
+        targetDelta={target ? target.kcal - (targetForDate(state.targets, t)?.kcal ?? target.kcal) : undefined}
+        load={todaysSession ? sessionLoad(todaysSession.template).label : undefined}
+      />
 
       {/* What to do next comes first – progress follows right below (morning check: "was steht an?"). */}
       <NextActionCard action={action} onPlanWeek={setPlanningWeek} onStart={begin} onOpenMeal={(id) => openMealSheet(id)} onReplaceMeal={(id) => openMealSheet(id, true)} />
@@ -224,6 +232,9 @@ export function TodayScreen() {
           onLogFood={() => setLogTarget({ date: t, slot: logSlot() })}
         />
       )}
+
+      {/* The week as one story: done, next, improved – real counts only. */}
+      <WeekProgressCard />
 
       {/* Shopping */}
       {weekHasMeals && (

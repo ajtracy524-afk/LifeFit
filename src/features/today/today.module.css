@@ -860,3 +860,81 @@ button.timelineItem:active {
   font-weight: 700;
   flex-shrink: 0;
 }
+
+/* What the day means for the target – quiet, one line. */
+.dayTypeNote {
+  font-size: 12px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- "Diese Woche" ---------- */
+.weekLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--accent);
+}
+
+.weekStats {
+  list-style: none;
+  margin: 4px 0 8px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 8px;
+}
+
+.weekStats li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.weekStats li > span:first-child {
+  grid-row: span 2;
+  font-size: 18px;
+}
+
+.weekStats li[data-full='true'] {
+  background: var(--accent-soft);
+}
+
+.weekStatLabel {
+  font-size: 12px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekStats strong {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekImproved {
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* Touch targets (audit at 320 px): text links and small toggles reach 44 px. */
+.planWeek,
+.planLink,
+.whyToggle,
+.planFooter .link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}

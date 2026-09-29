@@ -220,3 +220,27 @@
   color: var(--text-3);
   font-size: 13px;
 }
+
+/* Touch targets: the visual size stays, the tap area reaches 44 px. */
+.chip,
+.chipActive,
+.segment,
+.segmentActive,
+.stepBtn {
+  position: relative;
+}
+
+.chip::after,
+.chipActive::after,
+.stepBtn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+}
+
+.segment::after,
+.segmentActive::after {
+  content: '';
+  position: absolute;
+  inset: -5px -1px;
+}

@@ -88,3 +88,21 @@
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+/* Touch targets: small buttons keep their look, the tap area reaches 44 px. */
+.sm,
+.iconButton {
+  position: relative;
+}
+
+.sm::after {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
+}
+
+.iconButton::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+}

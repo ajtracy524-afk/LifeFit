@@ -289,7 +289,7 @@
 /* The set number is a button: set type (W / D / F / A), skip, remove. */
 .setIndex {
   width: 34px;
-  height: 34px;
+  height: 44px;
   border-radius: 10px;
   display: grid;
   place-items: center;
@@ -546,7 +546,7 @@
 
 .restBtn {
   position: relative;
-  height: 38px;
+  height: 44px;
   padding: 0 12px;
   border-radius: 12px;
   background: rgb(255 255 255 / 12%);
@@ -864,7 +864,7 @@
 }
 
 .smallNumber input {
-  height: 42px;
+  height: 44px;
   width: 100%;
   border-radius: 10px;
   border: 1.5px solid transparent;
@@ -882,6 +882,7 @@
 
 .linkButton {
   align-self: flex-start;
+  min-height: 44px;
   font-size: 13px;
   font-weight: 650;
   color: var(--accent);

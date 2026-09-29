@@ -398,7 +398,7 @@ export interface WorkoutFeedback {
   discomfort?: BodyArea[];
 }
 
-export type AchievementKind = 'streak' | 'weight_up' | 'volume_up' | 'faster';
+export type AchievementKind = 'streak' | 'weight_up' | 'volume_up' | 'faster' | 'week_complete';
 
 export interface Achievement {
   kind: AchievementKind;

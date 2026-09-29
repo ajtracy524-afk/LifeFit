@@ -59,7 +59,7 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
       <div className={styles.weekDayTags}>
         {session ? (
           <span className={styles.weekTagTraining}>
-            🏋️ {session.template.name} · ~{estimateMinutes(session.template)} min{session.status === 'moved' ? ' · verschoben' : ''}
+            🏋️ {session.template.name} · {session.completedWorkoutId ? 'erledigt ✓' : `~${estimateMinutes(session.template)} min`}{session.status === 'moved' ? ' · verschoben' : ''}
           </span>
         ) : (
           <span className={styles.weekTag}>🌿 Ruhetag</span>

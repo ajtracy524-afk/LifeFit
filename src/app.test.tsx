@@ -2478,3 +2478,129 @@ describe('adaptive training (UI)', () => {
     expect(card.textContent).toMatch(/Bananen \d+ g erfassen · \d+ g KH/);
   });
 });
+
+describe('one day, one week: Heute + Ernährung + Training + Einkauf (end to end)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 12, 45)); // Tuesday 12:45 – a training day
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(async () => {
+    vi.useRealTimers();
+    (await import('./lib/celebrate')).dismissCelebration();
+  });
+
+  const TUE = '2026-09-22';
+  const done = (weight: number, reps: number) => ({ id: `s${Math.random()}`, weightKg: weight, reps, done: true, type: 'working' });
+  const lastPush = {
+    id: 'old',
+    date: '2026-09-15',
+    templateId: 'ppl-push',
+    name: 'Push – Brust, Schulter & Trizeps',
+    startedAt: '2026-09-15T17:00:00',
+    endedAt: '2026-09-15T18:00:00',
+    status: 'completed',
+    exercises: [{ id: 'o1', exerciseId: 'bench-press', repMin: 6, repMax: 10, restSec: 150, sets: [done(80, 8), done(80, 8), done(80, 8)] }],
+  };
+  const meal = (id: string, slot: string, recipeId: string) => ({ id, date: TUE, slot, recipeId, servings: 1, status: 'planned', source: 'suggest' });
+  const chip = () => document.querySelector<HTMLElement>('[data-testid="celebration"]');
+  const tap = (el: Element | null | undefined) => {
+    if (!el) throw new Error('element not found');
+    return act(async () => (el as HTMLElement).click());
+  };
+  const dialogButton = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent?.trim() === label);
+  const goal = (label: string) => container.querySelector(`[aria-label="Tagesziele"] [aria-label^="${label}:"]`)?.getAttribute('aria-label') ?? '';
+  const week = (label: string) => container.querySelector(`[aria-label="Diese Woche"] [aria-label^="${label}:"]`)?.getAttribute('aria-label') ?? '';
+  const go = async (hash: string) => {
+    await act(async () => window.location.assign(hash));
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+  };
+
+  it('meal → protein → water boost → training → PR → finish → nutrition, day, week and shopping follow', async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        ...completeState(),
+        nutritionProfile: { ...completeState().nutritionProfile, waterGoalMl: 2000 },
+        training: { programId: 'push-pull-legs', weekdays: [1], startedAt: '2026-09-01' },
+        plannedMeals: [meal('l', 'lunch', 'bolognese'), meal('d', 'dinner', 'chili')],
+        water: { [TUE]: 1250 },
+        workouts: [lastPush],
+      }),
+    );
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+
+    // 1. Heute: the day in one place – training day, goals incl. training, the week.
+    expect(container.querySelector('[aria-label^="Heute Training:"]')).toBeTruthy();
+    expect(goal('Training')).toMatch(/offen/);
+    expect(week('Training')).toBe('Training: 0 / 1');
+
+    // 2.–3. Log the planned lunch from the next-action card → protein moves.
+    const proteinBefore = goal('Protein');
+    await act(() => new Promise((r) => setTimeout(r, 450)));
+    await tap(container.querySelector('[aria-label="Nächste Aktion"] button:not([aria-label])'));
+    expect(store.getState().plannedMeals.find((m) => m.id === 'l')!.status).toBe('eaten');
+    expect(goal('Protein')).not.toBe(proteinBefore);
+    expect(goal('Protein')).toMatch(/^Protein: offen \([1-9]\d* \/ \d+ g\)$/);
+
+    // 4.–5. Water: three quarters of the goal → the hydration milestone (same celebration system).
+    (await import('./lib/celebrate')).dismissCelebration();
+    await tap(container.querySelector('button[aria-label="250 ml Wasser hinzufügen"]'));
+    expect(chip()!.textContent).toMatch(/Tagesziel fast geschafft/);
+
+    // 6.–8. Training: check-in → session → the first set is a real record right away.
+    await go('#/training');
+    await tap(container.querySelector('[aria-label="Push – Brust, Schulter & Trizeps starten"]'));
+    await tap(dialogButton('Training starten'));
+    expect(window.location.hash).toBe('#/session');
+    (await import('./lib/celebrate')).dismissCelebration();
+    await tap(container.querySelector('section[aria-label="Bankdrücken"] [aria-label="Satz 1 erledigt"]'));
+    expect(chip()!.textContent).toMatch(/Wiederholungs-Rekord.*9 statt 8/);
+
+    // 9.–10. Finish → summary; nutrition answers the session ("Nach dem Training").
+    await click('Beenden');
+    await tap(dialogButton('Speichern'));
+    expect(text()).toMatch(/Neue Bestleistung/);
+    const coach = [...container.querySelectorAll('h2')].find((h) => h.textContent === 'Nach dem Training')!.closest('section, div')!.parentElement!;
+    expect(coach.textContent).toMatch(/Nach dem Training: noch/);
+    const workout = store.getState().workouts.find((w) => w.id !== 'old')!;
+    expect(workout).toMatchObject({ status: 'completed', date: TUE });
+    expect(workout.plannedId).toBeTruthy(); // counts for today's planned session
+
+    // 13. Plan the suggested meal → its missing ingredients land on the shopping list (pantry considered).
+    const planned = store.getState().plannedMeals.length;
+    await tap([...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === 'Einplanen'));
+    expect(store.getState().plannedMeals.length).toBe(planned + 1);
+    const added = store.getState().plannedMeals[store.getState().plannedMeals.length - 1]!;
+    const { weekShopping } = await import('./domain/week');
+    const { getRecipe } = await import('./data/recipes');
+    const list = weekShopping(store.getState(), '2026-09-21', TUE);
+    const ingredients = getRecipe(added.recipeId)!.ingredients.map((i) => i.foodId);
+    expect(list.some((i) => ingredients.includes(i.foodId) && i.sources.some((s) => s.date === added.date))).toBe(true);
+
+    // 11. Heute follows: training goal done, the week counts it, the badge says it.
+    await go('#/today');
+    expect(goal('Training')).toMatch(/erreicht/);
+    expect(week('Training')).toBe('Training: 1 / 1');
+    expect(container.querySelector('[aria-label^="Heute Training:"]')!.getAttribute('aria-label')).toMatch(/erledigt ✓/);
+
+    // 12. The nutrition week plan shows the finished session on its day.
+    await go('#/nutrition?view=week');
+    expect(text()).toMatch(/🏋️ [^·]+ · erledigt ✓/);
+  });
+
+  it('rest day: calm "Erholung" with what it means for the target; no training goal', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), training: { programId: 'push-pull-legs', weekdays: [0, 2, 4], startedAt: '2026-09-01' } }));
+    window.history.replaceState(null, '', '/#/today');
+    await startApp();
+    const rest = container.querySelector('[aria-label="Heute Ruhetag: Erholung"]')!;
+    expect(rest.textContent).toMatch(/Tagesziel −\d+ kcal – Ausgleich zu den Trainingstagen, die Woche bleibt gleich/);
+    expect(goal('Training')).toBe('');
+  });
+});

@@ -5,7 +5,7 @@ import { SLOT_ORDER, servingsForSlot } from './planner';
 import { matchingTastes } from './preferences';
 import { effectiveTimeBudget, TIME_BUDGETS } from './timeBudget';
 import type { AppState, ISODate, Macros, MealSlot, Recipe } from './types';
-import { dayContextFor, dayTargetFor, pantryEstimate } from './week';
+import { dayContextFor, dayTargetFor, pantryEstimate, trainingDayBonus } from './week';
 
 /**
  * "Was kann ich kochen?" – recipes ranked by what is at home. Rule-based,
@@ -28,6 +28,8 @@ export interface CookOption {
   coverage: number;
   fitsTime: boolean;
   score: number;
+  /** "💪 42 g Protein – passt zum Beintag" – only when it is true. */
+  because: string[];
 }
 
 export const COOK_RULES = {
@@ -35,6 +37,8 @@ export const COOK_RULES = {
   coverageWeight: 2,
   tooLongWeight: 1.5,
   kcalWeight: 0.5,
+  /** Training day: protein below this share of the day's protein per meal counts as a shortfall. */
+  trainingProteinWeight: 1,
 } as const;
 
 /** Foods at home to start with: what the pantry estimate says is still there. */
@@ -59,6 +63,9 @@ export function cookableRecipes(state: AppState, date: ISODate, have: ReadonlySe
   const used = new Set(state.plannedMeals.filter((m) => m.date === date && m.status !== 'skipped').map((m) => m.slot));
   const maxPrep = TIME_BUDGETS[effectiveTimeBudget(dayContextFor(state, date))].maxPrepMin;
   const openKcal = target ? Math.max(0, target.kcal - dayTotals(state.logEntries, date).kcal) : undefined;
+  // Training day (planned or done): protein per meal matters more – from the day's own protein target.
+  const training = trainingDayBonus(state, date);
+  const proteinPerMeal = target ? target.protein / Math.max(1, slots.length) : 0;
 
   return allRecipes().filter((r) => allowed(state, r))
     .map((recipe): CookOption | undefined => {
@@ -73,8 +80,10 @@ export function cookableRecipes(state: AppState, date: ISODate, have: ReadonlySe
       const macros = recipeMacros(recipe, servings);
       const fitsTime = recipe.prepMin <= maxPrep;
       const kcalMiss = openKcal ? Math.max(0, macros.kcal - openKcal) / Math.max(openKcal, 1) : 0;
-      const score = R.missingWeight * missing.length + R.coverageWeight * (1 - coverage) + (fitsTime ? 0 : R.tooLongWeight) + R.kcalWeight * kcalMiss;
-      return { recipe, slot, servings, macros, have: haveIds, missing, coverage, fitsTime, score };
+      const proteinShort = training && proteinPerMeal ? Math.max(0, proteinPerMeal - macros.protein) / proteinPerMeal : 0;
+      const score = R.missingWeight * missing.length + R.coverageWeight * (1 - coverage) + (fitsTime ? 0 : R.tooLongWeight) + R.kcalWeight * kcalMiss + R.trainingProteinWeight * proteinShort;
+      const because = training && proteinPerMeal && macros.protein >= proteinPerMeal ? [`💪 ${Math.round(macros.protein)} g Protein – passt zum ${training.label === 'Beintag' ? 'Beintag' : 'Trainingstag'}`] : [];
+      return { recipe, slot, servings, macros, have: haveIds, missing, coverage, fitsTime, score, because };
     })
     .filter((o): o is CookOption => !!o)
     .sort((a, b) => a.score - b.score || a.recipe.prepMin - b.recipe.prepMin)

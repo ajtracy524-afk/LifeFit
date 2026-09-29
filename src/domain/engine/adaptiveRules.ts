@@ -106,7 +106,7 @@ export function preWorkoutRule(ctx: EngineContext): Recommendation[] {
       })
       .sort((a, b) => Number(b.home) - Number(a.home))
       .slice(0, 2)
-      .map(({ food, grams, macros }) => ({ type: 'log_food', label: `${food.name} ${fmt.g(grams)} erfassen · ${fmt.int(macros.carbs)} g KH`, date: ctx.date, slot: 'snack', foodId: food.id, grams }));
+      .map(({ food, grams, macros, home }) => ({ type: 'log_food', label: `${food.name} ${fmt.g(grams)} erfassen · ${fmt.int(macros.carbs)} g KH${home ? ' · im Vorrat' : ''}`, date: ctx.date, slot: 'snack', foodId: food.id, grams }));
     if (actions.length) {
       out.push({
         id: `pre_workout:${ctx.date}`,

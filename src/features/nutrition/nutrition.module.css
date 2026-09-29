@@ -1868,3 +1868,20 @@
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
+
+/* Touch targets (audit at 320 px). */
+.weekDayName {
+  min-height: 44px;
+}
+
+.check,
+.checkDone {
+  position: relative;
+}
+
+.check::after,
+.checkDone::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
