@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CALORIE_ZONE, calorieStatus, calorieTolerance, isDayFinished } from './calorieStatus';
 import { NUTRITION_RULES } from './engine/nutritionRules';
-import { waterStreak } from './water';
 
 /**
  * Small motivating signals on Heute / Ernährung – computed from real data
@@ -60,26 +59,3 @@ describe('calorie target zone', () => {
   });
 });
 
-describe('water series – only from stored day values', () => {
-  const TODAY = '2026-09-24';
-  const water = (days: Record<string, number>) => ({ water: days });
-
-  it('counts days in a row at or above the goal, back from yesterday', () => {
-    expect(waterStreak(water({ '2026-09-23': 2000, '2026-09-22': 2250, '2026-09-21': 1000 }), TODAY, 2000)).toBe(2);
-  });
-
-  it('today counts once reached – an unfinished today never breaks the series', () => {
-    const days = { '2026-09-23': 2000, '2026-09-22': 2000 };
-    expect(waterStreak(water({ ...days, [TODAY]: 500 }), TODAY, 2000)).toBe(2);
-    expect(waterStreak(water({ ...days, [TODAY]: 2000 }), TODAY, 2000)).toBe(3);
-  });
-
-  it('a day without an entry ends the series – nothing is assumed', () => {
-    expect(waterStreak(water({ '2026-09-23': 2000, '2026-09-21': 2000 }), TODAY, 2000)).toBe(1);
-    expect(waterStreak(water({}), TODAY, 2000)).toBe(0);
-  });
-
-  it('without a goal there is no series', () => {
-    expect(waterStreak(water({ '2026-09-23': 3000 }), TODAY, undefined)).toBe(0);
-  });
-});

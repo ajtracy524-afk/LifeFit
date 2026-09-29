@@ -165,3 +165,44 @@ export function calorieSwing(state: AppState, today: ISODate): { recentSd: numbe
   if (recent < TREND_RULES.swingMinSd || recent < previous * TREND_RULES.swingIncrease) return undefined;
   return { recentSd: Math.round(recent), previousSd: Math.round(previous) };
 }
+
+/** Shown instead of a trend when the data does not carry one. */
+export const NOT_ENOUGH_DATA = 'Noch nicht genug Daten für eine zuverlässige Einschätzung.';
+
+/** Enough days with entries in at least one window (7 / 14 / 30 days) to speak about patterns at all. */
+export function enoughData(records: DayRecord[]): boolean {
+  return ([7, 14, 30] as const).some((w) => records.slice(0, w).filter((r) => r.tracked).length >= TREND_RULES.minDays[w]);
+}
+
+/**
+ * The strongest statement the data allows about a deviation: the longest
+ * window (30 → 14 → 7 days) in which it is a pattern – as long as it still
+ * shows in the last 7 days (a pattern that ended a week ago is not "current").
+ */
+export function strongestPattern(records: DayRecord[], metric: Metric): MetricTrend | undefined {
+  const recent = metricTrend(records, metric, 7);
+  for (const w of [30, 14, 7] as const) {
+    const t = w === 7 ? recent : metricTrend(records, metric, w);
+    if ((t.pattern !== 'recurring' && t.pattern !== 'trend') || !t.direction) continue;
+    const stillThere = recent.pattern === 'insufficient' || (t.direction === 'low' ? recent.low : recent.high) > 0;
+    if (stillThere) return t;
+  }
+  return undefined;
+}
+
+/** "Mostly in range" – at least this share of the rated days. */
+export const POSITIVE_SHARE = 0.75;
+
+/** A good habit worth naming: 30 or 14 days mostly in range (with enough data). */
+export function positiveTrend(records: DayRecord[], metric: Metric): MetricTrend | undefined {
+  for (const w of [30, 14] as const) {
+    const t = metricTrend(records, metric, w);
+    if (t.pattern !== 'insufficient' && t.ok >= Math.ceil(t.days * POSITIVE_SHARE)) return t;
+  }
+  return undefined;
+}
+
+/** "Protein in den letzten 14 Tagen überwiegend im Bereich (11 von 13 erfassten Tagen)". */
+export function positiveText(t: MetricTrend): string {
+  return `${METRIC_LABEL[t.metric]} in den letzten ${t.window} Tagen überwiegend im Bereich (${t.ok} von ${t.days} erfassten Tagen)`;
+}

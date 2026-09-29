@@ -5,7 +5,7 @@ import { isCompletedOn } from '../training';
 import { dayTargetFor } from '../week';
 import type { AppState, ISODate } from '../types';
 import { improvementFor, type Improvement } from './improvements';
-import { history, METRIC_LABEL, metricTrend, trendText, type DayRecord, type Metric, type MetricTrend } from './trends';
+import { enoughData, history, METRIC_LABEL, metricTrend, NOT_ENOUGH_DATA, positiveText, positiveTrend, strongestPattern, trendText, type DayRecord, type Metric, type MetricTrend } from './trends';
 import { unusualDay, unusualMeals } from './unusualMeals';
 
 /**
@@ -21,6 +21,12 @@ import { unusualDay, unusualMeals } from './unusualMeals';
 export interface DayReview {
   date: ISODate;
   good: string[];
+  /** At most one good habit over 14 / 30 days ("Protein … überwiegend im Bereich"). */
+  positive?: string;
+  /** Too few days with entries for any pattern – said instead of guessing. */
+  dataNote?: string;
+  /** Eaten, target and entered activity side by side – never "you may eat X more". */
+  energy?: string;
   relevant: string[];
   improve: string[];
   simplest?: Improvement & { metric: Metric };
@@ -37,19 +43,21 @@ export function dayReview(state: AppState, date: ISODate): DayReview | undefined
   const day = records[0];
   if (!day || day.date !== date || !day.tracked) return undefined;
 
-  const good = goodPoints(state, date, day);
-  const trends = new Map(PRIORITY.map((m) => [m, { w7: metricTrend(records, m, 7), w30: metricTrend(records, m, 30) }]));
+  const good = goodPoints(state, date, day).slice(0, MAX_GOOD);
+  const enough = enoughData(records);
 
-  // What deviates – recurring (7 days) first, then a clear single-day deviation.
+  // What deviates – a pattern (the longest window that carries it: 30 → 14 → 7 days) first,
+  // then a clear single-day deviation. Without enough data there are no patterns, only the day.
   const candidates: Array<{ metric: Metric; direction: 'low' | 'high'; recurring: boolean; trend: MetricTrend }> = [];
   for (const m of PRIORITY) {
-    const t = trends.get(m)!;
     const s = day.status[m];
-    const recurring = (t.w7.pattern === 'recurring' || t.w30.pattern === 'trend') && !!t.w7.direction;
-    if (recurring && (s === t.w7.direction || s === 'unknown' || t.w30.pattern === 'trend')) candidates.push({ metric: m, direction: t.w7.direction!, recurring: true, trend: t.w30.pattern === 'trend' ? t.w30 : t.w7 });
-    else if ((s === 'low' || s === 'high') && isClear(day, m)) candidates.push({ metric: m, direction: s, recurring: false, trend: t.w7 });
+    const pattern = enough ? strongestPattern(records, m) : undefined;
+    if (pattern) candidates.push({ metric: m, direction: pattern.direction!, recurring: true, trend: pattern });
+    else if ((s === 'low' || s === 'high') && isClear(day, m)) candidates.push({ metric: m, direction: s, recurring: false, trend: metricTrend(records, m, 7) });
   }
   const chosen = candidates.sort((a, b) => Number(b.recurring) - Number(a.recurring)).slice(0, 2);
+  // One good habit, not a list – only for a nutrient that is not a point to improve right now.
+  const positive = enough ? PRIORITY.filter((m) => !candidates.some((c) => c.metric === m)).map((m) => positiveTrend(records, m)).find(Boolean) : undefined;
 
   const relevant = chosen.filter((c) => c.recurring).map((c) => `${trendText(c.trend)}.`);
   const improve = chosen.map((c) => improveText(c.metric, c.direction, c.recurring, day));
@@ -61,7 +69,32 @@ export function dayReview(state: AppState, date: ISODate): DayReview | undefined
   const bigDay = unusualDay(state, date, dayTargetFor(state, date)?.kcal);
   if (bigDay) unusual.push(`Der Tag lag mit ${fmt.kcal(bigDay.kcal)} deutlich über deinem üblichen Tag (sonst etwa ${fmt.kcal(bigDay.usualKcal)}). Einzelne solche Tage gehören dazu.`);
 
-  return { date, good, relevant, improve, ...(simplest && first ? { simplest: { ...simplest, metric: first.metric } } : {}), why, unusual };
+  return {
+    date,
+    good,
+    ...(positive ? { positive: `${positiveText(positive)}.` } : {}),
+    ...(!enough ? { dataNote: `${NOT_ENOUGH_DATA} Muster zeigen sich nach etwa einer Woche mit Einträgen.` } : {}),
+    ...(energyLine(state, date, day) ? { energy: energyLine(state, date, day) } : {}),
+    relevant,
+    improve,
+    ...(simplest && first ? { simplest: { ...simplest, metric: first.metric } } : {}),
+    why,
+    unusual,
+  };
+}
+
+const MAX_GOOD = 4;
+
+/**
+ * Nutrition, activity and the target kept apart: what was eaten, the day's
+ * target (it already contains the everyday activity of the profile and the
+ * training bonus) and the entered active calories as information. Never
+ * "you may eat X more".
+ */
+function energyLine(state: AppState, date: ISODate, day: DayRecord): string | undefined {
+  const a = state.activity?.[date];
+  if (!a?.activeKcal || day.amount.kcal === undefined || !day.target.kcal) return undefined;
+  return `Gegessen ${fmt.kcal(day.amount.kcal)} · Tagesziel ${fmt.kcal(day.target.kcal)} · Aktivität ${fmt.kcal(a.activeKcal)} (eingetragen). Die Aktivität wird nicht zum Ziel addiert – dein Ziel enthält deinen Alltag und das Training bereits.`;
 }
 
 function goodPoints(state: AppState, date: ISODate, day: DayRecord): string[] {
@@ -76,7 +109,9 @@ function goodPoints(state: AppState, date: ISODate, day: DayRecord): string[] {
   const workout = isCompletedOn(state.workouts, date);
   if (workout) out.push(`Training erledigt: ${workout.name}`);
   const activity = state.activity?.[date];
-  if (activity?.steps && activity.steps >= 8000) out.push(`${fmt.int(activity.steps)} Schritte`);
+  // Activity as context, not as a calorie credit.
+  if (activity?.steps && activity.steps >= 8000) out.push(`Aktiver Tag: ${fmt.int(activity.steps)} Schritte`);
+  else if (activity?.activeKcal && activity.activeKcal >= 300) out.push(`Aktiver Tag: ${fmt.kcal(activity.activeKcal)} Aktivität`);
   return out;
 }
 

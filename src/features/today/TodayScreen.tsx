@@ -44,7 +44,7 @@ import styles from './today.module.css';
 
 /** What belongs to "the next step" (today) vs. the habit tips (weeks) – each recommendation in one place only. */
 const NEXT_STEP_KINDS: RecommendationKind[] = ['pre_workout', 'heavy_meal', 'nutrition_gap', 'nutrition_over', 'own_dish', 'leftovers'];
-const TIP_KINDS: RecommendationKind[] = ['tip_habit', 'tip_progress', 'protein_pattern'];
+const TIP_KINDS: RecommendationKind[] = ['tip_habit', 'tip_progress', 'tip_data', 'protein_pattern'];
 
 export function TodayScreen() {
   useScreenMount();

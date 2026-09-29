@@ -61,6 +61,20 @@ export function goalProgress(goal: FitnessGoal, weights: WeightEntry[]): GoalPro
   return { percent, start, current, target, remaining, etaWeeks };
 }
 
+/**
+ * THE training count of a week – used by Fortschritt, the Training tab and
+ * "Diese Woche" on Heute, so they can never disagree:
+ *   done    = completed workouts dated in that week (an extra day counts too)
+ *   planned = sessions that take place (skipped ones don't), from the app start on
+ */
+export function weekTrainings(state: Pick<AppState, 'training' | 'workoutOverrides' | 'workouts' | 'dayContexts' | 'profile'>, weekStartDate: ISODate): { done: number; planned: number } {
+  const end = addDays(weekStartDate, 6);
+  const start = appStartDate(state);
+  const done = state.workouts.filter((w) => w.status === 'completed' && w.date >= weekStartDate && w.date <= end).length;
+  const planned = activeWorkouts(state.training, state.workoutOverrides, state.workouts, weekStartDate, state.dayContexts).filter((s) => s.originalDate >= start || s.date >= start).length;
+  return { done, planned };
+}
+
 export interface WeekStats {
   loggedDays: number;
   avgKcal: number;
@@ -90,8 +104,7 @@ export function weekStats(state: AppState, weekStartDate: ISODate): WeekStats {
   const adherence = due.length ? Math.round((due.filter((m) => m.status === 'eaten').length / due.length) * 100) : undefined;
 
   const weekWorkouts = state.workouts.filter((w) => w.status === 'completed' && w.date >= weekStartDate && w.date <= end);
-  const startDate = appStartDate(state);
-  const schedule = activeWorkouts(state.training, state.workoutOverrides, state.workouts, weekStartDate, state.dayContexts).filter((s) => s.date >= startDate);
+  const trainings = weekTrainings(state, weekStartDate);
 
   return {
     loggedDays: totals.length,
@@ -100,8 +113,8 @@ export function weekStats(state: AppState, weekStartDate: ISODate): WeekStats {
     targetKcal: target?.kcal ?? 0,
     targetProtein: target?.protein ?? 0,
     adherence,
-    workoutsDone: weekWorkouts.length,
-    workoutsPlanned: schedule.length,
+    workoutsDone: trainings.done,
+    workoutsPlanned: trainings.planned,
     volumeKg: weekWorkouts.reduce((s, w) => s + (w.volumeKg ?? workoutVolume(w)), 0),
     records: weekWorkouts.reduce((s, w) => s + (w.records?.length ?? 0), 0),
   };

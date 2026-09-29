@@ -23,16 +23,20 @@ export function DayReviewCard() {
   return (
     <Card aria-label="Dein gestriger Tag" className={styles.review}>
       <CardHeader title="Dein gestriger Tag" />
-      {review.good.length > 0 && (
+      {(review.good.length > 0 || review.positive) && (
         <section>
           <h3 className={styles.reviewHeading}>Was lief gut</h3>
-          <ul className={styles.reviewList} data-tone="good">
-            {review.good.map((g) => (
-              <li key={g}>{g}</li>
-            ))}
-          </ul>
+          {review.good.length > 0 && (
+            <ul className={styles.reviewList} data-tone="good">
+              {review.good.map((g) => (
+                <li key={g}>{g}</li>
+              ))}
+            </ul>
+          )}
+          {review.positive && <p className={styles.reviewText}>{review.positive}</p>}
         </section>
       )}
+      {review.energy && <p className={styles.reviewNote}>{review.energy}</p>}
       {review.relevant.length > 0 && (
         <section>
           <h3 className={styles.reviewHeading}>Was auffällt</h3>
@@ -76,7 +80,8 @@ export function DayReviewCard() {
           ))}
         </section>
       )}
-      {nothingToImprove && review.unusual.length === 0 && <p className={styles.reviewText}>Nichts, was dir auffallen müsste – weiter so.</p>}
+      {nothingToImprove && review.unusual.length === 0 && !review.dataNote && <p className={styles.reviewText}>Nichts, was dir auffallen müsste – weiter so.</p>}
+      {review.dataNote && <p className={styles.reviewNote}>{review.dataNote}</p>}
       <div className={styles.reviewActions}>
         {review.why.length > 0 && (
           <button type="button" className={styles.whyToggle} aria-expanded={why} onClick={() => setWhy(!why)}>

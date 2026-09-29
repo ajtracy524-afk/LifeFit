@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyState } from '../store/persistence';
-import { dayGoals, loggingStreak } from './dayGoals';
+import { dayGoals } from './dayGoals';
 import { foodFeedback } from './foodFeedback';
 import type { AppState, LogEntry, PlannedMeal } from './types';
 
@@ -48,15 +48,14 @@ describe('day goals', () => {
   });
 });
 
-describe('consistency ("dabei")', () => {
-  const on = (...dates: string[]) => dates.map((date) => ({ date }));
-  it('counts days in a row with something logged, back from yesterday, today once logged', () => {
-    expect(loggingStreak(on('2026-09-20', '2026-09-19', '2026-09-18'), MON)).toBe(3);
-    expect(loggingStreak(on(MON, '2026-09-20'), MON)).toBe(2);
-  });
-  it('a day without entries simply ends the count – nothing "lost", no negative number', () => {
-    expect(loggingStreak(on('2026-09-19'), MON)).toBe(0);
-    expect(loggingStreak([], MON)).toBe(0);
+describe('consistency is a count, not a series', () => {
+  it('"Erfasst an X von Y Tagen" – a day without entries lowers the count, it never resets anything', async () => {
+    const { weekProgress } = await import('./weekProgress');
+    const s = { ...emptyState(), profile: { name: 'A', sex: 'male' as const, age: 30, heightCm: 180, activity: 'moderate' as const, experience: 'beginner' as const, createdAt: '2026-09-01T08:00:00' } };
+    const on = (...dates: string[]) => dates.map((date, i) => ({ id: `l${i}`, date, slot: 'lunch' as const, loggedAt: `${date}T12:00:00`, name: 'x', method: 'quick' as const, macros: { kcal: 500, protein: 30, carbs: 50, fat: 15 } }));
+    // Monday and Wednesday logged, Tuesday not: 2 of 3 days – the Monday still counts.
+    expect(weekProgress({ ...s, logEntries: on('2026-09-21', '2026-09-23') }, '2026-09-21', '2026-09-23')).toMatchObject({ logged: 2, days: 3 });
+    expect(weekProgress({ ...s, logEntries: [] }, '2026-09-21', '2026-09-23')).toMatchObject({ logged: 0, days: 3 });
   });
 });
 

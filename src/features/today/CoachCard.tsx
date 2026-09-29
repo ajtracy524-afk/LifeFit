@@ -103,7 +103,7 @@ function RecommendationItem({ rec }: { rec: Recommendation }) {
     <li className={`${styles.item} ${styles[rec.priority]}`}>
       <div className={styles.head}>
         <strong className={styles.title}>{rec.title}</strong>
-        {rec.kind !== 'safety' && <IconButton icon="close" label="Ausblenden" onClick={() => dismissRecommendation(rec.id)} />}
+        {rec.kind !== 'safety' && <IconButton icon="close" label="Ausblenden" onClick={() => dismissRecommendation(rec.id, rec.topic)} />}
       </div>
       <p className={styles.message}>{rec.message}</p>
 

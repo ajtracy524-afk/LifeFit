@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { EXTRA_TEMPLATES, getExercise, getProgram } from '../../data/exercises';
 import { today, weekStart, weekdayIndex } from '../../domain/dates';
 import { programWeek } from '../../domain/programs';
-import { appStartDate } from '../../domain/progress';
+import { appStartDate, weekTrainings } from '../../domain/progress';
 import { nextScheduled, resolveWorkouts, type PlannedWorkout } from '../../domain/training';
 import type { WorkoutTemplate } from '../../domain/types';
 import { fmt, formatDuration, relativeDay, weekdayShort } from '../../lib/format';
@@ -37,13 +37,13 @@ export function TrainingScreen() {
     () => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts).filter((s) => s.originalDate >= startDate || s.date >= startDate),
     [state.training, state.workoutOverrides, state.workouts, state.dayContexts, start, startDate],
   );
-  const schedule = week.filter((s) => s.status !== 'skipped');
   const [planning, setPlanning] = useState<string | null>(null);
   const [menu, setMenu] = useState<WorkoutTemplate | null>(null);
   const planningSession = week.find((s) => s.id === planning) ?? null;
   const next = nextScheduled(state.training, state.workouts, t, start, state.workoutOverrides, state.dayContexts);
   const running = state.workouts.find((w) => w.status === 'in_progress');
-  const doneThisWeek = state.workouts.filter((w) => w.status === 'completed' && w.date >= start).length;
+  // The one weekly count (same as Heute and Fortschritt).
+  const { done: doneThisWeek, planned: plannedThisWeek } = weekTrainings(state, start);
   const history = state.workouts
     .filter((w) => w.status === 'completed')
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
@@ -105,8 +105,8 @@ export function TrainingScreen() {
       )}
 
       <Card>
-        <CardHeader title="Diese Woche" meta={`${doneThisWeek} / ${schedule.length} Einheiten`} />
-        <ProgressBar value={doneThisWeek} max={schedule.length} label="Trainings diese Woche" />
+        <CardHeader title="Diese Woche" meta={`${doneThisWeek} / ${plannedThisWeek} Einheiten`} />
+        <ProgressBar value={doneThisWeek} max={plannedThisWeek} label="Trainings diese Woche" />
         <ul className={styles.weekList}>
           {week.map((s) => {
             const done = s.completedWorkoutId ? state.workouts.find((w) => w.id === s.completedWorkoutId) : undefined;

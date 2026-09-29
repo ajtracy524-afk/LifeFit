@@ -203,7 +203,7 @@ export function logProduct(date: ISODate, slot: MealSlot, input: Product, amount
   if (!content) return false;
   const id = opts.id ?? newId();
   if (getState().logEntries.some((e) => e.id === id)) return false;
-  saveProduct({ ...product, foodId });
+  saveProduct({ ...product, foodId, lastAmount: amount });
   return logEntry(date, slot, content, { ...opts, id });
 }
 
@@ -239,7 +239,7 @@ export function replaceWithProduct(mealId: string, input: Product, amount: numbe
   const content = productEntry(product, amount, foodId);
   if (!content) return false;
   const done = replaceWithEntry(mealId, content, opts);
-  if (done) saveProduct({ ...product, foodId });
+  if (done) saveProduct({ ...product, foodId, lastAmount: amount });
   return done;
 }
 
@@ -1024,10 +1024,11 @@ export function recordTopics(date: ISODate, shown: string[], resolved: string[])
       const prev = all[t];
       const restart = !prev || prev.status !== 'active';
       const days = restart ? 1 : prev.lastShown === date ? prev.shownDays : prev.shownDays + 1;
+      const kept = { ...(prev?.dismissed ? { dismissed: prev.dismissed } : {}) };
       all[t] =
         days >= TOPIC_RULES.pauseAfterDays
-          ? { firstShown: prev?.firstShown ?? date, lastShown: date, shownDays: days, status: 'paused', since: date, variant: (prev?.variant ?? 0) + 1 }
-          : { firstShown: restart ? date : prev.firstShown, lastShown: date, shownDays: days, status: 'active', ...(prev?.variant ? { variant: prev.variant } : {}) };
+          ? { firstShown: prev?.firstShown ?? date, lastShown: date, shownDays: days, status: 'paused', since: date, variant: (prev?.variant ?? 0) + 1, ...kept }
+          : { firstShown: restart ? date : prev.firstShown, lastShown: date, shownDays: days, status: 'active', ...(prev?.variant ? { variant: prev.variant } : {}), ...kept };
     }
     for (const t of resolved) {
       const prev = all[t];
@@ -1054,9 +1055,19 @@ export function setActivity(date: ISODate, value: { activeKcal?: number; steps?:
   });
 }
 
-export function dismissRecommendation(id: string): void {
+/**
+ * "Ausblenden": gone for today – and for a recurring tip (topic) a signal:
+ * the topic pauses, comes back later with another strategy, and after being
+ * hidden twice it rests for a month.
+ */
+export function dismissRecommendation(id: string, topic?: string): void {
   const t = today();
   update((s) => {
+    if (topic) {
+      const all = (s.coach.topics ??= {});
+      const prev = all[topic];
+      all[topic] = { firstShown: prev?.firstShown ?? t, lastShown: t, shownDays: prev?.shownDays ?? 1, status: 'paused', since: t, variant: (prev?.variant ?? 0) + 1, dismissed: (prev?.dismissed ?? 0) + 1 };
+    }
     // Ids contain their date – old dismissals can be dropped.
     const keepFrom = addDays(t, -14);
     s.coach.dismissed = Object.fromEntries(Object.entries(s.coach.dismissed).filter(([, d]) => d >= keepFrom));

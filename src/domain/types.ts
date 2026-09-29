@@ -311,6 +311,8 @@ export interface LogEntry {
 export interface Product {
   barcode: string;
   name: string;
+  /** The amount (in `unit`) the user logged last time – offered again next time, always editable. */
+  lastAmount?: number;
   brand?: string;
   /** Per 100 g (or 100 ml, see `unit`) – only values the source provided. */
   per100: Partial<Macros>;
@@ -541,6 +543,8 @@ export interface CoachTopic {
   since?: ISODate;
   /** Strategy variant – after a pause the tip comes back with another approach. */
   variant?: number;
+  /** How often the user hid it ("Ausblenden") – a clear signal: longer pause, other strategy. */
+  dismissed?: number;
 }
 
 /**

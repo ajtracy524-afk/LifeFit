@@ -2,7 +2,7 @@ import { fmt } from '../../lib/format';
 import { addDays } from '../dates';
 import { topicDecision } from './topics';
 import { improvementFor } from '../review/improvements';
-import { calorieSwing, history, metricTrend, trendText, type DayRecord, type Metric, type MetricTrend } from '../review/trends';
+import { calorieSwing, enoughData, history, metricTrend, NOT_ENOUGH_DATA, strongestPattern, trendText, type DayRecord, type Metric } from '../review/trends';
 import type { EngineContext } from './context';
 import type { EngineAction, Recommendation } from './types';
 
@@ -39,13 +39,11 @@ function praise(ctx: EngineContext, topic: string, title: string, message: strin
   return tip(ctx, topic, { kind: 'tip_progress', priority: 'low', title, message, reasons: [], facts: { resolved: true }, actions: [] });
 }
 
-const pattern = (t: MetricTrend) => t.pattern === 'recurring' || t.pattern === 'trend';
-
 function metricTip(ctx: EngineContext, records: DayRecord[], metric: Metric, direction: 'low' | 'high', copy: { icon: string; title: string; alt: string; praise: string }): Recommendation[] {
-  const t7 = metricTrend(records, metric, 7);
-  const t30 = metricTrend(records, metric, 30);
-  const t = pattern(t30) && t30.direction === direction ? t30 : t7;
-  const holds = pattern(t) && t.direction === direction;
+  // The strongest statement the data carries (30 → 14 → 7 days, still visible lately).
+  const found = strongestPattern(records, metric);
+  const holds = found?.direction === direction;
+  const t = holds ? found! : metricTrend(records, metric, 7);
   const topic = `tip:${metric}:${direction}`;
   const d = topicDecision(ctx.state.coach?.topics, topic, holds, ctx.date);
   if (!d.show) return d.praise ? [praise(ctx, topic, `${copy.icon} ${copy.praise}`, 'Das Muster aus den letzten Wochen ist nicht mehr zu sehen – gut umgesetzt. Der Tipp ruht jetzt.')] : [];
@@ -67,7 +65,24 @@ function metricTip(ctx: EngineContext, records: DayRecord[], metric: Metric, dir
 
 export function habitTipsRule(ctx: EngineContext): Recommendation[] {
   const records = history(ctx.state, ctx.date, 30);
-  if (records.filter((r) => r.tracked).length < 4) return [];
+  // Too little data: say so once instead of inventing a pattern (nothing at all before the first entry).
+  if (!enoughData(records)) {
+    if (!records.some((r) => r.tracked)) return [];
+    return [
+      {
+        id: `tip_data:${ctx.date}`,
+        kind: 'tip_data',
+        domain: 'tips',
+        priority: 'low',
+        confidence: 'high',
+        title: NOT_ENOUGH_DATA,
+        message: 'Tipps entstehen aus deinen Einträgen – nach etwa einer Woche mit Einträgen kann LifeFit Muster erkennen.',
+        reasons: [`${records.slice(0, 7).filter((r) => r.tracked).length} von 7 Tagen erfasst`],
+        facts: { trackedDays: records.slice(0, 7).filter((r) => r.tracked).length },
+        actions: [],
+      },
+    ];
+  }
   return [
     ...metricTip(ctx, records, 'fiber', 'low', { icon: '🥦', title: 'Mehr Ballaststoffe', alt: 'Hülsenfrüchte zweimal pro Woche fest einplanen – z. B. Linsen oder Kichererbsen statt einer Beilage.', praise: 'Ballaststoffe deutlich besser' }),
     ...metricTip(ctx, records, 'fat', 'low', { icon: '🥑', title: 'Etwas mehr hochwertige Fette', alt: 'Eine Handvoll Nüsse als Snack oder etwas Olivenöl über Salat und Gemüse.', praise: 'Fettzufuhr jetzt meist im Bereich' }),
@@ -99,7 +114,7 @@ function breakfastProteinTip(ctx: EngineContext): Recommendation[] {
       kind: 'tip_habit',
       priority: ctx.state.goal?.type === 'muscle_gain' ? 'medium' : 'low',
       title: '🍳 Protein zum Frühstück erhöhen',
-      message: 'Eine proteinreiche Komponente am Morgen macht dein Tagesziel leichter erreichbar.',
+      message: d.variant % 2 === 1 ? 'Ein Frühstück, das du oft isst, um eine Eiweißquelle ergänzen – z. B. Skyr, Quark oder Eier – statt alles umzustellen.' : 'Eine proteinreiche Komponente am Morgen macht dein Tagesziel leichter erreichbar.',
       reasons: [`Ø ${fmt.int(avg)} g Protein bei ${breakfasts.length} erfassten Frühstücken der letzten 14 Tage (Richtwert für dich: etwa ${fmt.int(limit)} g).`, ...(imp?.options.map((o) => o.text) ?? [])],
       facts: { avgProtein: Math.round(avg), breakfasts: breakfasts.length, limit: Math.round(limit) },
       actions: [],
@@ -127,7 +142,10 @@ function liquidCaloriesTip(ctx: EngineContext): Recommendation[] {
       kind: 'tip_habit',
       priority: 'medium',
       title: '🥤 Flüssige Kalorien reduzieren',
-      message: `Über Getränke kommen im Schnitt etwa ${fmt.kcal(avg)} pro Tag zusammen. Wasser, Zero-Getränke oder ungesüßter Tee wären eine einfache Stellschraube.`,
+      message:
+        d.variant % 2 === 1
+          ? `Mit einem Getränk anfangen: ${top[0]?.[0] ?? 'das häufigste'} durch eine Zero- oder ungesüßte Variante ersetzen – im Schnitt kommen ${fmt.kcal(avg)} pro Tag über Getränke zusammen.`
+          : `Über Getränke kommen im Schnitt etwa ${fmt.kcal(avg)} pro Tag zusammen. Wasser, Zero-Getränke oder ungesüßter Tee wären eine einfache Stellschraube.`,
       reasons: [`${tracked.length} erfasste Tage der letzten 14 Tage`, ...top.map(([name, kcal]) => `${name}: ${fmt.kcal(kcal)} insgesamt`)],
       facts: { avgKcal: Math.round(avg), days: tracked.length },
       actions: [],

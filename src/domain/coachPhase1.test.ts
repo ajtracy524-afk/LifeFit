@@ -80,7 +80,8 @@ describe('"Dein gestriger Tag"', () => {
   it('a recurring pattern is "relevant" with the counted days as the reason', () => {
     const s = base({ logEntries: [1, 2, 3, 4, 5, 6, 7].flatMap((d) => goodDay(day(d), d <= 6 ? 12 : 36)) });
     const r = dayReview(s, day(1))!;
-    expect(r.relevant).toEqual(['Ballaststoffe lag an 6 von 7 erfassten Tagen der letzten 7 Tage unter deinem persönlichen Bereich.']);
+    // Longest window that carries it: the 7 rated days are also "the last 14 days".
+    expect(r.relevant).toEqual(['Ballaststoffe lag an 6 von 7 erfassten Tagen der letzten 14 Tage unter deinem persönlichen Bereich.']);
     expect(r.improve[0]).toMatch(/nicht nur gestern, sondern häufiger/);
     expect(r.why[0]).toMatch(/^Ballaststoffe lag an 6 von 7 .* \(Ø \d+ g bei einem Bereich um 35 g\)\.$/);
     expect(r.simplest!.action).toMatch(/Gemüse, Obst, Hülsenfrüchte oder Vollkorn/);
@@ -111,7 +112,7 @@ describe('tips with memory (not repeated for weeks, progress acknowledged)', () 
   it('a fiber pattern → one tip with the counted reason and concrete foods', () => {
     const [tip] = tips(base({ logEntries: lowFiber }));
     expect(tip).toMatchObject({ kind: 'tip_habit', topic: 'tip:fiber:low', title: '🥦 Mehr Ballaststoffe' });
-    expect(tip!.reasons[0]).toBe('Ballaststoffe lag an 6 von 7 erfassten Tagen der letzten 7 Tage unter deinem persönlichen Bereich.');
+    expect(tip!.reasons[0]).toBe('Ballaststoffe lag an 6 von 7 erfassten Tagen der letzten 14 Tage unter deinem persönlichen Bereich.');
     expect(tip!.reasons.filter((r) => / g Ballaststoffe$/.test(r))).toHaveLength(3); // three concrete foods with their amount
   });
 
@@ -211,5 +212,81 @@ describe('portion intelligence', () => {
     expect(productPortion(product({ packageSize: 600 }), { pieceG: 60, pieceLabel: 'Stück' })).toMatchObject({ amount: 60, word: 'Stück', source: 'piece' });
     expect(productPortion(product({ packageSize: 150 }))).toMatchObject({ amount: 150, word: 'Packung', source: 'package' });
     expect(productPortion(product({ packageSize: 1000 }))).toBeUndefined();
+  });
+});
+
+describe('phase 1 completion', () => {
+  const tipsOf = (s: AppState) => runEngine(s, { date: TODAY, domains: ['tips'], limit: 10 });
+
+  it('windows: a 30-day pattern is named as such; an old pattern that ended lately is not "current"', async () => {
+    const { strongestPattern } = await import('./review/trends');
+    // Fat low on 20 of 30 days, including the last week → the 30-day statement.
+    const month = base({ logEntries: Array.from({ length: 30 }, (_, i) => goodDay(day(i + 1), 36, i % 3 === 2 ? 80 : 50)).flat() });
+    expect(strongestPattern(history(month, TODAY), 'fat')).toMatchObject({ window: 30, low: 20 });
+    // Low only 15–30 days ago, the last 14 days fine → no current pattern.
+    const past = base({ logEntries: Array.from({ length: 30 }, (_, i) => goodDay(day(i + 1), 36, i < 14 ? 80 : 50)).flat() });
+    expect(strongestPattern(history(past, TODAY), 'fat')).toBeUndefined();
+  });
+
+  it('one positive habit over 14 / 30 days in the review – not a list', () => {
+    const s = base({ logEntries: [...Array.from({ length: 14 }, (_, i) => goodDay(day(i + 2))).flat(), ...goodDay(day(1))] });
+    const r = dayReview(s, day(1))!;
+    // 15 rated days carry the 30-day window – the longer good habit is named.
+    expect(r.positive).toBe('Protein in den letzten 30 Tagen überwiegend im Bereich (15 von 15 erfassten Tagen).');
+  });
+
+  it('too few days: the review and the tips say so instead of inventing a pattern', () => {
+    const s = base({ logEntries: [...goodDay(day(1), 10), ...goodDay(day(3), 10)] });
+    expect(dayReview(s, day(1))!.dataNote).toBe('Noch nicht genug Daten für eine zuverlässige Einschätzung. Muster zeigen sich nach etwa einer Woche mit Einträgen.');
+    expect(dayReview(s, day(1))!.relevant).toEqual([]);
+    expect(tipsOf(s).map((t) => [t.kind, t.title])).toEqual([['tip_data', 'Noch nicht genug Daten für eine zuverlässige Einschätzung.']]);
+    expect(tipsOf(base())).toEqual([]); // nothing logged at all → nothing to say
+  });
+
+  it('next step: 8 g protein still open after the planned meals is a real (small) step', () => {
+    const s = base({ logEntries: [entry(TODAY, 'lunch', [2500, 142, 300, 80])] });
+    const step = runEngine(s, { date: TODAY, hour: 18, domains: ['nutrition'], limit: 10 }).find((r) => r.kind === 'nutrition_gap')!;
+    expect(step.title).toBe('Heute fehlen noch 8 g Protein');
+    expect(step.actions.length).toBeGreaterThan(0);
+  });
+
+  it('"Ausblenden" pauses the topic and brings another strategy; hidden twice → a month', async () => {
+    const store = await import('../store/store');
+    const actions = await import('../store/actions');
+    store.commit(base());
+    actions.dismissRecommendation(`tip_habit:tip:fiber:low:${TODAY}`, 'tip:fiber:low');
+    expect(store.getState().coach.topics!['tip:fiber:low']).toMatchObject({ status: 'paused', variant: 1, dismissed: 1 });
+    const topics = (dismissed: number, since: string) => ({ 'tip:fiber:low': { firstShown: day(40), lastShown: since, shownDays: 3, status: 'paused' as const, since, variant: 1, dismissed } });
+    expect(topicDecision(topics(1, day(15)), 'tip:fiber:low', true, TODAY)).toEqual({ show: true, variant: 1 });
+    expect(topicDecision(topics(2, day(15)), 'tip:fiber:low', true, TODAY)).toEqual({ show: false });
+    expect(topicDecision(topics(2, day(31)), 'tip:fiber:low', true, TODAY)).toEqual({ show: true, variant: 1 });
+    store.commit(emptyState());
+  });
+
+  it('the amount of the last log is remembered per product', async () => {
+    const store = await import('../store/store');
+    const actions = await import('../store/actions');
+    store.commit(base());
+    const toast: Product = { barcode: '4012345678901', name: 'Toast', per100: { kcal: 260, protein: 8, carbs: 48, fat: 3 }, micros100: {}, unit: 'g', servingSize: 50, servingLabel: '2 slices (50 g)', source: 'openfoodfacts', fetchedAt: '2026-09-01T00:00:00Z' };
+    actions.logProduct(TODAY, 'breakfast', toast, 75);
+    expect(store.getState().products['4012345678901']!.lastAmount).toBe(75);
+    store.commit(emptyState());
+  });
+
+  it('activity: context in the good points and a separate energy line – never added to the target', () => {
+    const s = base({ logEntries: [...[2, 3, 4, 5].flatMap((d) => goodDay(day(d))), ...goodDay(day(1))], activity: { [day(1)]: { activeKcal: 450, steps: 9200, source: 'manual', updatedAt: 'x' } } });
+    const r = dayReview(s, day(1))!;
+    expect(r.good).toContain('Aktiver Tag: 9.200 Schritte');
+    expect(r.energy).toBe('Gegessen 2.500 kcal · Tagesziel 2.500 kcal · Aktivität 450 kcal (eingetragen). Die Aktivität wird nicht zum Ziel addiert – dein Ziel enthält deinen Alltag und das Training bereits.');
+  });
+
+  it('one weekly training count for Fortschritt, Training tab and Heute', async () => {
+    const { weekStats, weekTrainings } = await import('./progress');
+    const { weekProgress } = await import('./weekProgress');
+    const s = base({ training: { programId: 'full-body', weekdays: [0, 3] }, workouts: [{ id: 'w', date: '2026-09-29', templateId: 'fb-a', name: 'x', startedAt: '2026-09-29T10:00:00', status: 'completed', exercises: [] }] });
+    const week = '2026-09-28';
+    expect(weekTrainings(s, week)).toEqual({ done: 1, planned: 2 });
+    expect(weekProgress(s, week, TODAY).trainings).toEqual(weekTrainings(s, week));
+    expect({ done: weekStats(s, week).workoutsDone, planned: weekStats(s, week).workoutsPlanned }).toEqual(weekTrainings(s, week));
   });
 });

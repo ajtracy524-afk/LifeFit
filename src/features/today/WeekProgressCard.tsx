@@ -15,6 +15,7 @@ export function WeekProgressCard() {
   const t = today();
   const p = useMemo(() => weekProgress(state, weekStart(t), t), [state, t]);
   const items = [
+    p.logged ? { icon: '📝', label: 'Erfasst', value: `${p.logged} von ${p.days} Tagen`, full: p.logged === p.days } : undefined,
     p.trainings.planned ? { icon: '🏋️', label: 'Training', value: `${p.trainings.done} / ${p.trainings.planned}`, full: p.trainings.done >= p.trainings.planned } : undefined,
     p.protein !== undefined ? { icon: '💪', label: 'Protein', value: `${p.protein} von ${p.days} Tagen`, full: p.protein === p.days } : undefined,
     p.calories !== undefined ? { icon: '🎯', label: 'Kalorien im Ziel', value: `${p.calories} von ${p.days} Tagen`, full: p.calories === p.days } : undefined,

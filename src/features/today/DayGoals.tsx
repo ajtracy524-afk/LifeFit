@@ -1,5 +1,5 @@
 import { useEffect, useMemo, type CSSProperties } from 'react';
-import { dayGoals, loggingStreak, STREAK_MIN_DAYS, type DayGoal } from '../../domain/dayGoals';
+import { dayGoals, type DayGoal } from '../../domain/dayGoals';
 import type { ISODate } from '../../domain/types';
 import { celebrate } from '../../lib/celebrate';
 import { useCrossing } from '../../lib/motion';
@@ -11,13 +11,12 @@ const celebratedDays = new Set<string>();
 
 /**
  * "Tagesziele": small chips that close one by one (check drawn when a goal is
- * reached right now), a calm consistency count, and – when every goal is
+ * reached right now), and – when every goal is
  * done – the biggest moment of the day: "Tag abgeschlossen".
  */
 export function DayGoals({ date }: { date: ISODate }) {
   const state = useAppState();
   const { goals, done, complete } = useMemo(() => dayGoals(state, date), [state, date]);
-  const streak = useMemo(() => loggingStreak(state.logEntries, date), [state.logEntries, date]);
   const finished = useCrossing(complete);
 
   useEffect(() => {
@@ -31,7 +30,6 @@ export function DayGoals({ date }: { date: ISODate }) {
     <section className={[styles.dayGoals, complete && styles.dayGoalsComplete, finished > 0 && styles.dayGoalsFinish].filter(Boolean).join(' ')} aria-label="Tagesziele" key={`goals-${finished}`}>
       <div className={styles.dayGoalsHead}>
         <span className={styles.dayGoalsTitle}>{complete ? 'Tag abgeschlossen ✨' : `Tagesziele ${done} / ${goals.length}`}</span>
-        {streak >= STREAK_MIN_DAYS && <span className={styles.streak}>🔥 {streak} Tage dabei</span>}
       </div>
       <ul className={styles.goalChips} style={{ '--n': goals.length } as CSSProperties}>
         {goals.map((g, i) => (

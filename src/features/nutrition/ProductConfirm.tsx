@@ -48,7 +48,8 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat', o
   const pieceFood = product.foodId ? getFood(product.foodId) : undefined;
   const portion = productPortion(product, pieceFood);
   const options = productAmountOptions(product, pieceFood);
-  const initial = purpose === 'purchase' ? (product.packageSize ?? 100) : (portion?.amount ?? 100);
+  // Eating: the amount logged last time comes first (people eat the same amount again), then the portion.
+  const initial = purpose === 'purchase' ? (product.packageSize ?? 100) : (product.lastAmount ?? portion?.amount ?? 100);
   const [amountText, setAmountText] = useState(String(initial));
   const [id] = useState(newId);
   const suggestions = suggestCatalogFoods(`${product.name} ${product.brand ?? ''}`);
@@ -111,6 +112,11 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat', o
       )}
 
       <p className={styles.fieldLabel}>Menge</p>
+      {purpose === 'eat' && product.lastAmount && (
+        <p className={styles.searchHint}>
+          Zuletzt: {portion ? `${fmt.dec(Math.round((product.lastAmount / portion.amount) * 2) / 2)} ${Math.round((product.lastAmount / portion.amount) * 2) / 2 === 1 ? portion.word : portion.plural} (${fmt.dec(product.lastAmount)} ${u})` : `${fmt.dec(product.lastAmount)} ${u}`}
+        </p>
+      )}
       <div className={styles.chipRow}>
         {options.map((o) => (
           <Chip key={o.label} selected={validAmount && amount === o.amount} onClick={() => setAmountText(String(o.amount))}>

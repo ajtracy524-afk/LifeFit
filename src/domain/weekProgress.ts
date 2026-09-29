@@ -1,7 +1,7 @@
 import { addDays, weekDays } from './dates';
 import { dayGoals } from './dayGoals';
 import { dayTotals } from './nutrition';
-import { appStartDate } from './progress';
+import { appStartDate, weekTrainings } from './progress';
 import { activeWorkouts } from './training';
 import type { AppState, ISODate } from './types';
 import { relativeDay } from '../lib/format';
@@ -16,6 +16,8 @@ export interface WeekProgress {
   /** Days of this week from the app start up to today. */
   days: number;
   trainings: { done: number; planned: number };
+  /** Days with at least one food entry ("erfasst an X von Y Tagen"). */
+  logged: number;
   /** Goal reached on this many of `days` – undefined when there is no goal / no data. */
   protein?: number;
   calories?: number;
@@ -39,8 +41,6 @@ export function weekProgress(state: AppState, week: ISODate, today: ISODate): We
     return logged.length ? logged.filter((g) => g.find((x) => x.key === key)!.done).length : undefined;
   };
   const sessions = activeWorkouts(state.training, state.workoutOverrides, state.workouts, week, state.dayContexts).filter((s) => s.originalDate >= start || s.date >= start);
-  // Same count as the Training tab and Fortschritt: every completed workout of the week (an extra day counts too).
-  const done = state.workouts.filter((w) => w.status === 'completed' && w.date >= week && w.date <= addDays(week, 6)).length;
   const next = sessions.find((s) => !s.completedWorkoutId && s.date >= today);
 
   const improvements: string[] = [];
@@ -57,7 +57,8 @@ export function weekProgress(state: AppState, week: ISODate, today: ISODate): We
 
   return {
     days: days.length,
-    trainings: { done, planned: sessions.length },
+    trainings: weekTrainings(state, week),
+    logged: days.filter((d) => state.logEntries.some((e) => e.date === d)).length,
     ...(count('protein') !== undefined ? { protein: count('protein') } : {}),
     ...(count('calories') !== undefined ? { calories: count('calories') } : {}),
     ...(count('water') !== undefined ? { water: count('water') } : {}),

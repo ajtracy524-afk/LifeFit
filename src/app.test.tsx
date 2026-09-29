@@ -1349,18 +1349,20 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     expect(text()).toMatch(/Nur schnelle Gerichte \(bis 15 min\)/);
   });
 
-  it('water: a real series from stored days, and a calm moment when today is reached – same on both pages', async () => {
+  it('water: a count of this week (no series to lose), and a calm moment when today is reached – same on both pages', async () => {
     const goal = { ...completeState().nutritionProfile, waterGoalMl: 2000 };
-    localStorage.setItem(KEY, JSON.stringify(plain({ nutritionProfile: goal, water: { '2026-09-21': 2000, '2026-09-20': 2500, '2026-09-19': 500, [TUE]: 1750 } })));
+    // Sunday belongs to last week; this week: Monday reached, Tuesday not yet.
+    localStorage.setItem(KEY, JSON.stringify(plain({ nutritionProfile: goal, water: { '2026-09-21': 2000, '2026-09-20': 2500, [TUE]: 1750 } })));
     window.history.replaceState(null, '', '/#/today');
     await startApp();
-    expect(text()).toMatch(/2 Tage in Folge ≥ 2 L/);
+    expect(text()).toMatch(/Diese Woche an 1 von 2 Tagen ≥ 2 L/);
+    expect(text()).not.toMatch(/in Folge/);
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
     expect(text()).toMatch(/Tagesziel erreicht 🎉/);
-    expect(text()).toMatch(/3 Tage in Folge ≥ 2 L/);
+    expect(text()).toMatch(/Diese Woche an 2 von 2 Tagen ≥ 2 L/);
     await go('nutrition');
     expect(text()).toMatch(/Tagesziel erreicht 🎉/);
-    expect(text()).toMatch(/3 Tage in Folge ≥ 2 L/);
+    expect(text()).toMatch(/Diese Woche an 2 von 2 Tagen ≥ 2 L/);
   });
 
   it('suggestions on Ernährung: the best dish with time, protein, kcal and why – one tap plans it', async () => {
@@ -1663,13 +1665,15 @@ describe('gamification loop on Heute and Ernährung (action → reaction → pro
     expect(text()).not.toMatch(/€|EUR|USD|GBP/);
   });
 
-  it('day goals close one by one; the last one completes the day – the biggest moment (level 4) and a calm consistency count', async () => {
+  it('day goals close one by one; the last one completes the day – the biggest moment (level 4); consistency is a count ("Erfasst an 2 von 2 Tagen")', async () => {
     const logs = [quickLog('y1', '2026-09-21', 2600, 150), quickLog('y2', '2026-09-20', 2500, 140), quickLog('t', TUE, 2650, 170)];
     localStorage.setItem(KEY, JSON.stringify(withGoal({ logEntries: logs, water: { [TUE]: 1750 } })));
     window.history.replaceState(null, '', '/#/today');
     await startApp();
     const goals = () => container.querySelector('[aria-label="Tagesziele"]')!;
-    expect(goals().textContent).toMatch(/^Tagesziele 2 \/ 3🔥 3 Tage dabei/);
+    expect(goals().textContent).toMatch(/^Tagesziele 2 \/ 3/);
+    expect(text()).not.toMatch(/Tage dabei/);
+    expect(container.querySelector('[aria-label="Diese Woche"] [aria-label="Erfasst: 2 von 2 Tagen"]')).toBeTruthy();
     expect([...goals().querySelectorAll('li')].map((li) => li.getAttribute('data-done'))).toEqual(['true', 'true', 'false']);
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
     expect(goals().textContent).toMatch(/^Tag abgeschlossen ✨/);
@@ -2640,7 +2644,8 @@ describe('coach phase 1 (UI): yesterday, next step, tips with memory, activity, 
     const store = await startApp();
     const review = container.querySelector('[aria-label="Dein gestriger Tag"]')!;
     expect(review.textContent).toMatch(/Was lief gutKalorienziel erreichtProtein-Ziel erreicht/);
-    expect(review.textContent).toMatch(/Was auffälltBallaststoffe lag an 7 von 7 erfassten Tagen der letzten 7 Tage unter deinem persönlichen Bereich\./);
+    // The longest window that carries the pattern: 7 rated days within the last 14.
+    expect(review.textContent).toMatch(/Was auffälltBallaststoffe lag an 7 von 7 erfassten Tagen der letzten 14 Tage unter deinem persönlichen Bereich\./);
     expect(review.textContent).toMatch(/Die einfachste VerbesserungTäglich eine zusätzliche Portion Gemüse/);
     await act(async () => [...review.querySelectorAll('button')].find((b) => b.textContent === 'Warum?')!.click());
     expect(review.textContent).toMatch(/Ø 12 g bei einem Bereich um 38 g/);
@@ -2692,5 +2697,20 @@ describe('coach phase 1 (UI): yesterday, next step, tips with memory, activity, 
     expect([...dialog.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent)).toContain('1 Scheibe (25 g)');
     expect(dialog.textContent).toMatch(/Scheiben à 25 g/);
     expect(dialog.textContent).toMatch(/1 Portion \(50 g\)/);
+  });
+
+  it('the amount logged last time is offered again (still editable) – with its unit', async () => {
+    const toast = { barcode: '4012345678901', name: 'Toastbrot', per100: { kcal: 260, protein: 8, carbs: 48, fat: 3 }, micros100: {}, unit: 'g', servingSize: 50, servingLabel: '2 slices (50 g)', packageSize: 500, lastAmount: 75, source: 'openfoodfacts', fetchedAt: '2026-09-20T08:00:00Z' };
+    localStorage.setItem(KEY, JSON.stringify(state({ logEntries: [], products: { [toast.barcode]: toast } })));
+    window.history.replaceState(null, '', '/#/nutrition');
+    await startApp();
+    await click('Lebensmittel hinzufügen');
+    await click('Barcode');
+    await type('Barcode-Nummer', '4012345678901');
+    await click('Produkt suchen');
+    await act(() => new Promise((r) => setTimeout(r, 30)));
+    const dialog = document.querySelector('dialog[open]')!;
+    expect(dialog.querySelector<HTMLInputElement>('input[inputmode="decimal"]')!.value).toBe('75');
+    expect(dialog.textContent).toMatch(/Zuletzt: 3 Scheiben \(75 g\)/);
   });
 });

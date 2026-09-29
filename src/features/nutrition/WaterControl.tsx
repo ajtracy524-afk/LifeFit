@@ -1,7 +1,8 @@
-import { useId, type CSSProperties } from 'react';
+import { useId, useMemo, type CSSProperties } from 'react';
 import type { ISODate } from '../../domain/types';
-import { today } from '../../domain/dates';
-import { formatLitres, waterOn, waterStreak, WATER_STREAK_MIN_DAYS } from '../../domain/water';
+import { formatLitres, waterOn } from '../../domain/water';
+import { weekProgress } from '../../domain/weekProgress';
+import { weekStart } from '../../domain/dates';
 import { href } from '../../lib/router';
 import { useCrossing, useIncrease } from '../../lib/motion';
 import { changeWater } from './waterActions';
@@ -36,7 +37,8 @@ export function WaterControl({ date }: { date: ISODate }) {
   const full = Math.floor(ml / unit);
   const left = goal ? Math.max(0, goal - ml) : undefined;
   // A real series from the stored day values (today only counts once reached) – shown from 2 days on.
-  const streak = date === today() ? waterStreak(state, date, goal) : 0;
+  // Consistency as a count of this week (the same numbers as "Diese Woche" on Heute) – no series to lose.
+  const week = useMemo(() => (goal ? weekProgress(state, weekStart(date), date) : undefined), [state, date, goal]);
   const grew = useIncrease(ml);
   const won = useCrossing(!!goal && ml >= goal);
   // The bottle whose level just rose (the top of the water).
@@ -102,9 +104,9 @@ export function WaterControl({ date }: { date: ISODate }) {
             `Noch ${formatLitres(left)} · ${Math.ceil(left / unit)} ${unit === 250 ? (Math.ceil(left / unit) === 1 ? 'Glas' : 'Gläser') : Math.ceil(left / unit) === 1 ? 'Flasche' : 'Flaschen'}`
           )}
         </span>
-        {streak >= WATER_STREAK_MIN_DAYS && goal && (
+        {week && week.water !== undefined && week.water > 0 && goal && (
           <span className={styles.waterStreak}>
-            {streak} Tage in Folge ≥ {formatLitres(goal)}
+            Diese Woche an {week.water} von {week.days} Tagen ≥ {formatLitres(goal)}
           </span>
         )}
       </p>

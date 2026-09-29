@@ -30,6 +30,7 @@ export type RecommendationKind =
   | 'heavy_meal'
   | 'tip_habit'
   | 'tip_progress'
+  | 'tip_data'
   | 'shopping_missing'
   | 'body_rate'
   | 'safety';

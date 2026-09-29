@@ -20,7 +20,11 @@ import type { EngineAction, Recommendation } from './types';
 export const NUTRITION_RULES = {
   /** Below these open amounts nothing is suggested – the ring on "Heute" is enough. */
   minKcalGap: 150,
-  minProteinGap: 15,
+  /**
+   * Protein still open AFTER the meals planned for today – already 5 g count: the gap is real then
+   * (the planned meals do not close it) and a small snack solves it. Only ever one next step is shown.
+   */
+  minProteinGap: 5,
   /** One suggested meal never exceeds this share of the daily target … */
   maxMealShare: 0.45,
   /** … and after this hour only a small snack is suggested. */
