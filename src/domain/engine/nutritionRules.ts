@@ -14,6 +14,7 @@ import { formatCostRange, priceLookup, recipeCostRange, type CostRange } from '.
 import { dishCostRange, dishPortionNutrition } from '../dishes';
 import { plannerAffinity } from '../preferences';
 import { effectiveTimeBudget, TIME_BUDGETS } from '../timeBudget';
+import { formatLitres, waterOn, waterReminder, waterReminderId } from '../water';
 import type { EngineContext } from './context';
 import type { EngineAction, Recommendation } from './types';
 
@@ -283,6 +284,38 @@ export function nutritionGapRule(ctx: EngineContext): Recommendation[] {
   const priority = ctx.hour >= 17 && open.protein >= 30 ? 'high' : 'medium';
   return [
     { id: `nutrition_gap:${ctx.date}`, kind: 'nutrition_gap', domain: 'nutrition', priority, confidence: 'high', title, message, reasons, facts, actions },
+  ];
+}
+
+/**
+ * "Noch 0,7 L Wasser": the water reminder as a next step – exactly the rule of
+ * the reminders (domain/water.ts), only shown here. Low priority: protein,
+ * training and meals come first; water fills the gap when it is the simplest
+ * open thing of the day.
+ */
+export function waterPaceRule(ctx: EngineContext): Recommendation[] {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const now = new Date(`${ctx.date}T${pad(ctx.hour)}:${pad(ctx.minute)}:00`);
+  const reminder = waterReminder(ctx.state, ctx.date, now);
+  const goal = ctx.state.nutritionProfile?.waterGoalMl;
+  if (!reminder || !goal) return [];
+  const ml = waterOn(ctx.state, ctx.date);
+  return [
+    {
+      id: waterReminderId(ctx.date),
+      kind: 'water_pace',
+      domain: 'nutrition',
+      priority: 'low',
+      confidence: 'high',
+      title: `💧 Noch ${formatLitres(goal - ml)} Wasser`,
+      message: reminder.text,
+      reasons: [`Bisher ${formatLitres(ml)} von ${formatLitres(goal)}. Gleichmäßig über den Tag verteilt wären es jetzt etwa ${formatLitres(Math.round((ml + reminder.behindMl) / 50) * 50)}.`],
+      facts: { waterMl: ml, waterGoalMl: goal, behindMl: reminder.behindMl },
+      actions: [
+        { type: 'add_water', label: '+250 ml', date: ctx.date, ml: 250 },
+        { type: 'snooze_water', label: 'Später' },
+      ],
+    },
   ];
 }
 

@@ -1,6 +1,7 @@
 import { findTemplate } from '../data/exercises';
 import { toISODate, weekStart } from '../domain/dates';
 import { buildShoppingList, shoppingRange } from '../domain/shopping';
+import { EATING_OUT_SLOTS } from '../domain/timeBudget';
 import type { AppState, PantryItem, ShoppingWeekState } from '../domain/types';
 
 const KEY = 'lifefit:v1';
@@ -122,7 +123,19 @@ export function loadState(): LoadResult {
 
 /** All one-time clean-ups of older stored data, applied on load. */
 function migrateLegacy(state: AppState): AppState {
-  return renameLegacyWorkouts(normalizeLegacyDayModes(dropLegacyEurBudget(state)));
+  return markEatingOutSkips(renameLegacyWorkouts(normalizeLegacyDayModes(dropLegacyEurBudget(state))));
+}
+
+/**
+ * One-time migration: dinners skipped by "Auswärts" before the reason was
+ * stored get it now (skipped, on an eating-out day, nothing logged instead),
+ * so switching back to "Zuhause" brings them back as before.
+ */
+export function markEatingOutSkips(state: AppState): AppState {
+  const out = (m: AppState['plannedMeals'][number]) =>
+    m.status === 'skipped' && !m.skippedFor && EATING_OUT_SLOTS.includes(m.slot) && state.dayContexts?.[m.date]?.mode === 'eating_out' && !state.logEntries?.some((e) => e.replacedMealId === m.id);
+  if (!(state.plannedMeals ?? []).some(out)) return state;
+  return { ...state, plannedMeals: state.plannedMeals.map((m) => (out(m) ? { ...m, skippedFor: 'eating_out' as const } : m)) };
 }
 
 /** Built-in session names before they described their content ("Training A" says nothing). */

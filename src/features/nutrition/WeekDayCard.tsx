@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { formatCostRange } from '../../domain/costs';
 import { weekdayIndex } from '../../domain/dates';
-import { DAY_MODE_LABEL, TIME_BUDGETS } from '../../domain/timeBudget';
+import { DAY_MODE_LABEL, DAY_MODE_ORDER, EATING_OUT_SLOTS, TIME_BUDGETS } from '../../domain/timeBudget';
 import type { PlannedWorkout } from '../../domain/training';
 import { estimateMinutes } from '../../domain/training';
-import type { MealSlot, PlannedMeal } from '../../domain/types';
+import type { DayMode, MealSlot, PlannedMeal } from '../../domain/types';
 import type { DayOverview } from '../../domain/week/dayOverview';
-import type { PlanDay } from '../../domain/week';
+import { closedMeals, type PlanDay } from '../../domain/week';
+import { applyWithUndo } from '../../lib/undo';
+import { useAppState } from '../../store/store';
+import { Segmented } from '../../components/ui/Controls';
 import { fmt, SLOT_LABEL, weekdayShort } from '../../lib/format';
 import { href } from '../../lib/router';
 import { Card } from '../../components/ui/Card';
@@ -38,6 +41,10 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
   const [open, setOpen] = useState(!past);
   const context = day.context;
   const label = `${weekdayShort(weekdayIndex(day.date))} ${isToday ? 'Heute' : shortDate(day.date)}`;
+  const state = useAppState();
+  const closed = closedMeals(state, day.date);
+  // Where dinner happens is a planning decision – made here (and in the check-in), shown on Heute.
+  const dinnerChoice = !past && slots.some((s) => EATING_OUT_SLOTS.includes(s));
 
   return (
     <Card padded={false} className={[styles.weekDay, isToday && styles.weekDayToday, past && styles.weekDayPast].filter(Boolean).join(' ')}>
@@ -93,17 +100,37 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
       {open && (
         <div className={styles.weekDayMeals}>
           {slots.map((slot) => {
-            const slotMeals = day.meals.filter((m) => m.slot === slot);
+            // A dinner taken out by "Auswärts" is not a meal of the plan – the slot shows its state instead.
+            const slotMeals = day.meals.filter((m) => m.slot === slot && m.skippedFor !== 'eating_out');
+            const off = closed.find((c) => c.slot === slot);
             if (!slotMeals.length) {
-              if (past || (context.mode === 'eating_out' && slot === 'dinner')) return null;
+              if (off?.reason === 'eating_out')
+                return (
+                  <p key={slot} className={styles.closedSlot}>
+                    <span aria-hidden>🍽️</span> {SLOT_LABEL[slot]} · Auswärts <span className={styles.muted}>– nicht im Plan, nicht im Einkauf</span>
+                  </p>
+                );
+              if (past) return null;
               return (
                 <button key={slot} type="button" className={styles.emptySlot} onClick={() => onPick({ date: day.date, slot })}>
                   <Icon name="plus" size={16} /> {SLOT_LABEL[slot]}
+                  {off ? ' · nicht geplant' : ''}
                 </button>
               );
             }
             return slotMeals.map((m: PlannedMeal) => <MealRow key={m.id} meal={m} label={SLOT_LABEL[slot]} onOpen={() => onOpenMeal(m.id)} checkable={day.date <= today} />);
           })}
+          {dinnerChoice && (
+            <div className={styles.dinnerChoice}>
+              <span className={styles.dinnerChoiceLabel}>Abendessen</span>
+              <Segmented<DayMode>
+                label={`Abendessen ${label}`}
+                value={context.mode}
+                onChange={(mode) => mode !== context.mode && applyWithUndo({ type: 'setDayContext', date: day.date, context: { mode } })}
+                options={DAY_MODE_ORDER.map((m) => ({ value: m, label: m === 'eating_out' ? '🍽️ Auswärts' : '🏠 Zuhause' }))}
+              />
+            </div>
+          )}
         </div>
       )}
     </Card>

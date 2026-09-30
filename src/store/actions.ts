@@ -1079,6 +1079,12 @@ export function applyEngineAction(action: EngineAction): boolean {
       }
       return true;
     }
+    case 'add_water':
+      addWaterMl(action.date, action.ml);
+      return true;
+    case 'snooze_water':
+      snoozeWaterReminder();
+      return true;
     case 'open':
       return false;
   }

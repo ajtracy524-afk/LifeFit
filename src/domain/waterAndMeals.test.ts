@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { emptyState } from '../store/persistence';
+import { emptyState, markEatingOutSkips } from '../store/persistence';
 import { dayGoals } from './dayGoals';
 import { runEngine } from './engine';
 import { buildContext } from './engine/context';
+import { dayReview } from './review/dayReview';
+import { dayTimeline } from './schedule';
 import { excludedSlots } from './timeBudget';
 import type { AppState, LogEntry, PlannedMeal } from './types';
-import { dayContextFor, planMeals } from './week';
-import { waterGoalReached, waterReminder, waterWeek } from './water';
+import { closedMeals, dayContextFor, dayTargetFor, planMeals, weekShopping } from './week';
+import { waterAverage, waterGoalReached, waterReminder, waterWeek } from './water';
 import { weekProgress } from './weekProgress';
 
 const T = '2026-09-29'; // Tuesday
@@ -148,5 +150,105 @@ describe('dinner out / removed: no open task, no suggestion to fill it', () => {
       expect(s.plannedMeals.some((m) => m.date === T && m.slot === 'dinner' && m.status === 'planned')).toBe(true);
       store.commit(emptyState());
     });
+  });
+});
+
+describe('dinner "Zuhause / Auswärts": decided in the week plan, followed by plan, shopping, Heute', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at('09:00'));
+  });
+  afterEach(() => vi.useRealTimers());
+  const WED = '2026-09-30';
+  const eggs = (s: AppState) => weekShopping(s, MON, T).find((i) => i.foodId === 'egg')?.neededG ?? 0;
+
+  it('Auswärts takes the dinner off the plan and the list, Zuhause brings exactly it back – no duplicates, undo restores', async () => {
+    const store = await import('../store/store');
+    const actions = await import('../store/actions');
+    const { undoTo } = await import('../lib/undo');
+    store.commit(base({ plannedMeals: [meal('d', 'dinner', 'planned', WED)] }));
+    const before = eggs(store.getState());
+    expect(before).toBeGreaterThan(0);
+
+    const snap = store.snapshot();
+    actions.applyChange({ type: 'setDayContext', date: WED, context: { mode: 'eating_out' } });
+    let s = store.getState();
+    expect(s.plannedMeals.find((m) => m.id === 'd')).toMatchObject({ status: 'skipped', skippedFor: 'eating_out' });
+    expect(eggs(s)).toBe(0);
+    expect(closedMeals(s, WED)).toEqual([{ date: WED, slot: 'dinner', reason: 'eating_out', recipeId: 'veggie-omelette' }]);
+    // The day target stays – nothing is spread onto the other meals.
+    expect(dayTargetFor(s, WED)).toEqual(dayTargetFor(base(), WED));
+
+    actions.applyChange({ type: 'setDayContext', date: WED, context: { mode: 'normal' } });
+    s = store.getState();
+    const dinners = s.plannedMeals.filter((m) => m.date === WED && m.slot === 'dinner');
+    expect(dinners).toHaveLength(1);
+    expect(dinners[0]).toMatchObject({ id: 'd', status: 'planned' });
+    expect(dinners[0]!.skippedFor).toBeUndefined();
+    expect(eggs(s)).toBe(before);
+
+    // Undo of a change = the snapshot before it.
+    expect(undoTo(snap, store.snapshot())).toBe(true);
+    expect(store.getState().plannedMeals).toEqual([meal('d', 'dinner', 'planned', WED)]);
+    store.commit(emptyState());
+  });
+
+  it('an own "Anders gegessen" stays as the user left it when switching back to Zuhause', async () => {
+    const store = await import('../store/store');
+    const actions = await import('../store/actions');
+    store.commit(base({ plannedMeals: [meal('d', 'dinner', 'skipped', WED)] }));
+    actions.applyChange({ type: 'setDayContext', date: WED, context: { mode: 'eating_out' } });
+    actions.applyChange({ type: 'setDayContext', date: WED, context: { mode: 'normal' } });
+    expect(store.getState().plannedMeals.find((m) => m.id === 'd')!.status).toBe('skipped');
+    store.commit(emptyState());
+  });
+
+  it('older data: dinners skipped by Auswärts get their reason once on load', () => {
+    const s = base({ dayContexts: { [WED]: { timeBudget: 'normal', mode: 'eating_out' } }, plannedMeals: [meal('d', 'dinner', 'skipped', WED), meal('l', 'lunch', 'skipped', WED)] });
+    const migrated = markEatingOutSkips(s);
+    expect(migrated.plannedMeals.map((m) => m.skippedFor)).toEqual(['eating_out', undefined]);
+    expect(markEatingOutSkips(migrated)).toBe(migrated);
+  });
+
+  it('Heute shows the state in the timeline – not the dish that was planned', () => {
+    const s = base({ dayContexts: { [T]: { timeBudget: 'normal', mode: 'eating_out' } }, plannedMeals: [meal('b', 'breakfast', 'planned'), { ...meal('d', 'dinner', 'skipped'), skippedFor: 'eating_out' }] });
+    const items = dayTimeline(s, T);
+    expect(items.map((i) => i.kind)).toEqual(['meal', 'closed']);
+    expect(items[1]).toMatchObject({ kind: 'closed', closed: { slot: 'dinner', reason: 'eating_out' } });
+    // Removed: a closed slot without any meal record.
+    const removed = base({ dayContexts: { [T]: { timeBudget: 'normal', mode: 'normal', removedSlots: ['lunch'] } } });
+    expect(dayTimeline(removed, T)).toEqual([{ kind: 'closed', time: '12:30', closed: { date: T, slot: 'lunch', reason: 'removed' } }]);
+  });
+});
+
+describe('water: one logic for Heute, the week, the review and the next step', () => {
+  it('day goal chip shows drunk / goal', () => {
+    expect(dayGoals(base({ water: { [T]: 1800 } }), T).goals.find((g) => g.key === 'water')).toMatchObject({ value: '1,8 / 2 L', detail: '1,8 L von 2 L', done: false });
+  });
+
+  it('the week average counts only days with an entry', () => {
+    expect(waterAverage(waterWeek(base({ water: { [MON]: 2000, [T]: 1000 } }), MON, T))).toBe(1500);
+    expect(waterAverage(waterWeek(base(), MON, T))).toBeUndefined();
+  });
+
+  it('next step: water when it is the simplest open thing – food gaps come first; hiding it ends reminders today', () => {
+    const covered = base({ logEntries: [entry('lunch', 2500, 150)] });
+    const step = runEngine(covered, { date: T, hour: 12 }).find((r) => r.kind === 'water_pace');
+    expect(step).toMatchObject({ title: '💧 Noch 2 L Wasser', priority: 'low' });
+    expect(step!.actions.map((a) => a.type)).toEqual(['add_water', 'snooze_water']);
+    const hungry = runEngine(base(), { date: T, hour: 12 });
+    expect(hungry.findIndex((r) => r.kind === 'nutrition_gap')).toBeLessThan(hungry.findIndex((r) => r.kind === 'water_pace'));
+    // "Ausblenden" = no water reminder for the rest of the day (in the app and as notification).
+    const hidden: AppState = { ...covered, coach: { dismissed: { [`water_pace:${T}`]: T } } };
+    expect(runEngine(hidden, { date: T, hour: 12 }).some((r) => r.kind === 'water_pace')).toBe(false);
+    expect(waterReminder(hidden, T, at('12:00'))).toBeUndefined();
+  });
+
+  it('the day review says water as "x von y" – no negative wording', () => {
+    const y = '2026-09-28';
+    const low = dayReview(base({ water: { [y]: 1000 }, logEntries: [entry('lunch', 2500, 150, y)] }), y)!;
+    for (const line of low.improve.filter((l) => l.startsWith('Wasser'))) expect(line).toBe('Wasser gestern: 1 L von 2 L. Ein einzelner Tag ist kein Problem.');
+    expect(low.good).not.toContain('Wasserziel erreicht');
+    expect(dayReview(base({ water: { [y]: 2000 }, logEntries: [entry('lunch', 2500, 150, y)] }), y)!.good).toContain('Wasserziel erreicht');
   });
 });

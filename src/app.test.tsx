@@ -769,8 +769,11 @@ describe('food tracking (end to end)', () => {
     window.history.replaceState(null, '', '/#/today');
     await startApp();
     expect(container.querySelectorAll('button[aria-label^="Wasser auf"]')).toHaveLength(8);
-    expect(text()).toContain('Tagesziel festlegen');
+    expect(text()).toContain('Wasserziel noch nicht festgelegt');
+    expect(container.querySelector('a[href*="section=water"]')!.textContent).toBe('Ziel festlegen');
     expect(text()).not.toMatch(/Noch \d/);
+    // No goal → no water chip in the day goals.
+    expect(container.querySelector('[aria-label^="Wasser:"][data-done]')).toBeNull();
   });
 });
 
@@ -1365,24 +1368,79 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     expect(text()).toMatch(/Diese Woche an 2 von 2 Tagen ≥ 2 L/);
   });
 
-  it('water: a gentle reminder when behind the day, "Später" pauses it; "Diese Woche" shows every day', async () => {
+  const waterDay = async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 8, 22, 12, 0)); // Tuesday noon, nothing drunk yet
     const goal = { ...completeState().nutritionProfile, waterGoalMl: 2000 };
-    localStorage.setItem(KEY, JSON.stringify(plain({ nutritionProfile: goal, water: { '2026-09-21': 2000 } })));
+    // Food is covered for today – water is the simplest open thing.
+    const eaten = log(3000, { slot: 'lunch', macros: { kcal: 3000, protein: 250, carbs: 300, fat: 90 } });
+    localStorage.setItem(KEY, JSON.stringify(plain({ nutritionProfile: goal, water: { '2026-09-21': 2000 }, logEntries: [eaten] })));
     window.history.replaceState(null, '', '/#/today');
-    const store = await startApp();
-    const nudge = () => container.querySelector('[role="status"] button');
-    expect(nudge()).not.toBeNull();
-    await click('Später');
-    expect(nudge()).toBeNull();
+    return startApp();
+  };
+  const waterStep = () => [...container.querySelectorAll('li')].find((li) => li.textContent?.includes('Noch 2 L Wasser'));
+
+  it('water on Heute: drunk / goal in the day goals, the reminder as next step with the same water action', async () => {
+    const store = await waterDay();
+    const chip = container.querySelector('[aria-label^="Wasser:"][data-done]')!;
+    expect(chip.textContent).toContain('0 / 2 L');
+    expect(waterStep()).toBeDefined();
+    await act(async () => [...waterStep()!.querySelectorAll('button')].find((b) => b.textContent === '+250 ml')!.click());
+    expect(store.getState().water['2026-09-22']).toBe(250);
+    expect(chip.textContent).toContain('0,25 / 2 L');
+    // A drink pauses the reminder – the step steps back.
+    expect([...container.querySelectorAll('li')].some((li) => li.textContent?.includes('Wasser') && li.textContent.includes('+250 ml'))).toBe(false);
+  });
+
+  it('water: "Später" pauses the reminder; "Diese Woche" shows the goal, every day and the average', async () => {
+    const store = await waterDay();
+    await act(async () => [...waterStep()!.querySelectorAll('button')].find((b) => b.textContent === 'Später')!.click());
+    expect(waterStep()).toBeUndefined();
     expect(store.getState().coach.water?.snoozedUntil).toBeTruthy();
     const week = container.querySelector('[aria-label^="Wasser: an"]')!;
     expect(week.getAttribute('aria-label')).toBe('Wasser: an 1 von 2 Tagen erreicht');
-    const days = [...week.querySelectorAll('ol li')].map((li) => li.getAttribute('aria-label'));
-    expect(days.slice(0, 3)).toEqual(['Mo: 2 L – Ziel erreicht', 'Di: kein Eintrag', 'Mi: noch offen']);
-    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
-    expect([...week.querySelectorAll('ol li')][1]!.getAttribute('aria-label')).toBe('Di: 0,25 L – Ziel nicht erreicht');
+    expect(week.textContent).toContain('Ziel 2 L pro Tag');
+    expect(week.textContent).toContain('1 / 2 Tage Ziel erreicht');
+    const days = () => [...week.querySelectorAll('ol li')].map((li) => li.getAttribute('aria-label'));
+    expect(days().slice(0, 3)).toEqual(['Mo: 2 L – Ziel erreicht', 'Di: kein Eintrag', 'Mi: noch offen']);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="500 ml Wasser hinzufügen"]')!.click());
+    expect(days()[1]).toBe('Di: 0,5 L – Ziel nicht erreicht');
+    expect(week.textContent).toMatch(/Ø 1,25 L pro Tag/);
+  });
+
+  it('dinner: decided in the week plan (Auswärts / Zuhause), shown on Einkauf and Heute – Heute has no toggle', async () => {
+    const dinner = (date: string, id: string) => ({ id, date, slot: 'dinner', recipeId: 'veggie-omelette', servings: 1, status: 'planned', source: 'suggest' });
+    localStorage.setItem(KEY, JSON.stringify(plain({ plannedMeals: [dinner(TUE, 'd-tue'), dinner('2026-09-23', 'd-wed')] })));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    // Heute: no dinner decision here any more.
+    expect(container.querySelector('[role="tablist"][aria-label="Abendessen"]')).toBeNull();
+
+    await act(async () => window.location.assign('#/nutrition?view=week'));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const wed = container.querySelector('[role="tablist"][aria-label^="Abendessen Mi"]')!;
+    await act(async () => [...wed.querySelectorAll('button')].find((b) => b.textContent?.includes('Auswärts'))!.click());
+    expect(store.getState().plannedMeals.find((m) => m.id === 'd-wed')).toMatchObject({ status: 'skipped', skippedFor: 'eating_out' });
+    expect(text()).toMatch(/Abendessen · Auswärts/);
+
+    await go('shopping');
+    expect(text()).toMatch(/Nicht auf der Liste: Mi Abendessen auswärts/);
+
+    // Today out → Heute shows the state and where to change it.
+    await go('nutrition');
+    await act(async () => window.location.assign('#/nutrition?view=week'));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const tue = container.querySelector('[role="tablist"][aria-label^="Abendessen Di"]')!;
+    await act(async () => [...tue.querySelectorAll('button')].find((b) => b.textContent?.includes('Auswärts'))!.click());
+    await go('today');
+    expect(text()).toMatch(/Abendessen heute auswärts · im Wochenplan ändern/);
+
+    // Back to Zuhause: the same dinner returns, once.
+    await act(async () => window.location.assign('#/nutrition?view=week'));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    const wed2 = container.querySelector('[role="tablist"][aria-label^="Abendessen Mi"]')!;
+    await act(async () => [...wed2.querySelectorAll('button')].find((b) => b.textContent?.includes('Zuhause'))!.click());
+    expect(store.getState().plannedMeals.filter((m) => m.date === '2026-09-23' && m.slot === 'dinner').map((m) => [m.id, m.status])).toEqual([['d-wed', 'planned']]);
   });
 
   it('suggestions on Ernährung: the best dish with time, protein, kcal and why – one tap plans it', async () => {

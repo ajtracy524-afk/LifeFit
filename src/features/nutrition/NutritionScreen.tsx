@@ -175,7 +175,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
       {dishDraft && <DishEditorSheet initial={dishDraft.draft} skipped={dishDraft.skipped} onSaved={() => setDishDraft(null)} onCancel={() => setDishDraft(null)} onClose={() => setDishDraft(null)} />}
 
       {slots.map((slot) => {
-        const slotMeals = meals.filter((m) => m.slot === slot);
+        const slotMeals = meals.filter((m) => m.slot === slot && !(m.skippedFor === 'eating_out' && closed.includes(slot)));
         const slotExtras = extras.filter((e) => e.slot === slot);
         const eaten = summary.slots[slot];
         return (

@@ -2,7 +2,8 @@ import { addDays, weekDays } from '../dates';
 import { ZERO_MACROS, dayTotals, plannedMealMacros, sumMacros } from '../nutrition';
 import { applyStock, buildShoppingList, shoppingRange, type ShoppingListItem } from '../shopping';
 import { resolveWorkouts, type PlannedWorkout } from '../training';
-import type { AppState, DayContext, ISODate, Macros, NutritionTarget, PlannedMeal } from '../types';
+import { EATING_OUT_SLOTS, excludedSlots } from '../timeBudget';
+import type { AppState, DayContext, ISODate, Macros, MealSlot, NutritionTarget, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { getFood } from '../../data/foods';
 import { ingredientCostRange, priceLookup, purchaseCost, type CostItem, type CostRange } from '../costs';
@@ -22,6 +23,31 @@ export const DEFAULT_DAY_CONTEXT: DayContext = { timeBudget: 'normal', mode: 'no
 
 export function dayContextFor(state: Pick<AppState, 'dayContexts'>, date: ISODate): DayContext {
   return state.dayContexts[date] ?? DEFAULT_DAY_CONTEXT;
+}
+
+export interface ClosedMeal {
+  date: ISODate;
+  slot: MealSlot;
+  /** Dinner eaten out, or a meal the user removed. */
+  reason: 'eating_out' | 'removed';
+  /** The dish that was planned before "Auswärts" – comes back with "Zuhause". */
+  recipeId?: string;
+}
+
+/**
+ * Meals of a day the plan leaves out on purpose (see excludedSlots) with the
+ * reason – ONE answer for Heute, the week plan and the shopping list.
+ */
+export function closedMeals(state: Pick<AppState, 'dayContexts' | 'nutritionProfile' | 'plannedMeals'>, date: ISODate): ClosedMeal[] {
+  const context = dayContextFor(state, date);
+  const slots = state.nutritionProfile?.slots;
+  return excludedSlots(context)
+    .filter((slot) => !slots || slots.includes(slot))
+    .map((slot) => {
+      const reason = context.mode === 'eating_out' && EATING_OUT_SLOTS.includes(slot) ? 'eating_out' : 'removed';
+      const recipeId = state.plannedMeals.find((m) => m.date === date && m.slot === slot && m.skippedFor === 'eating_out')?.recipeId;
+      return { date, slot, reason, ...(recipeId ? { recipeId } : {}) };
+    });
 }
 
 export interface PlanDay {

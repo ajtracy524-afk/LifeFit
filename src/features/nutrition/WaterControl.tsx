@@ -1,10 +1,8 @@
 import { useId, useMemo, type CSSProperties } from 'react';
 import type { ISODate } from '../../domain/types';
-import { formatLitres, waterOn, waterReminder } from '../../domain/water';
+import { formatLitres, waterOn } from '../../domain/water';
 import { weekProgress } from '../../domain/weekProgress';
-import { today, weekStart } from '../../domain/dates';
-import { useNow } from '../../lib/clock';
-import { snoozeWaterReminder } from '../../store/actions';
+import { weekStart } from '../../domain/dates';
 import { href } from '../../lib/router';
 import { useCrossing, useIncrease } from '../../lib/motion';
 import { changeWater } from './waterActions';
@@ -41,9 +39,6 @@ export function WaterControl({ date }: { date: ISODate }) {
   // A real series from the stored day values (today only counts once reached) – shown from 2 days on.
   // Consistency as a count of this week (the same numbers as "Diese Woche" on Heute) – no series to lose.
   const week = useMemo(() => (goal ? weekProgress(state, weekStart(date), date) : undefined), [state, date, goal]);
-  // The gentle reminder (same rule as the notifications): only today, only when clearly behind the day's pace.
-  const now = useNow();
-  const reminder = date === today() ? waterReminder(state, date, now) : undefined;
   const grew = useIncrease(ml);
   const won = useCrossing(!!goal && ml >= goal);
   // The bottle whose level just rose (the top of the water).
@@ -66,10 +61,15 @@ export function WaterControl({ date }: { date: ISODate }) {
           </strong>
           {goal ? ` / ${formatLitres(goal)}` : ''}
         </span>
-        <button type="button" className={styles.glassAdd} onClick={() => setTo(ml + STEP_ML)} aria-label={`${STEP_ML} ml Wasser hinzufügen`}>
-          +{STEP_ML}
-          {grew > 0 && <span key={grew} className={styles.addRipple} aria-hidden />}
-        </button>
+        <span className={styles.glassButtons}>
+          <button type="button" className={styles.glassAdd} onClick={() => setTo(ml + STEP_ML)} aria-label={`${STEP_ML} ml Wasser hinzufügen`}>
+            +{STEP_ML}
+            {grew > 0 && <span key={grew} className={styles.addRipple} aria-hidden />}
+          </button>
+          <button type="button" className={styles.glassAdd} onClick={() => setTo(ml + 2 * STEP_ML)} aria-label={`${2 * STEP_ML} ml Wasser hinzufügen`}>
+            +{2 * STEP_ML}
+          </button>
+        </span>
       </div>
       {/* The bottles share the full width – fits every phone without wrapping. */}
       <div
@@ -97,25 +97,15 @@ export function WaterControl({ date }: { date: ISODate }) {
           );
         })}
       </div>
-      {reminder && (
-        <p className={styles.waterNudge} role="status">
-          <span>💧 {reminder.text}</span>
-          <span className={styles.waterNudgeActions}>
-            <button type="button" className={styles.waterNudgeAdd} onClick={() => setTo(ml + STEP_ML)}>
-              +{STEP_ML} ml
-            </button>
-            <button type="button" className={styles.waterNudgeLater} onClick={() => snoozeWaterReminder()}>
-              Später
-            </button>
-          </span>
-        </p>
-      )}
       <p className={styles.waterLeft}>
         <span key={left === 0 ? 'reached' : 'open'} className={left === 0 ? styles.waterReached : undefined}>
           {left === undefined ? (
-            <a className={styles.waterGoalLink} href={href('profile', { section: 'water' })}>
-              Tagesziel festlegen
-            </a>
+            <>
+              Wasserziel noch nicht festgelegt ·{' '}
+              <a className={styles.waterGoalLink} href={href('profile', { section: 'water' })}>
+                Ziel festlegen
+              </a>
+            </>
           ) : left === 0 ? (
             `Tagesziel erreicht 🎉${goal && ml > goal ? ` · ${formatLitres(ml - goal)} darüber` : ''}`
           ) : (

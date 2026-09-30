@@ -1,6 +1,6 @@
 import { useMemo, type CSSProperties } from 'react';
 import { today, weekStart, weekdayIndex } from '../../domain/dates';
-import { formatLitres } from '../../domain/water';
+import { formatLitres, waterAverage } from '../../domain/water';
 import { weekdayShort } from '../../lib/format';
 import { weekProgress } from '../../domain/weekProgress';
 import { href } from '../../lib/router';
@@ -24,6 +24,8 @@ export function WeekProgressCard() {
   ].filter((x): x is NonNullable<typeof x> => !!x);
   // Water is a fixed part of the week once there is a goal – also on days without an entry (then "–").
   const water = p.waterDays;
+  const goal = state.nutritionProfile?.waterGoalMl;
+  const avg = water ? waterAverage(water) : undefined;
   if (!items.length && !water) return null;
   return (
     <Card aria-label="Diese Woche">
@@ -39,9 +41,9 @@ export function WeekProgressCard() {
         {water && (
           <li className={styles.weekWater} data-full={(p.water ?? 0) === p.days && p.days > 0} aria-label={`Wasser: an ${p.water ?? 0} von ${p.days} Tagen erreicht`}>
             <span aria-hidden>💧</span>
-            <span className={styles.weekStatLabel}>Wasser</span>
+            <span className={styles.weekStatLabel}>Wasser{goal ? ` · Ziel ${formatLitres(goal)} pro Tag` : ''}</span>
             <strong>
-              {p.water ?? 0} von {p.days} Tagen
+              {p.water ?? 0} / {p.days} {p.days === 1 ? 'Tag' : 'Tage'} Ziel erreicht
             </strong>
             <ol className={styles.waterDays}>
               {water.map((d) => {
@@ -52,12 +54,16 @@ export function WeekProgressCard() {
                   <li key={d.date} data-state={state} title={`${day}: ${text}`} aria-label={`${day}: ${text}`}>
                     <span className={styles.waterDayBar} style={{ '--fill': d.future ? 0 : (d.share ?? 0) } as CSSProperties} aria-hidden />
                     <span className={styles.waterDayLabel} aria-hidden>
-                      {d.reached ? '✓' : day}
+                      {day}
+                    </span>
+                    <span className={styles.waterDayMark} aria-hidden>
+                      {d.future ? '' : d.reached ? '✓' : d.ml > 0 ? '○' : '–'}
                     </span>
                   </li>
                 );
               })}
             </ol>
+            {avg !== undefined && <span className={styles.waterAvg}>Ø {formatLitres(Math.round(avg / 50) * 50)} pro Tag (an Tagen mit Eintrag)</span>}
           </li>
         )}
       </ul>

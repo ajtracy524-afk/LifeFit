@@ -1,10 +1,10 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { formatChf } from '../../domain/costs';
-import { addDays, isoWeekNumber, today, weekStart } from '../../domain/dates';
+import { addDays, isoWeekNumber, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
 import { groupByCategory, shoppingRange, type ShoppingListItem } from '../../domain/shopping';
 import { formatChfEstimate } from '../../domain/explain';
-import { pantryEstimate, shoppingCost, weekShopping } from '../../domain/week';
-import { formatGrams, relativeDay, SLOT_LABEL } from '../../lib/format';
+import { closedMeals, pantryEstimate, shoppingCost, weekShopping } from '../../domain/week';
+import { formatGrams, relativeDay, SLOT_LABEL, weekdayShort } from '../../lib/format';
 import { href, navigate, useRoute } from '../../lib/router';
 import { showToast } from '../../lib/toast';
 import { applyWithUndo, withUndo } from '../../lib/undo';
@@ -40,6 +40,11 @@ export function ShoppingScreen() {
   const manualOpen = weekState.manual.filter((m) => !m.checked);
   const manualDone = weekState.manual.filter((m) => m.checked);
 
+  // Meals the plan leaves out on purpose in the shopping range – their ingredients are not on the list (one line, no detail).
+  const leftOut = weekDays(week)
+    .filter((d) => d >= from && d <= to)
+    .flatMap((d) => closedMeals(state, d))
+    .map((c) => `${weekdayShort(weekdayIndex(c.date))} ${SLOT_LABEL[c.slot]} ${c.reason === 'eating_out' ? 'auswärts' : 'nicht geplant'}`);
   const total = items.length + weekState.manual.length;
   const remaining = open.length + manualOpen.length;
   const [detail, setDetail] = useState<ShoppingListItem | null>(null);
@@ -105,6 +110,7 @@ export function ShoppingScreen() {
           )}
         </div>
       )}
+      {leftOut.length > 0 && <p className={styles.costLine}>Nicht auf der Liste: {leftOut.join(' · ')}</p>}
 
       <form className={styles.addForm} onSubmit={add}>
         <Icon name="plus" size={20} />

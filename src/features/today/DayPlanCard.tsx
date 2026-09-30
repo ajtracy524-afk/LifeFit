@@ -108,6 +108,24 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
               </li>
             );
           }
+          if (item.kind === 'closed') {
+            const out = item.closed.reason === 'eating_out';
+            return (
+              <li key={`closed-${item.closed.slot}`}>
+                <div className={`${styles.timelineItem} ${styles.timelineSkipped}`} data-state="closed">
+                  <span className={styles.time}>{item.time}</span>
+                  <span className={styles.skipMark} aria-hidden>
+                    {out ? '🍽️' : '–'}
+                  </span>
+                  <span className={styles.flex}>
+                    <span className={styles.timelineLabel}>{SLOT_LABEL[item.closed.slot]}</span>
+                    <strong className={styles.timelineTitle}>{out ? 'Auswärts' : 'Nicht geplant'}</strong>
+                    <span className={styles.muted}>{out ? 'Nicht im Plan – erfasse einfach, was du isst' : 'Heute bewusst nicht geplant'}</span>
+                  </span>
+                </div>
+              </li>
+            );
+          }
           const recipe = getRecipe(item.meal.recipeId);
           if (item.kind === 'replaced') {
             const kcal = item.entries.reduce((s, e) => s + e.macros.kcal, 0);

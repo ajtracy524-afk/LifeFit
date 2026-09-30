@@ -60,6 +60,7 @@ function GoalChip({ goal, index }: { goal: DayGoal; index: number }) {
         )}
       </span>
       <span className={styles.goalLabel}>{goal.label}</span>
+      <span className={styles.goalValue}>{goal.value}</span>
     </li>
   );
 }

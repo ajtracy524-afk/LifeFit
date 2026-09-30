@@ -6,10 +6,10 @@ import { SLOT_ORDER } from '../../domain/planner';
 import { goalProgress, latestWeight } from '../../domain/progress';
 import { isCompletedOn, resolveWorkouts } from '../../domain/training';
 import { nextAction } from '../../domain/today';
-import { dayTargetFor, weekShopping } from '../../domain/week';
+import { closedMeals, dayTargetFor, weekShopping } from '../../domain/week';
 import type { MealSlot, WorkoutTemplate } from '../../domain/types';
 import type { RecommendationKind } from '../../domain/engine';
-import { fmt, formatDateLong, greeting, weekdayShort } from '../../lib/format';
+import { fmt, formatDateLong, greeting, SLOT_LABEL, weekdayShort } from '../../lib/format';
 import { href, navigate } from '../../lib/router';
 import { useAppState } from '../../store/store';
 import { Screen } from '../../components/Screen';
@@ -43,7 +43,7 @@ import { TimeBudgetControl } from './TimeBudgetControl';
 import styles from './today.module.css';
 
 /** What belongs to "the next step" (today) vs. the habit tips (weeks) – each recommendation in one place only. */
-const NEXT_STEP_KINDS: RecommendationKind[] = ['pre_workout', 'heavy_meal', 'nutrition_gap', 'nutrition_over', 'own_dish', 'leftovers'];
+const NEXT_STEP_KINDS: RecommendationKind[] = ['pre_workout', 'heavy_meal', 'nutrition_gap', 'nutrition_over', 'own_dish', 'leftovers', 'water_pace'];
 const TIP_KINDS: RecommendationKind[] = ['tip_habit', 'tip_progress', 'tip_data', 'protein_pattern'];
 
 export function TodayScreen() {
@@ -72,6 +72,8 @@ export function TodayScreen() {
   const ringSuccess = useCrossing(zone === 'in_zone');
   const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
   const weekHasMeals = state.plannedMeals.some((m) => m.date >= t && m.date <= addDays(start, 6));
+  // Meals left out today (dinner out, removed) – shown as a state; the decision lives in the week plan.
+  const closedToday = closedMeals(state, t);
 
   const week = useMemo(() => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, state.dayContexts, start]);
   const schedule = week.filter((s) => s.status !== 'skipped');
@@ -170,12 +172,21 @@ export function TodayScreen() {
         load={todaysSession ? sessionLoad(todaysSession.template).label : undefined}
       />
 
-      {/* What to do next comes first – progress follows right below (morning check: "was steht an?"). */}
-      <NextActionCard action={action} onPlanWeek={setPlanningWeek} onStart={begin} onOpenMeal={(id) => openMealSheet(id)} onReplaceMeal={(id) => openMealSheet(id, true)} />
-
       {/* Daily target */}
       {target && (
         <Card>
+          {/* Status first: what matters today, with its numbers; the calorie ring follows. */}
+          <DayGoals date={t} />
+          {/* Water right under the day goals – goal, drunk, left and one tap, without scrolling (320 px too). */}
+          <div className={styles.waterRowTop}>
+            <WaterControl date={t} />
+          </div>
+          {closedToday.map((c) => (
+            <p key={c.slot} className={styles.closedToday}>
+              {c.reason === 'eating_out' ? '🍽️' : '–'} {SLOT_LABEL[c.slot]} heute {c.reason === 'eating_out' ? 'auswärts' : 'nicht geplant'} ·{' '}
+              <a href={href('nutrition', { view: 'week' })}>im Wochenplan ändern</a>
+            </p>
+          ))}
           <div className={styles.target}>
             <ProgressRing
               value={totals.kcal}
@@ -208,14 +219,10 @@ export function TodayScreen() {
               <CalorieStatusBadge date={t} eatenKcal={totals.kcal} targetKcal={target.kcal} />
             </div>
           </div>
-          <DayGoals date={t} />
           <div className={styles.macroRow}>
             <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
             {day.incomplete > 0 && <span className={styles.partialNote}>Makros teils ohne Angaben – Werte sind Mindestwerte</span>}
             <NutrientReportEntry date={t} onLog={() => setLogTarget({ date: t, slot: logSlot() })} />
-          </div>
-          <div className={styles.waterRow}>
-            <WaterControl date={t} />
           </div>
           <ActivityControl date={t} />
           <div className={styles.statusBudget}>
@@ -224,6 +231,9 @@ export function TodayScreen() {
         </Card>
       )}
 
+
+      {/* Status first ("was ist heute wichtig?"), then the next step of the plan and of the coach. */}
+      <NextActionCard action={action} onPlanWeek={setPlanningWeek} onStart={begin} onOpenMeal={(id) => openMealSheet(id)} onReplaceMeal={(id) => openMealSheet(id, true)} />
 
       {/* Safety first; then ONE prioritized next step (the engine ranks: before / after training, the day's gap …). */}
       <CoachCard domains={['safety']} />

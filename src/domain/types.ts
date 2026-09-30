@@ -320,6 +320,8 @@ export interface PlannedMeal {
   servingsLocked?: boolean;
   /** The recipe the user replaced with this one ("Pasta → Chicken Bowl") – feeds quick replacement suggestions. */
   replacedRecipeId?: string;
+  /** Skipped because the day's dinner is eaten out – "Zuhause" brings exactly these back (not an own "Anders gegessen"). */
+  skippedFor?: 'eating_out';
 }
 
 export interface LogEntry {

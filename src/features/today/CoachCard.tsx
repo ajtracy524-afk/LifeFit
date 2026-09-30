@@ -11,6 +11,7 @@ import { getState, useAppState } from '../../store/store';
 import { celebrate } from '../../lib/celebrate';
 import { dishEntry } from '../../domain/dishes';
 import { runLog } from '../nutrition/logFeedback';
+import { changeWater } from '../nutrition/waterActions';
 import { Button, IconButton } from '../../components/ui/Button';
 import { Card, CardHeader } from '../../components/ui/Card';
 import styles from './coach.module.css';
@@ -80,6 +81,9 @@ function RecommendationItem({ rec }: { rec: Recommendation }) {
 
   const run = (action: EngineAction) => {
     if (action.type === 'open') return navigate(action.route);
+    // Water runs through the one water action (undo + the same feedback as the water block).
+    if (action.type === 'add_water') return void changeWater(action.date, action.ml);
+    if (action.type === 'snooze_water') return void applyEngineAction(action);
     if (action.type === 'start_workout') {
       applyEngineAction(action);
       return navigate('session');

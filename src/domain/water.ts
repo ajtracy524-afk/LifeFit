@@ -65,6 +65,12 @@ export function waterWeek(state: Pick<AppState, 'water' | 'nutritionProfile'>, w
   });
 }
 
+/** Average over the days (up to today) that have a water entry – days without one are unknown, not 0. */
+export function waterAverage(days: WaterDay[]): number | undefined {
+  const logged = days.filter((d) => !d.future && d.ml > 0);
+  return logged.length ? Math.round(logged.reduce((s, d) => s + d.ml, 0) / logged.length) : undefined;
+}
+
 /** Simple history: ml per given day. */
 export function waterHistory(state: Pick<AppState, 'water'>, dates: ISODate[]): { date: ISODate; ml: number }[] {
   return dates.map((date) => ({ date, ml: waterOn(state, date) }));
@@ -135,9 +141,14 @@ export interface WaterReminder {
 
 const minutesSince = (iso: string | undefined, now: Date) => (iso ? (now.getTime() - new Date(iso).getTime()) / 60000 : Number.POSITIVE_INFINITY);
 
+/** Id of today's water reminder as a recommendation – dismissing it ends the reminders for the day. */
+export const waterReminderId = (date: ISODate) => `water_pace:${date}`;
+
 /** The reminder due right now – or undefined (on track, done, paused, quiet hours, limit). */
 export function waterReminder(state: WaterState, date: ISODate, now: Date): WaterReminder | undefined {
   if ((state.nutritionProfile?.waterReminders ?? 'app') === 'off') return undefined;
+  // Hidden for today in "Dein nächster sinnvoller Schritt" – no notification either.
+  if (state.coach?.dismissed?.[waterReminderId(date)]) return undefined;
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const pace = waterPace(state, date, nowMin);
   if (!pace || pace.ml >= pace.goal) return undefined;

@@ -1898,41 +1898,36 @@
   font-size: 13px;
 }
 
-/* Water reminder: one calm line inside the water block – no card, no colour alarm. */
-.waterNudge {
+/* The quick buttons: one glass, or two at once. */
+.glassButtons {
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* Week plan: a slot the plan leaves out on purpose, and the dinner decision of the day. */
+.closedSlot {
   margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 14px;
+}
+
+.dinnerChoice {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 4px 10px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: var(--surface-2);
+  gap: 6px 12px;
+  padding-top: 4px;
+}
+
+.dinnerChoiceLabel {
   font-size: 13px;
-  color: var(--text);
-}
-
-.waterNudgeActions {
-  display: inline-flex;
-  gap: 4px;
-}
-
-.waterNudgeAdd,
-.waterNudgeLater {
-  min-height: 44px;
-  padding: 0 10px;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.waterNudgeAdd {
-  color: var(--accent);
-}
-
-.waterNudgeLater {
   color: var(--text-2);
+}
+
+/* The dinner decision is a real tap target (44 px) at every width. */
+.dinnerChoice [role='tab'] {
+  min-height: 44px;
 }

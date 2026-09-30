@@ -46,7 +46,7 @@ export function MealRow({ meal, label, onOpen, highlight, checkable = true }: Me
           {label && <span className={styles.mealLabel}>{label}</span>}
           <SwapText className={styles.mealTitle} text={recipe?.title ?? 'Unbekanntes Rezept'} />
           <span className={styles.mealMeta}>
-            {skipped ? 'Anders gegessen' : `${fmt.kcal(macros.kcal)} · ${fmt.int(macros.protein)} g Protein`}
+            {skipped ? (meal.skippedFor === 'eating_out' ? 'Auswärts – nicht im Plan' : 'Anders gegessen') : `${fmt.kcal(macros.kcal)} · ${fmt.int(macros.protein)} g Protein`}
           </span>
         </span>
       </button>

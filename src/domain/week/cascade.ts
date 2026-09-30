@@ -328,13 +328,20 @@ function applyModeToMeals(s: AppState, date: ISODate, before: DayContext, after:
   const notes: string[] = [];
 
   const leaving = s.plannedMeals.filter((m) => m.date === date && isOut.includes(m.slot) && !wasOut.includes(m.slot) && m.status === 'planned');
-  for (const m of leaving) m.status = 'skipped';
+  for (const m of leaving) {
+    m.status = 'skipped';
+    m.skippedFor = 'eating_out';
+  }
   if (leaving.length) notes.push(`${leaving.map((m) => SLOT_LABEL[m.slot]).join(', ')} auswärts – aus dem Plan genommen`);
 
   const back = wasOut.filter((slot) => !isOut.includes(slot));
   if (back.length) {
-    const restored = s.plannedMeals.filter((m) => m.date === date && back.includes(m.slot) && m.status === 'skipped');
-    for (const m of restored) m.status = 'planned';
+    // Only what "Auswärts" took out comes back – an own "Anders gegessen" stays as the user left it.
+    const restored = s.plannedMeals.filter((m) => m.date === date && back.includes(m.slot) && m.status === 'skipped' && m.skippedFor === 'eating_out' && !s.logEntries.some((e) => e.replacedMealId === m.id));
+    for (const m of restored) {
+      m.status = 'planned';
+      delete m.skippedFor;
+    }
     const missing = back.filter((slot) => !s.plannedMeals.some((m) => m.date === date && m.slot === slot && m.status !== 'skipped'));
     if (missing.length) s.plannedMeals.push(...planMeals(s, { dates: [date], today, seed: `${date}:${after.mode}`, slots: missing }));
     notes.push(`${back.map((slot) => SLOT_LABEL[slot]).join(', ')} wieder eingeplant`);

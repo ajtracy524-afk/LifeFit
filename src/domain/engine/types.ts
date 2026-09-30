@@ -33,6 +33,7 @@ export type RecommendationKind =
   | 'tip_data'
   | 'shopping_missing'
   | 'body_rate'
+  | 'water_pace'
   | 'safety';
 
 export type Priority = 'high' | 'medium' | 'low';
@@ -49,7 +50,11 @@ export type EngineAction =
   | { type: 'set_targets'; label: string; macros: Macros }
   /** Next level of the plan (adaptive level) – program, days and optionally the experience in the profile. */
   | { type: 'set_program'; label: string; programId: string; weekdays: number[]; experience?: Experience }
-  | { type: 'open'; label: string; route: 'shopping' | 'training' | 'nutrition' | 'progress' };
+  | { type: 'open'; label: string; route: 'shopping' | 'training' | 'nutrition' | 'progress' }
+  /** The same water action as the water block (+250 ml …). */
+  | { type: 'add_water'; label: string; date: ISODate; ml: number }
+  /** "Später" for the water reminder (WATER_REMINDER.gapMin). */
+  | { type: 'snooze_water'; label: string };
 
 /** What the UI shows for a suggested meal – facts only, cost only with enough price data. */
 export interface MealSuggestionDetails {

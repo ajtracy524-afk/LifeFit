@@ -19,10 +19,11 @@ const entry = (kcal: number, protein: number, patch: Partial<LogEntry> = {}): Lo
 describe('day goals', () => {
   it('meals, calories, protein – and water only with a water goal', () => {
     const g = dayGoals(base({ plannedMeals: [meal('a', 'eaten'), meal('b', 'planned')], logEntries: [entry(900, 50)] }), MON);
-    expect(g.goals.map((x) => [x.key, x.done, x.detail])).toEqual([
-      ['meals', false, '1 / 2'],
-      ['calories', false, "900 / 2'000 kcal"],
-      ['protein', false, '50 / 120 g'],
+    // Status of the day first, the meal count last; numbers in the same format as the rest of Heute.
+    expect(g.goals.map((x) => [x.key, x.done, x.detail, x.value])).toEqual([
+      ['calories', false, '900 / 2.000 kcal', '900 / 2.000'],
+      ['protein', false, '50 / 120 g', '50 / 120 g'],
+      ['meals', false, '1 / 2', '1 / 2'],
     ]);
     expect(g.complete).toBe(false);
   });

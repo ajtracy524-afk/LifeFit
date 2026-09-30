@@ -3,6 +3,7 @@ import { SLOT_ORDER } from './planner';
 import { activeWorkouts, type PlannedWorkout } from './training';
 import type { AppState, ISODate, LogEntry, MealSlot, PlannedMeal } from './types';
 import { weekStart } from './dates';
+import { closedMeals, type ClosedMeal } from './week/weekPlan';
 
 /**
  * Daily rhythm – practical planning, no nutrient-timing science: when are the
@@ -54,6 +55,8 @@ export type TimelineItem =
   | { kind: 'replaced'; time: string; meal: PlannedMeal; entries: LogEntry[] }
   /** Skipped without a replacement (not eaten, or eaten out) – shown so the day stays readable, never counted. */
   | { kind: 'skipped'; time: string; meal: PlannedMeal }
+  /** A meal the plan leaves out on purpose – dinner eaten out, or removed (see closedMeals). */
+  | { kind: 'closed'; time: string; closed: ClosedMeal }
   | { kind: 'training'; time: string; session: PlannedWorkout };
 
 /** "Dein Plan" for a day: meals (or what replaced them) and training in time order. */
@@ -61,8 +64,11 @@ export function dayTimeline(state: AppState, date: ISODate): TimelineItem[] {
   const pre = preWorkoutSlot(state, date);
   const post = postWorkoutSlot(state, date);
   const items: TimelineItem[] = [];
+  const closed = closedMeals(state, date);
   for (const meal of state.plannedMeals) {
     if (meal.date !== date) continue;
+    // Taken out by "Auswärts": shown as the slot's state below, not as a skipped dish.
+    if (meal.skippedFor === 'eating_out' && closed.some((c) => c.slot === meal.slot) && !state.logEntries.some((e) => e.replacedMealId === meal.id)) continue;
     const time = state.plannerSettings.mealTimes[meal.slot];
     if (meal.status !== 'skipped') {
       items.push({ kind: 'meal', time, meal, role: meal.slot === post ? 'post' : meal.slot === pre ? 'pre' : undefined });
@@ -70,6 +76,9 @@ export function dayTimeline(state: AppState, date: ISODate): TimelineItem[] {
     }
     const entries = state.logEntries.filter((e) => e.replacedMealId === meal.id);
     items.push(entries.length ? { kind: 'replaced', time, meal, entries } : { kind: 'skipped', time, meal });
+  }
+  for (const c of closed) {
+    if (!items.some((i) => i.kind !== 'training' && i.kind !== 'closed' && i.meal.slot === c.slot)) items.push({ kind: 'closed', time: state.plannerSettings.mealTimes[c.slot], closed: c });
   }
   const session = sessionOn(state, date);
   if (session) items.push({ kind: 'training', time: trainingTimeFor(state).time, session });

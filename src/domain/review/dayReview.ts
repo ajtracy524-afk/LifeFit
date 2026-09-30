@@ -3,6 +3,7 @@ import { addDays } from '../dates';
 import { dayGoals } from '../dayGoals';
 import { isCompletedOn } from '../training';
 import { dayTargetFor } from '../week';
+import { formatLitres } from '../water';
 import type { AppState, ISODate } from '../types';
 import { improvementFor, type Improvement } from './improvements';
 import { enoughData, history, METRIC_LABEL, metricTrend, NOT_ENOUGH_DATA, positiveText, positiveTrend, strongestPattern, trendText, type DayRecord, type Metric, type MetricTrend } from './trends';
@@ -130,6 +131,8 @@ function improveText(m: Metric, dir: 'low' | 'high', recurring: boolean, day: Da
   const what = `${METRIC_LABEL[m]} ${dir === 'low' ? 'lag unter' : 'lag über'} deinem persönlichen Bereich`;
   if (recurring) return `${what} – nicht nur gestern, sondern häufiger. Hier lohnt sich eine kleine, feste Gewohnheit.`;
   const a = day.amount[m];
+  // Water is the user's own goal: said as "x von y", never as a shortcoming.
+  if (m === 'water' && a !== undefined && day.target.water) return `Wasser gestern: ${formatLitres(a)} von ${formatLitres(day.target.water)}. Ein einzelner Tag ist kein Problem.`;
   const amount = a !== undefined ? ` (${m === 'water' ? `${fmt.dec(a / 1000)} L` : m === 'kcal' ? fmt.kcal(a) : `${fmt.dec(a)} g`})` : '';
   return `${METRIC_LABEL[m]} war gestern ${dir === 'low' ? 'etwas niedrig' : 'etwas hoch'}${amount}. Ein einzelner Tag ist kein Problem – nur wenn es häufiger vorkommt, lohnt sich eine Anpassung.`;
 }
