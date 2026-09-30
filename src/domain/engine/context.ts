@@ -1,9 +1,9 @@
 import { addDays, weekStart } from '../dates';
 import { ZERO_MACROS, dayTotals, plannedMealMacros, sumMacros } from '../nutrition';
-import { SLOT_ORDER } from '../planner';
+import { SLOT_ORDER, slotShare } from '../planner';
 import { currentWeight, weeklyRate } from '../progress';
 import { activeWorkouts, isCompletedOn, type PlannedWorkout } from '../training';
-import { effectiveTimeBudget, TIME_BUDGETS } from '../timeBudget';
+import { effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
 import { dayContextFor, dayTargetFor, pantryEstimate } from '../week';
 import type { AppState, ISODate, Macros, MealSlot, NutritionTarget, PlannedMeal } from '../types';
 import { computeSafety } from './guardrails';
@@ -26,8 +26,15 @@ export interface EngineContext {
   plannedOpen: PlannedMeal[];
   plannedOpenMacros: Macros;
   slots: MealSlot[];
-  /** Slots without a meal or log entry whose time is not over yet. */
+  /** Slots without a meal or log entry whose time is not over yet – never a slot the day does not plan (eaten out, removed). */
   freeSlots: MealSlot[];
+  /**
+   * Slots the day does not plan that are still ahead and not logged yet
+   * (dinner eaten out, a removed meal): they keep their share of the day –
+   * the same share the planner reserves – so nothing tries to fill it.
+   */
+  reservedSlots: MealSlot[];
+  reserved: Pick<Macros, 'kcal' | 'protein'>;
   /** Food ids available at home. */
   pantry: Set<string>;
   weightKg?: number;
@@ -52,11 +59,14 @@ export function buildContext(state: AppState, options: EngineOptions): EngineCon
 
   const eaten = dayTotals(state.logEntries, date);
   const plannedOpen = state.plannedMeals.filter((m) => m.date === date && m.status === 'planned');
-  const usedSlots = new Set<MealSlot>([
-    ...state.plannedMeals.filter((m) => m.date === date && m.status !== 'skipped').map((m) => m.slot),
-    ...state.logEntries.filter((e) => e.date === date).map((e) => e.slot),
-  ]);
+  const logged = new Set(state.logEntries.filter((e) => e.date === date).map((e) => e.slot));
+  const closed = excludedSlots(dayContextFor(state, date));
+  // A slot is taken by any meal record – also "Anders gegessen" (skipped): the user already decided about it.
+  const usedSlots = new Set<MealSlot>([...state.plannedMeals.filter((m) => m.date === date).map((m) => m.slot), ...logged, ...closed]);
   const freeSlots = slots.filter((s) => !usedSlots.has(s) && hour < SLOT_UNTIL[s]);
+  const reservedSlots = closed.filter((s) => slots.includes(s) && !logged.has(s) && hour < SLOT_UNTIL[s]);
+  const share = reservedSlots.length ? slotShare(reservedSlots, slots) : 0;
+  const reserved = { kcal: (target?.kcal ?? 0) * share, protein: (target?.protein ?? 0) * share };
 
   const stock = pantryEstimate(state);
   const pantry = new Set<string>([...Object.keys(stock).filter((id) => stock[id]! > 0), ...(options.pantry ?? [])]);
@@ -94,6 +104,8 @@ export function buildContext(state: AppState, options: EngineOptions): EngineCon
     plannedOpenMacros: plannedOpen.length ? sumMacros(plannedOpen.map(plannedMealMacros)) : ZERO_MACROS,
     slots,
     freeSlots,
+    reservedSlots,
+    reserved,
     pantry,
     weightKg,
     weeklyRateKg,

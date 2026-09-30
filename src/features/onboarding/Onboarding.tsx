@@ -4,6 +4,7 @@ import { programsFor, recommendationReason, recommendProgram } from '../../domai
 import { today } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
 import { slotsFor } from '../../domain/planner';
+import { formatLitres, waterStartValue } from '../../domain/water';
 import type { ActivityLevel, Allergen, DietType, EquipmentItem, GoalType, MealStyle, Sex, TrainingEquipment } from '../../domain/types';
 import { DEFAULT_ITEMS, defaultFocus, experienceFrom } from '../../domain/trainingProfile';
 import { EquipmentItemsField, TrainingProfileFields, type TrainingProfileDraft } from '../training/TrainingProfileFields';
@@ -55,6 +56,8 @@ export function Onboarding() {
   const [diet, setDiet] = useState<DietType>('omnivore');
   const [excluded, setExcluded] = useState<Allergen[]>([]);
   const [mealsPerDay, setMealsPerDay] = useState<'3' | '4'>('4');
+  // Water goal in litres – null = untouched, then the start value from the body weight is offered.
+  const [waterLitres, setWaterLitres] = useState<string | null>(null);
   const [tastes, setTastes] = useState<{ favorites: string[]; avoided: string[] }>({ favorites: [], avoided: [] });
   const [mealStyle, setMealStyle] = useState<MealStyle | null>(null);
   const [programId, setProgramId] = useState<string | null>(null);
@@ -83,6 +86,11 @@ export function Onboarding() {
   const back = () => setStep(STEPS[index - 1]!);
 
   const weight = parseNumber(body.weight);
+  const waterStart = waterStartValue(Number.isFinite(weight) ? weight : undefined);
+  const waterText = waterLitres ?? (waterStart ? String(waterStart / 1000).replace('.', ',') : '');
+  const waterValue = parseNumber(waterText);
+  const waterValid = waterText.trim() === '' || (Number.isFinite(waterValue) && waterValue >= 0.5 && waterValue <= 6);
+  const waterGoalMl = waterText.trim() && waterValid ? Math.round((waterValue * 1000) / 50) * 50 : undefined;
   const fit = { days: weekdays.length, experience, goal, equipment };
   const recommended = recommendProgram(fit);
   // A program chosen for other equipment does not stay selected.
@@ -154,6 +162,7 @@ export function Onboarding() {
             diet,
             excluded,
             slots: slotsFor(mealsPerDay === '3' ? 3 : 4),
+            ...(waterGoalMl ? { waterGoalMl } : {}),
             favorites: tastes.favorites,
             avoided: tastes.avoided,
             mealStyle: effectiveStyle,
@@ -362,6 +371,16 @@ export function Onboarding() {
                   { value: '4', label: '3 + Snack' },
                 ]}
               />
+              <Field
+                label="Wasser pro Tag"
+                inputMode="decimal"
+                suffix="L"
+                placeholder="kein Ziel"
+                value={waterText}
+                error={waterValid ? undefined : 'Bitte einen Wert zwischen 0,5 und 6 L angeben – oder leer lassen.'}
+                hint={`Zählt als Tagesziel.${waterStart ? ` Startwert ${formatLitres(waterStart)} (Faustregel ca. 35 ml pro kg) – keine medizinische Empfehlung, passe ihn frei an.` : ''}`}
+                onChange={(e) => setWaterLitres(e.target.value)}
+              />
             </div>
           </>
         )}
@@ -510,7 +529,7 @@ export function Onboarding() {
             </Button>
           )}
           {step === 'nutrition' && (
-            <Button block size="lg" onClick={next}>
+            <Button block size="lg" disabled={!waterValid} onClick={next}>
               Weiter
             </Button>
           )}

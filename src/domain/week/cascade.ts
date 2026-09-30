@@ -5,7 +5,7 @@ import { SLOT_LABEL, weekdayLong, weekdayShort } from '../../lib/format';
 import { addDays, toISODate, weekDays, weekStart, weekdayIndex } from '../dates';
 import { logFromMeal, plannedMealMacros, recipeMacros, roundServings, sumMacros } from '../nutrition';
 import { effectivePrepMin, SLOT_ORDER, slotShare } from '../planner';
-import { DAY_MODE_LABEL, effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
+import { DAY_MODE_LABEL, EATING_OUT_SLOTS, effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
 import { activeWorkouts, estimateMinutes, resolveWorkouts, trainingWeekdays } from '../training';
 import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, Recipe, ShoppingWeekState, TimeBudget } from '../types';
 import { closeCompletedDays, dayTargetFor } from './dayTargets';
@@ -158,7 +158,9 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
     case 'setDayContext': {
       if (isClosedDay(change.date, today)) return fail(PAST_DAY);
       const before = dayContextFor(s, change.date);
-      const merged = { ...before, ...change.context };
+      const merged: DayContext = { ...before, ...change.context };
+      // Back to "Zuhause" means dinner at home is planned again – a removed dinner opens again too.
+      if (before.mode === 'eating_out' && merged.mode === 'normal' && merged.removedSlots) merged.removedSlots = merged.removedSlots.filter((slot) => !EATING_OUT_SLOTS.includes(slot));
       storeDayContext(s, change.date, merged);
       // Training follows automatically (resolveWorkouts reads the context); meals are adapted here.
       const notes = applyModeToMeals(s, change.date, before, merged, today);
@@ -188,6 +190,8 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
         source: 'user',
       };
       s.plannedMeals.push(meal);
+      // Planning something into a removed slot opens it again.
+      if (dayContextFor(s, meal.date).removedSlots?.includes(meal.slot)) setSlotRemoved(s, meal.date, meal.slot, false);
       if (eaten) s.logEntries.push(logFromMeal(meal, nowIso));
       if (change.eaten) {
         const timeBudget = effectiveTimeBudget(dayContextFor(s, meal.date));
@@ -215,10 +219,14 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
     }
 
     case 'removeMeal': {
-      if (!s.plannedMeals.some((m) => m.id === change.mealId)) return fail('Mahlzeit nicht gefunden.');
+      const meal = s.plannedMeals.find((m) => m.id === change.mealId);
+      if (!meal) return fail('Mahlzeit nicht gefunden.');
       s.plannedMeals = s.plannedMeals.filter((m) => m.id !== change.mealId);
       s.logEntries = s.logEntries.filter((e) => e.plannedMealId !== change.mealId);
-      return { ok: true, title: 'Mahlzeit entfernt' };
+      // Removing is a decision about the slot: it stays closed for the day (no open task, no re-planning)
+      // as long as nothing else is planned there.
+      if (meal.date >= today && !s.plannedMeals.some((m) => m.date === meal.date && m.slot === meal.slot && m.status !== 'skipped')) setSlotRemoved(s, meal.date, meal.slot, true);
+      return { ok: true, title: `${SLOT_LABEL[meal.slot]} entfernt` };
     }
 
     case 'setServings': {
@@ -297,8 +305,16 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
 // ---------- Day modes & weekly check-in (F1) ----------
 
 function storeDayContext(s: AppState, date: ISODate, context: DayContext) {
-  if (context.timeBudget === DEFAULT_DAY_CONTEXT.timeBudget && context.mode === DEFAULT_DAY_CONTEXT.mode) delete s.dayContexts[date];
-  else s.dayContexts[date] = { timeBudget: context.timeBudget, mode: context.mode };
+  const removed = context.removedSlots?.length ? { removedSlots: [...context.removedSlots] } : {};
+  if (context.timeBudget === DEFAULT_DAY_CONTEXT.timeBudget && context.mode === DEFAULT_DAY_CONTEXT.mode && !removed.removedSlots) delete s.dayContexts[date];
+  else s.dayContexts[date] = { timeBudget: context.timeBudget, mode: context.mode, ...removed };
+}
+
+/** Opens or closes a meal slot of a day (see DayContext.removedSlots). */
+function setSlotRemoved(s: AppState, date: ISODate, slot: MealSlot, removed: boolean) {
+  const context = dayContextFor(s, date);
+  const rest = (context.removedSlots ?? []).filter((x) => x !== slot);
+  storeDayContext(s, date, { ...context, removedSlots: removed ? [...rest, slot] : rest });
 }
 
 /**
@@ -356,7 +372,8 @@ function planWeek(s: AppState, change: Extract<WeekChange, { type: 'planWeek' }>
   const notes: string[] = [];
   for (const date of open) {
     const before = dayContextFor(s, date);
-    const after = change.days[date] ?? DEFAULT_DAY_CONTEXT;
+    // The check-in sets time and dinner place; meals the user removed stay removed.
+    const after = { ...(change.days[date] ?? DEFAULT_DAY_CONTEXT), ...(before.removedSlots ? { removedSlots: before.removedSlots } : {}) };
     storeDayContext(s, date, after);
     applyModeToMeals(s, date, before, after, today);
   }

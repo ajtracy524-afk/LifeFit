@@ -48,9 +48,15 @@ export const DAY_MODE_LABEL: Record<DayMode, string> = {
  */
 export const EATING_OUT_SLOTS: MealSlot[] = ['dinner'];
 
-/** Meal slots a day does not plan because of its mode. */
+/**
+ * Meal slots a day does not plan – THE rule for "this meal is not an open
+ * task": dinner eaten out, and meals the user removed. Planner, cascade,
+ * engine and the day view all read from here.
+ */
 export function excludedSlots(context: DayContext | undefined): MealSlot[] {
-  return context?.mode === 'eating_out' ? EATING_OUT_SLOTS : [];
+  const out = context?.mode === 'eating_out' ? EATING_OUT_SLOTS : [];
+  const removed = context?.removedSlots ?? [];
+  return removed.length ? [...new Set([...out, ...removed])] : out;
 }
 
 /** The time budget of a day – the only time model (planner, training, cascade). */

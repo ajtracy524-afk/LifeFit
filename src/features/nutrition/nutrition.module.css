@@ -1891,3 +1891,48 @@
   flex-direction: column;
   gap: 8px;
 }
+
+.slotClosed {
+  margin: 0;
+  padding: 4px 16px 8px;
+  font-size: 13px;
+}
+
+/* Water reminder: one calm line inside the water block – no card, no colour alarm. */
+.waterNudge {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.waterNudgeActions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.waterNudgeAdd,
+.waterNudgeLater {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.waterNudgeAdd {
+  color: var(--accent);
+}
+
+.waterNudgeLater {
+  color: var(--text-2);
+}

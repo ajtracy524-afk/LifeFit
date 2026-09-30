@@ -243,6 +243,21 @@ export interface NutritionProfile {
   mealStyle?: MealStyle;
   /** Personal daily water tracking value in ml – set by the user, never a medical target. */
   waterGoalMl?: number;
+  /** Water reminders: off, only as a hint in the app (default), or also as a system notification. */
+  waterReminders?: WaterReminderMode;
+}
+
+export type WaterReminderMode = 'off' | 'app' | 'notify';
+
+/** Today's water reminder memory – reset by a new day (see domain/water.ts). */
+export interface WaterReminderState {
+  date: ISODate;
+  /** Last time water was added today (ISO). */
+  lastDrinkAt?: string;
+  /** "Später" – no reminder before this time (ISO). */
+  snoozedUntil?: string;
+  /** Reminders delivered today (ISO times) – spacing, daily limit, varying text. */
+  sent?: string[];
 }
 
 export type MealStyle = 'light' | 'balanced' | 'hearty';
@@ -539,6 +554,12 @@ export type DayMode = 'normal' | 'eating_out';
 export interface DayContext {
   timeBudget: TimeBudget;
   mode: DayMode;
+  /**
+   * Meals the user removed from this day ("Mahlzeit entfernen"): the slot is
+   * closed – no open task, no suggestion, no re-planning – until the user
+   * plans something there again.
+   */
+  removedSlots?: MealSlot[];
 }
 
 /**
@@ -576,6 +597,8 @@ export interface CoachState {
   topics?: Record<string, CoachTopic>;
   /** Day reviews ("Dein gestriger Tag") the user has read, by reviewed date. */
   reviewSeen?: Record<ISODate, true>;
+  /** Water reminders of today (pacing across the in-app hint and notifications). */
+  water?: WaterReminderState;
 }
 
 export interface CoachTopic {

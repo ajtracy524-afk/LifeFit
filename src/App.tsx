@@ -22,6 +22,7 @@ import { HistoryScreen } from './features/training/HistoryScreen';
 import { ShoppingScreen } from './features/shopping/ShoppingScreen';
 import { ProgressScreen } from './features/progress/ProgressScreen';
 import { ProfileScreen } from './features/profile/ProfileScreen';
+import { useWaterNotifications } from './lib/waterNotifications';
 import styles from './App.module.css';
 
 export function App() {
@@ -31,6 +32,7 @@ export function App() {
 
   const shoppingBadge = useShoppingBadge();
   useDayClose();
+  useWaterNotifications();
 
   // Incomplete saved data also leads here – nothing is deleted, onboarding fills the gaps.
   if (!isSetupComplete(state)) {

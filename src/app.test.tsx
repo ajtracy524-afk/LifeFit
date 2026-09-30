@@ -1365,6 +1365,26 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     expect(text()).toMatch(/Diese Woche an 2 von 2 Tagen ≥ 2 L/);
   });
 
+  it('water: a gentle reminder when behind the day, "Später" pauses it; "Diese Woche" shows every day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 8, 22, 12, 0)); // Tuesday noon, nothing drunk yet
+    const goal = { ...completeState().nutritionProfile, waterGoalMl: 2000 };
+    localStorage.setItem(KEY, JSON.stringify(plain({ nutritionProfile: goal, water: { '2026-09-21': 2000 } })));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const nudge = () => container.querySelector('[role="status"] button');
+    expect(nudge()).not.toBeNull();
+    await click('Später');
+    expect(nudge()).toBeNull();
+    expect(store.getState().coach.water?.snoozedUntil).toBeTruthy();
+    const week = container.querySelector('[aria-label^="Wasser: an"]')!;
+    expect(week.getAttribute('aria-label')).toBe('Wasser: an 1 von 2 Tagen erreicht');
+    const days = [...week.querySelectorAll('ol li')].map((li) => li.getAttribute('aria-label'));
+    expect(days.slice(0, 3)).toEqual(['Mo: 2 L – Ziel erreicht', 'Di: kein Eintrag', 'Mi: noch offen']);
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="250 ml Wasser hinzufügen"]')!.click());
+    expect([...week.querySelectorAll('ol li')][1]!.getAttribute('aria-label')).toBe('Di: 0,25 L – Ziel nicht erreicht');
+  });
+
   it('suggestions on Ernährung: the best dish with time, protein, kcal and why – one tap plans it', async () => {
     const breakfast = log(500, { slot: 'breakfast', macros: { kcal: 500, protein: 25, carbs: 60, fat: 15 } });
     localStorage.setItem(KEY, JSON.stringify(plain({ logEntries: [breakfast], dayContexts: { [TUE]: { timeBudget: 'low', mode: 'normal' } } })));

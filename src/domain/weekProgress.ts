@@ -5,7 +5,7 @@ import { appStartDate, weekTrainings } from './progress';
 import { activeWorkouts } from './training';
 import type { AppState, ISODate } from './types';
 import { relativeDay } from '../lib/format';
-import { waterOn } from './water';
+import { waterOn, waterWeek, type WaterDay } from './water';
 
 /**
  * The week as one story: what was done, what is next, what improved – only
@@ -22,6 +22,8 @@ export interface WeekProgress {
   protein?: number;
   calories?: number;
   water?: number;
+  /** Water per day of the week (Mo–So) – only with a water goal; days before the app start are left out. */
+  waterDays?: WaterDay[];
   /** Next open session of this week: "Fr · Beine – Kniebeuge & Hüfte". */
   next?: string;
   improvements: string[];
@@ -62,6 +64,7 @@ export function weekProgress(state: AppState, week: ISODate, today: ISODate): We
     ...(count('protein') !== undefined ? { protein: count('protein') } : {}),
     ...(count('calories') !== undefined ? { calories: count('calories') } : {}),
     ...(count('water') !== undefined ? { water: count('water') } : {}),
+    ...(state.nutritionProfile?.waterGoalMl ? { waterDays: waterWeek(state, week, today).filter((d) => d.date >= start) } : {}),
     ...(next ? { next: `${relativeDay(next.date)} · ${next.template.name}` } : {}),
     improvements,
   };

@@ -193,17 +193,21 @@ export function nutritionGapRule(ctx: EngineContext): Recommendation[] {
   // Protein unknown for an entry today → no protein gap is claimed (the sum is only a lower bound).
   const proteinUnknown = ctx.state.logEntries.some((e) => e.date === ctx.date && e.unknown?.includes('protein'));
   const missing = { kcal: t.kcal - ctx.eaten.kcal, protein: proteinUnknown ? 0 : t.protein - ctx.eaten.protein };
-  const open = { kcal: missing.kcal - ctx.plannedOpenMacros.kcal, protein: missing.protein - ctx.plannedOpenMacros.protein };
+  // A meal the day does not plan (dinner out, removed) keeps its share – it is not a gap to fill.
+  const reserved = { kcal: ctx.reserved.kcal, protein: proteinUnknown ? 0 : ctx.reserved.protein };
+  const open = { kcal: missing.kcal - ctx.plannedOpenMacros.kcal - reserved.kcal, protein: missing.protein - ctx.plannedOpenMacros.protein - reserved.protein };
   if (open.kcal < R.minKcalGap && open.protein < R.minProteinGap) return [];
 
+  const shown = reserved.kcal > 0 ? { kcal: missing.kcal - reserved.kcal, protein: missing.protein - reserved.protein } : missing;
   const parts = [
-    missing.kcal >= 50 ? fmt.kcal(missing.kcal) : null,
-    missing.protein >= 5 ? `${fmt.g(missing.protein)} Protein` : null,
+    shown.kcal >= 50 ? fmt.kcal(shown.kcal) : null,
+    shown.protein >= 5 ? `${fmt.g(shown.protein)} Protein` : null,
   ].filter(Boolean);
   // Right after training (≤ 3 h): the same gap, told as "Nach dem Training" with the session it follows.
   const after = recentWorkout(ctx);
   const bonus = after ? trainingDayBonus(ctx.state, ctx.date) : undefined;
-  const title = after ? `Nach dem Training: noch ${parts.join(' und ')}` : `Heute fehlen noch ${parts.join(' und ')}`;
+  const without = ctx.reservedSlots.map((s) => SLOT_LABEL[s]).join(' und ');
+  const title = after ? `Nach dem Training: noch ${parts.join(' und ')}` : reserved.kcal > 0 ? `Ohne ${without}: noch ${parts.join(' und ')}` : `Heute fehlen noch ${parts.join(' und ')}`;
 
   const reasons = [`Gegessen: ${fmt.int(ctx.eaten.kcal)} von ${fmt.kcal(t.kcal)}, ${proteinUnknown ? 'mind. ' : ''}${fmt.g(ctx.eaten.protein)} von ${fmt.g(t.protein)} Protein`];
   if (proteinUnknown) reasons.push('Bei einem Eintrag fehlt der Proteinwert – die Protein-Lücke ist deshalb offen.');
@@ -213,6 +217,10 @@ export function nutritionGapRule(ctx: EngineContext): Recommendation[] {
   if (bonus) reasons.push(`${trained ?? 'Trainingstag'} · Tagesziel heute +${bonus.kcal} kcal (vor allem Kohlenhydrate)`);
   if (ctx.plannedOpen.length > 0) {
     reasons.push(`Noch geplant: ${fmt.kcal(ctx.plannedOpenMacros.kcal)}, ${fmt.g(ctx.plannedOpenMacros.protein)} Protein`);
+  }
+  if (reserved.kcal > 0) {
+    const out = dayContextFor(ctx.state, ctx.date).mode === 'eating_out';
+    reasons.push(`${without} ${out ? 'auswärts' : 'nicht geplant'}: ca. ${fmt.kcal(reserved.kcal)} bleiben dafür frei`);
   }
 
   const late = ctx.hour >= R.lateHour;
@@ -419,7 +427,7 @@ export function ownDishRule(ctx: EngineContext): Recommendation[] {
   const dishes = Object.values(ctx.state.customDishes ?? {}).filter((d) => !d.archived);
   if (!t || dishes.length === 0) return [];
   const R = NUTRITION_RULES;
-  const open = { kcal: t.kcal - ctx.eaten.kcal - ctx.plannedOpenMacros.kcal, protein: t.protein - ctx.eaten.protein - ctx.plannedOpenMacros.protein };
+  const open = { kcal: t.kcal - ctx.eaten.kcal - ctx.plannedOpenMacros.kcal - ctx.reserved.kcal, protein: t.protein - ctx.eaten.protein - ctx.plannedOpenMacros.protein - ctx.reserved.protein };
   if (open.kcal < R.minKcalGap) return [];
   const late = ctx.hour >= R.lateHour;
   const mealKcal = Math.min(open.kcal, t.kcal * (late ? R.lateMealShare : R.maxMealShare));

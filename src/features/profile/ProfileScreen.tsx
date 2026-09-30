@@ -8,7 +8,8 @@ import { today, weekStart } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
 import { currentWeight } from '../../domain/progress';
 import { slotsFor } from '../../domain/planner';
-import type { ActivityLevel, Allergen, DietType, EquipmentItem, GoalType, Macros, MealStyle, PlanPriority, TrainingSetup } from '../../domain/types';
+import type { ActivityLevel, Allergen, DietType, EquipmentItem, GoalType, Macros, MealStyle, PlanPriority, TrainingSetup, WaterReminderMode } from '../../domain/types';
+import { notificationsSupported, requestNotificationPermission } from '../../lib/waterNotifications';
 import { getFood } from '../../data/foods';
 import { learnedInsights } from '../../domain/explain';
 import { trainingTimeFor } from '../../domain/schedule';
@@ -25,6 +26,7 @@ import {
   resetLearning,
   setTargets,
   setWaterGoal,
+  setWaterReminders,
   suggestMealsForWeek,
   updateGoal,
   updateNutritionProfile,
@@ -272,6 +274,15 @@ function WaterSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const start = waterStartValue(currentWeight(state.weights) ?? state.goal?.startWeightKg);
   const value = parseNumber(litres);
   const valid = litres.trim() === '' || (Number.isFinite(value) && value >= 0.5 && value <= 6);
+  const reminders = state.nutritionProfile?.waterReminders ?? 'app';
+  const pickReminders = async (mode: WaterReminderMode) => {
+    if (mode === 'notify' && !(await requestNotificationPermission())) {
+      showToast('Mitteilungen sind im Browser nicht erlaubt – Erinnerungen bleiben in der App.');
+      setWaterReminders('app');
+      return;
+    }
+    setWaterReminders(mode);
+  };
   const save = () => {
     setWaterGoal(litres.trim() === '' ? undefined : Math.round((value * 1000) / 50) * 50);
     showToast(litres.trim() === '' ? 'Wasser ohne Tagesziel' : 'Wasser-Tagesziel gespeichert');
@@ -297,6 +308,21 @@ function WaterSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
         <p className={styles.muted}>
           {start ? 'Der Startwert folgt der verbreiteten Faustregel von etwa 35 ml pro kg Körpergewicht. ' : ''}Das ist keine medizinische Empfehlung – passe den Wert so an, wie es für
           dich stimmt.
+        </p>
+        <p className={styles.label}>Erinnerungen</p>
+        <Segmented<WaterReminderMode>
+          label="Erinnerungen"
+          value={reminders}
+          onChange={pickReminders}
+          options={[
+            { value: 'off', label: 'Aus' },
+            { value: 'app', label: 'In der App' },
+            ...(notificationsSupported() ? [{ value: 'notify' as const, label: 'Auch Mitteilung' }] : []),
+          ]}
+        />
+        <p className={styles.muted}>
+          Nur wenn du deutlich hinter deinem Tagesverlauf liegst – höchstens alle 90 Minuten, nicht am späten Abend, Pause nach jedem Glas. Mitteilungen kommen, solange LifeFit geöffnet
+          ist (auch im Hintergrund).
         </p>
         <Button block disabled={!valid} onClick={save}>
           Speichern

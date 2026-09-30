@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { getExercise } from '../../data/exercises';
-import { addDays, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
-import { formatLitres, waterHistory } from '../../domain/water';
+import { addDays, today, weekStart, weekdayIndex } from '../../domain/dates';
+import { formatLitres, waterWeek } from '../../domain/water';
 import { goalProgress, latestWeight, weekStats, weightsInRange } from '../../domain/progress';
 import { formatSet } from '../../domain/training';
 import type { GoalType } from '../../domain/types';
@@ -189,7 +189,7 @@ export function ProgressScreen() {
 /** Water per day of this week – a plain list, no statistics. */
 function WaterWeek({ start, today: t }: { start: string; today: string }) {
   const state = useAppState();
-  const days = waterHistory(state, weekDays(start)).filter((d) => d.date <= t);
+  const days = waterWeek(state, start, t).filter((d) => !d.future);
   const goal = state.nutritionProfile?.waterGoalMl;
   if (!days.some((d) => d.ml > 0)) return null;
   return (
@@ -200,7 +200,7 @@ function WaterWeek({ start, today: t }: { start: string; today: string }) {
           <li key={d.date}>
             <span>{weekdayShort(weekdayIndex(d.date))}</span>
             <ProgressBar value={d.ml} max={goal ?? Math.max(...days.map((x) => x.ml))} height={6} color="#3b82c4" label={`Wasser ${weekdayShort(weekdayIndex(d.date))}`} />
-            <strong>{d.ml ? formatLitres(d.ml) : '–'}</strong>
+            <strong>{d.ml ? `${d.reached ? '✓ ' : ''}${formatLitres(d.ml)}` : '–'}</strong>
           </li>
         ))}
       </ul>

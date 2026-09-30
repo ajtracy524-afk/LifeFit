@@ -17,7 +17,7 @@ import { productEntry, type EntryContent } from '../domain/foodEntry';
 import { dbFoodEntry, dishEntry, validateDish, type DishDraft } from '../domain/dishes';
 import { slotRepeat } from '../domain/repeatMeal';
 import type { DbFood } from '../data/foodDb';
-import { addWater } from '../domain/water';
+import { addWater, WATER_REMINDER, waterReminderState } from '../domain/water';
 import { effectiveTimeBudget } from '../domain/timeBudget';
 import { currentWeight } from '../domain/progress';
 import { newId } from '../lib/id';
@@ -43,6 +43,7 @@ import type {
   WorkoutExercise,
   WorkoutSet,
   WorkoutTemplate,
+  WaterReminderMode,
 } from '../domain/types';
 import type { EngineAction } from '../domain/engine';
 import { commit, getState, update } from './store';
@@ -459,7 +460,32 @@ export function repeatSlot(fromDate: ISODate, toDate: ISODate, slot: MealSlot): 
 // ---------- Water ----------
 
 export function addWaterMl(date: ISODate, ml: number): void {
-  update((s) => addWater(s, date, ml));
+  update((s) => {
+    addWater(s, date, ml);
+    // A drink today pauses the reminders for a while (see WATER_REMINDER).
+    if (ml > 0 && date === today()) s.coach.water = { ...waterReminderState(s, date), lastDrinkAt: new Date().toISOString() };
+  });
+}
+
+/** "Später": no water reminder for WATER_REMINDER.gapMin minutes. */
+export function snoozeWaterReminder(now: Date = new Date()): void {
+  update((s) => {
+    s.coach.water = { ...waterReminderState(s, today()), snoozedUntil: new Date(now.getTime() + WATER_REMINDER.gapMin * 60000).toISOString() };
+  });
+}
+
+/** A reminder was delivered (notification) – spacing, daily limit and wording follow from it. */
+export function markWaterReminderSent(now: Date = new Date()): void {
+  update((s) => {
+    const w = waterReminderState(s, today());
+    s.coach.water = { ...w, sent: [...(w.sent ?? []), now.toISOString()] };
+  });
+}
+
+export function setWaterReminders(mode: WaterReminderMode): void {
+  update((s) => {
+    if (s.nutritionProfile) s.nutritionProfile = { ...s.nutritionProfile, waterReminders: mode };
+  });
 }
 
 /** Personal tracking value; undefined removes it. */

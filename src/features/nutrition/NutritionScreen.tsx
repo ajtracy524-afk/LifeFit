@@ -107,6 +107,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
   const profileSlots = state.nutritionProfile?.slots ?? SLOT_ORDER;
   const slots = SLOT_ORDER.filter((s) => profileSlots.includes(s) || meals.some((m) => m.slot === s) || extras.some((e) => e.slot === s));
   const isFuture = date > today();
+  const closed = excludedSlots(dayContextFor(state, date));
 
   const go = (d: ISODate) => navigate('nutrition', { view: 'day', date: d === today() ? undefined : d }, { replace: true });
   const [cooking, setCooking] = useState(false);
@@ -203,6 +204,12 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
             {slotMeals.map((m) => (
               <MealRow key={m.id} meal={m} onOpen={() => onOpenMeal(m.id)} checkable={!isFuture} />
             ))}
+            {/* A slot the day does not plan says why it is empty – it is no open task. */}
+            {closed.includes(slot) && !slotMeals.some((m) => m.status !== 'skipped') && eaten.entries === 0 && (
+              <p className={`${styles.muted} ${styles.slotClosed}`}>
+                {slot === 'dinner' && dayContextFor(state, date).mode === 'eating_out' ? 'Auswärts – nicht im Plan. Erfasse einfach, was du isst.' : 'Entfernt – heute nicht geplant.'}
+              </p>
+            )}
             {slotExtras.map((e) => (
               <LogRow key={e.id} entry={e} replaces={e.replacedMealId ? getRecipe(meals.find((m) => m.id === e.replacedMealId)?.recipeId ?? '')?.title : undefined} />
             ))}

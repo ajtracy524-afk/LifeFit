@@ -4,7 +4,7 @@ import { calorieStatus } from './calorieStatus';
 import { dayTotals } from './nutrition';
 import type { AppState, ISODate } from './types';
 import { dayTargetFor } from './week';
-import { waterOn } from './water';
+import { waterGoalReached, waterOn } from './water';
 
 /**
  * The goals of a day, each from real data – shown on Heute as small chips
@@ -59,7 +59,7 @@ export function dayGoals(state: AppState, date: ISODate): DayGoals {
   const waterGoal = state.nutritionProfile?.waterGoalMl;
   if (waterGoal) {
     const ml = waterOn(state, date);
-    goals.push({ key: 'water', icon: '💧', label: 'Wasser', done: ml >= waterGoal, detail: `${(ml / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} / ${(waterGoal / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} L` });
+    goals.push({ key: 'water', icon: '💧', label: 'Wasser', done: !!waterGoalReached(state, date), detail: `${(ml / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} / ${(waterGoal / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} L` });
   }
   // Training belongs to the day like the meals: a planned (or already done) session is a goal of that day.
   const trained = isCompletedOn(state.workouts, date);
