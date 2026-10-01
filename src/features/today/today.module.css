@@ -378,9 +378,20 @@
 }
 
 .statusBudget {
-  margin-top: 14px;
-  padding-top: 14px;
+  margin: 14px 0 0;
+  padding-top: 10px;
   border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.statusBudgetLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -12px 0;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* ---------- Dein Plan (timeline) ---------- */
@@ -694,13 +705,17 @@
   list-style: none;
 }
 
+/* Compact: icon and label on one line, the value below – two chip rows stay short on a 320-px phone. */
 .goalChip {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'icon label' 'value value';
   align-items: center;
-  gap: 3px;
+  justify-items: center;
+  column-gap: 2px;
+  row-gap: 1px;
   min-width: 0;
-  padding: 7px 4px;
+  padding: 5px 2px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   transition:
@@ -709,15 +724,18 @@
 }
 
 .goalIcon {
+  grid-area: icon;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  font-size: 16px;
+  width: 16px;
+  height: 18px;
+  font-size: 13px;
   line-height: 1;
 }
 
 .goalLabel {
+  grid-area: label;
+  justify-self: start;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -727,6 +745,7 @@
 }
 
 .goalValue {
+  grid-area: value;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -746,8 +765,8 @@
 }
 
 .goalCheck {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .goalCheck path {

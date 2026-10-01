@@ -6,7 +6,8 @@ import { SLOT_ORDER } from '../../domain/planner';
 import { goalProgress, latestWeight } from '../../domain/progress';
 import { isCompletedOn, resolveWorkouts } from '../../domain/training';
 import { nextAction } from '../../domain/today';
-import { closedMeals, dayTargetFor, weekShopping } from '../../domain/week';
+import { closedMeals, dayContextFor, dayTargetFor, weekShopping } from '../../domain/week';
+import { effectiveTimeBudget, TIME_BUDGETS } from '../../domain/timeBudget';
 import type { MealSlot, WorkoutTemplate } from '../../domain/types';
 import type { RecommendationKind } from '../../domain/engine';
 import { fmt, formatDateLong, greeting, SLOT_LABEL, weekdayShort } from '../../lib/format';
@@ -39,7 +40,6 @@ import { WeekAutopilot } from '../plan/WeekAutopilot';
 import { CoachCard } from './CoachCard';
 import { DayPlanCard } from './DayPlanCard';
 import { NextActionCard } from './NextActionCard';
-import { TimeBudgetControl } from './TimeBudgetControl';
 import styles from './today.module.css';
 
 /** What belongs to "the next step" (today) vs. the habit tips (weeks) – each recommendation in one place only. */
@@ -74,6 +74,7 @@ export function TodayScreen() {
   const weekHasMeals = state.plannedMeals.some((m) => m.date >= t && m.date <= addDays(start, 6));
   // Meals left out today (dinner out, removed) – shown as a state; the decision lives in the week plan.
   const closedToday = closedMeals(state, t);
+  const timeBudget = effectiveTimeBudget(dayContextFor(state, t));
 
   const week = useMemo(() => resolveWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, state.dayContexts, start]);
   const schedule = week.filter((s) => s.status !== 'skipped');
@@ -225,9 +226,15 @@ export function TodayScreen() {
             <NutrientReportEntry date={t} onLog={() => setLogTarget({ date: t, slot: logSlot() })} />
           </div>
           <ActivityControl date={t} />
-          <div className={styles.statusBudget}>
-            <TimeBudgetControl date={t} />
-          </div>
+          {/* Heute only shows the day's cooking time – changing it re-plans meals, so that happens in Ernährung. */}
+          {timeBudget !== 'normal' && (
+            <p className={styles.statusBudget}>
+              ⏱️ Heute: {TIME_BUDGETS[timeBudget].label} ·{' '}
+              <a href={href('nutrition', { view: 'day' })} className={styles.statusBudgetLink}>
+                in Ernährung ändern
+              </a>
+            </p>
+          )}
         </Card>
       )}
 

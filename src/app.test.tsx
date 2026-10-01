@@ -12,6 +12,9 @@ import type { AppState } from './domain/types';
  */
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+// Every test imports a fresh module graph; the first (cold) import of the app takes a few seconds on a
+// busy machine – a timeout there would cascade into the following tests. No assertion depends on it.
+vi.setConfig({ testTimeout: 20_000 });
 
 const KEY = 'lifefit:v1';
 const BACKUP_KEY = 'lifefit:corrupt-backup';
@@ -324,7 +327,7 @@ describe('move / skip a workout (end to end)', () => {
     expect(text()).toContain('Ruhetag');
     expect(text()).toMatch(/auf Dienstag verschoben/);
   });
-  it('Heute: "Wenig Zeit" exchanges slow meals, shortens training, undo restores', async () => {
+  it('"Wenig Zeit" is set in Ernährung (not on Heute): exchanges slow meals, shortens training, undo restores', async () => {
     const slow = [
       { id: 'mon-l', date: MON, slot: 'lunch', recipeId: 'chili', servings: 1, status: 'planned', source: 'suggest' },
       { id: 'mon-d', date: MON, slot: 'dinner', recipeId: 'oven-salmon', servings: 1, status: 'planned', source: 'suggest' },
@@ -336,16 +339,26 @@ describe('move / skip a workout (end to end)', () => {
     const minutes = () => Number(text().match(/Übungen · ~(\d+) min/)?.[1]);
     const full = minutes();
 
+    // Heute shows status only – no control that re-plans meals.
+    expect(container.querySelector('[role="tablist"][aria-label="Zeit zum Kochen"]')).toBeNull();
+    expect(store.getState()).toBe(before);
+
+    await act(async () => window.location.assign('#/nutrition'));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
     await click('Wenig Zeit');
 
     const after = store.getState();
     expect(after.dayContexts[MON]?.timeBudget).toBe('low');
     expect(after.plannedMeals.filter((m) => m.date === MON).map((m) => m.recipeId)).not.toContain('oven-salmon');
-    expect(minutes()).toBeLessThanOrEqual(30);
-    expect(minutes()).toBeLessThan(full);
     expect(text()).toMatch(/Montag: Wenig Zeit/);
     expect(text()).toMatch(/2 Gerichte angepasst: /);
     expect(text()).toMatch(/Training: .*\(kurz\)/);
+    // Heute follows and shows the state with the way to change it.
+    await act(async () => window.location.assign('#/today'));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+    expect(minutes()).toBeLessThanOrEqual(30);
+    expect(minutes()).toBeLessThan(full);
+    expect(text()).toMatch(/Heute: Wenig Zeit · in Ernährung ändern/);
 
     await click('Rückgängig');
     expect(store.getState()).toBe(before);
@@ -509,6 +522,35 @@ describe('Heute is focused (next action)', () => {
     expect(store.getState().plannedMeals.find((m) => m.id === 'm0')!.status).toBe('eaten');
     // Monday is a training day → training is next.
     expect(card()).toMatch(/Training starten/);
+  });
+
+  it('Heute only acts on the planned meal ("Anders gegessen" via Ersetzen) – the rest of the plan stays as it is', async () => {
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    const plan = ['breakfast', 'lunch', 'dinner'].map((slot, i) => ({
+      id: `m${i}`, date: '2026-09-21', slot, recipeId: ['overnight-oats', 'chicken-wraps', 'bolognese'][i], servings: 1, status: 'planned', source: 'suggest',
+    }));
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), plannedMeals: plan }));
+    window.history.replaceState(null, '', '/#/today');
+    const store = await startApp();
+    const others = () => store.getState().plannedMeals.filter((m) => m.id !== 'm0').map((m) => [m.id, m.recipeId, m.status]);
+    const before = others();
+
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Nächste Aktion"] button')].find((b) => b.textContent?.trim() === 'Ersetzen')!.click());
+    await click('Manuell');
+    await type('Name', 'Brötchen vom Bäcker');
+    await type('Kalorien', '350');
+    await click('Hinzufügen');
+
+    expect(store.getState().plannedMeals.find((m) => m.id === 'm0')!.status).toBe('skipped');
+    expect(store.getState().logEntries.some((e) => e.replacedMealId === 'm0' && e.name === 'Brötchen vom Bäcker')).toBe(true);
+    // No hidden plan change: lunch and dinner are exactly the same meals, no day context set from Heute.
+    expect(others()).toEqual(before);
+    expect(store.getState().dayContexts).toEqual({});
   });
 });
 
@@ -1384,6 +1426,9 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     const store = await waterDay();
     const chip = container.querySelector('[aria-label^="Wasser:"][data-done]')!;
     expect(chip.textContent).toContain('0 / 2 L');
+    // Both quick water actions are right in the water block on Heute.
+    expect(container.querySelector('button[aria-label="250 ml Wasser hinzufügen"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="500 ml Wasser hinzufügen"]')).not.toBeNull();
     expect(waterStep()).toBeDefined();
     await act(async () => [...waterStep()!.querySelectorAll('button')].find((b) => b.textContent === '+250 ml')!.click());
     expect(store.getState().water['2026-09-22']).toBe(250);
