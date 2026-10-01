@@ -2843,3 +2843,124 @@ describe('coach phase 1 (UI): yesterday, next step, tips with memory, activity, 
     expect(dialog.textContent).toMatch(/Zuletzt: 3 Scheiben \(75 g\)/);
   });
 });
+
+describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 1, 9, 0)); // Thursday 09:00
+    window.history.replaceState(null, '', '/?onboarding=v2#/today');
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    // The switch is remembered for the session – never leak it into the old onboarding's tests.
+    sessionStorage.clear();
+  });
+
+  const restart = async () => {
+    await act(async () => root?.unmount());
+    root = undefined;
+    return startApp();
+  };
+  const title = () => container.querySelector('h1')?.textContent ?? '';
+  const go = async (route: string) => {
+    await act(async () => window.location.assign(`#/${route}`));
+    await act(async () => new Promise((r) => setTimeout(r, 0)));
+  };
+
+  it('without the switch the old onboarding stays', async () => {
+    window.history.replaceState(null, '', '/');
+    sessionStorage.clear();
+    await startApp();
+    expect(text()).toContain(WELCOME);
+    expect(text()).not.toContain('Warum fragen wir das?');
+  });
+
+  it('click through the Schnellstart, close the app mid-way, resume at the same step, finish → Heute', async () => {
+    let store = await startApp();
+    expect(title()).toBe('Willkommen bei LifeFit');
+    expect(text()).toContain('Warum fragen wir das?');
+    expect(container.querySelector('[aria-label="Fortschritt"]')!.children).toHaveLength(3);
+    // Überspringen is always there.
+    expect(button('Ohne Angaben starten')).toBeTruthy();
+
+    await click('Schnellstart (ca. 1 Minute)');
+    await click('Weiter');
+    expect(title()).toBe('Deine Körperdaten');
+    expect(button('Überspringen')).toBeTruthy();
+    // "Weiblich" → the pregnancy question follows (conditional step).
+    await click('Weiblich');
+    await click('Weiter');
+    expect(title()).toBe('Gesundheit');
+    expect(store.getState().onboarding!.progress).toMatchObject({ step: 'pregnancy', active: true });
+    expect(JSON.parse(localStorage.getItem(KEY)!).onboarding.progress.step).toBe('pregnancy'); // saved after each step
+
+    // App closed and opened again → same step.
+    store = await restart();
+    expect(title()).toBe('Gesundheit');
+
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Zurück"]')!.click());
+    expect(title()).toBe('Deine Körperdaten');
+    await click('Weiter');
+    await click('Überspringen');
+    expect(title()).toBe('Dein Ziel');
+    expect(store.getState().onboarding!.progress.skipped).toEqual(['pregnancy']);
+    await click('Weiter');
+    expect(title()).toBe('Dein Rahmen');
+    await click('Weiter');
+    expect(title()).toBe('Dein Plan');
+    expect(text()).toContain('LifeFit ersetzt keine ärztliche oder ernährungswissenschaftliche Beratung.');
+    await click('Los geht’s');
+
+    const s = store.getState();
+    expect(s.profile).toMatchObject({ sex: 'female' }); // the answer given
+    expect(s.onboarding!.body.heightCm).toMatchObject({ source: 'default' }); // defaults are marked as such
+    expect(s.onboarding!.progress.finishedAt).toBeTruthy();
+    expect(text()).toMatch(/Guten Morgen/); // the regular app (Heute)
+  });
+
+  it('"Später fortsetzen" makes the app usable with defaults; the profile resumes the flow at the same step', async () => {
+    const store = await startApp();
+    await click('Weiter'); // detailed path
+    await click('Weiter');
+    expect(title()).toBe('Kraftsport-Erfahrung');
+    await click('Später fortsetzen');
+    expect(text()).toMatch(/Guten Morgen/);
+    expect(store.getState().onboarding!.progress).toMatchObject({ step: 'experience', active: false });
+    expect(store.getState().onboarding!.progress.finishedAt).toBeUndefined();
+
+    await go('profile');
+    await click('Onboarding fortsetzen');
+    expect(title()).toBe('Kraftsport-Erfahrung');
+    // Bereich überspringen → next section.
+    await click('Bereich überspringen');
+    expect(title()).toBe('Ernährungsform');
+  });
+
+  it('each section can be re-opened from the profile with the known values pre-filled; "Fertig" returns to the profile', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ ...completeState(), nutritionProfile: { diet: 'vegetarian', excluded: ['nuts'], slots: ['breakfast', 'lunch', 'dinner'] } }));
+    window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+    const store = await startApp();
+    // Finished with the old onboarding → no new run.
+    expect(text()).toContain('Deine Angaben');
+    expect(text()).not.toContain('Onboarding fortsetzen');
+
+    await click('Essen & Einkauf');
+    expect(title()).toBe('Ernährungsform');
+    expect(text()).toMatch(/Ernährungsform\s*vegetarian\s*eingegeben/);
+    await click('Weiter');
+    expect(text()).toMatch(/Allergene\s*peanuts, tree_nuts\s*bitte bestätigen/); // E5: re-interpreted, to be confirmed
+    // Other sections are not part of this run.
+    for (let i = 0; i < 4; i++) await click('Weiter');
+    expect(title()).toBe('Was hast du schon zu Hause?');
+    await click('Fertig');
+    expect(window.location.hash).toBe('#/profile');
+    expect(store.getState().onboarding!.progress.active).toBe(false);
+
+    await click('Körper & Ziel');
+    expect(title()).toBe('Deine Körperdaten');
+    expect(text()).toMatch(/Größe \(cm\)\s*180\s*eingegeben/);
+    expect(text()).toMatch(/Geburtsjahr\s*1996\s*geschätzt/);
+    await click('Schließen');
+    expect(window.location.hash).toBe('#/profile');
+  });
+});

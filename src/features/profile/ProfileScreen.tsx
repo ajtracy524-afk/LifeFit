@@ -42,6 +42,9 @@ import { Card } from '../../components/ui/Card';
 import { Chip, Field, OptionCard, Segmented, Stepper, WeekdayPicker, parseNumber } from '../../components/ui/Controls';
 import { Icon, type IconName } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
+import { flowStateOf, SECTION_LABEL, SECTIONS, stepDef } from '../../domain/onboarding/flow';
+import { onboardingV2Enabled } from '../../lib/flags';
+import { openOnboardingSection, saveOnboardingFlow } from '../../store/onboardingActions';
 import styles from './profile.module.css';
 
 type Panel = 'goal' | 'nutrition' | 'training' | 'body' | 'budget' | 'schedule' | 'water' | 'reset' | null;
@@ -74,6 +77,9 @@ export function ProfileScreen() {
   const target = [...state.targets].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
   const program = getProgram(training.programId);
   const insights = learnedInsights(state);
+  // An unfinished main flow of the new onboarding (paused with "Später fortsetzen").
+  const onboardingProgress = state.onboarding?.progress;
+  const resumable = onboardingProgress?.step && !onboardingProgress.finishedAt && !onboardingProgress.scope ? flowStateOf(state.onboarding) : undefined;
   const disliked = (nutritionProfile.dislikedFoods ?? []).map((id) => getFood(id)).filter((f): f is NonNullable<typeof f> => !!f);
 
   const download = () => {
@@ -101,6 +107,37 @@ export function ProfileScreen() {
           </p>
         </div>
       </Card>
+
+      {/* New onboarding (behind ?onboarding=v2): each area can be opened again, answers pre-filled. */}
+      {onboardingV2Enabled() && (
+        <Section title="Deine Angaben">
+          <Card padded={false}>
+            {resumable && (
+              <Row
+                icon="play"
+                label="Onboarding fortsetzen"
+                value={`Weiter bei „${stepDef(resumable.step).title}“`}
+                onClick={() => {
+                  saveOnboardingFlow(resumable);
+                  navigate('onboarding');
+                }}
+              />
+            )}
+            {SECTIONS.map((section) => (
+              <Row
+                key={section}
+                icon={section === 'A' ? 'scale' : section === 'B' ? 'food' : 'dumbbell'}
+                label={SECTION_LABEL[section]}
+                value={state.onboarding?.progress.completed[section] ? 'Angaben ansehen und ändern' : 'Noch offen – jetzt ergänzen'}
+                onClick={() => {
+                  openOnboardingSection(section);
+                  navigate('onboarding');
+                }}
+              />
+            ))}
+          </Card>
+        </Section>
+      )}
 
       <Section title="Mein Plan">
         <Card padded={false}>

@@ -302,7 +302,8 @@ describe('migration v1 → v2', () => {
     delete v1.workoutOverrides;
 
     const s = migrateV1(v1, NOW);
-    expect(s.schemaVersion).toBe(2);
+    // v1 is migrated straight to the current schema (v3 only adds the onboarding record).
+    expect(s.schemaVersion).toBe(3);
     expect(s.plannedMeals).toEqual([lunch]);
     expect(s.shopping[MON]!.manual).toHaveLength(1);
     expect(s.shopping[MON]!.purchased).toEqual({ chicken: 180 });

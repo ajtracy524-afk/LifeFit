@@ -2,6 +2,7 @@ import { findTemplate } from '../data/exercises';
 import { toISODate, weekStart } from '../domain/dates';
 import { buildShoppingList, shoppingRange } from '../domain/shopping';
 import { EATING_OUT_SLOTS } from '../domain/timeBudget';
+import { isSetupComplete, migrateOnboarding } from '../domain/onboarding/migrate';
 import type { AppState, PantryItem, ShoppingWeekState } from '../domain/types';
 
 const KEY = 'lifefit:v1';
@@ -9,7 +10,7 @@ const BACKUP_KEY = 'lifefit:corrupt-backup';
 
 export function emptyState(): AppState {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     profile: null,
     goal: null,
     nutritionProfile: null,
@@ -58,7 +59,7 @@ interface ShoppingWeekV1 {
  * Past weeks only keep their manual items. Everything else is untouched.
  */
 export function migrateV1(parsed: Record<string, unknown>, now: Date = new Date()): AppState {
-  const base = { ...emptyState(), ...parsed, schemaVersion: 2 } as AppState;
+  const base = { ...emptyState(), ...parsed, schemaVersion: 3 } as AppState;
   const today = toISODate(now);
   const thisWeek = weekStart(today);
   const pantry: Record<string, PantryItem> = {};
@@ -88,9 +89,8 @@ export function migrateV1(parsed: Record<string, unknown>, now: Date = new Date(
  * These fields are all written by onboarding and can never be emptied later.
  * Weights and planned meals are deliberately NOT required – users may delete them.
  */
-export function isSetupComplete(state: AppState): boolean {
-  return !!(state.profile && state.goal && state.nutritionProfile && state.training && state.targets?.length > 0);
-}
+/** One definition (domain/onboarding/migrate.ts) – re-exported here for the app shell. */
+export { isSetupComplete };
 
 export type LoadResult = { state: AppState; notice?: 'recovered' | 'unavailable' };
 
@@ -107,9 +107,10 @@ export function loadState(): LoadResult {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     // Migrated state is only written on the next change – loading never writes.
     if (parsed.schemaVersion === 1) return { state: migrateLegacy(migrateV1(parsed)) };
-    if (parsed.schemaVersion !== 2) throw new Error('Unknown schema version');
+    // v2 → v3 adds only the onboarding record (derived from the core data, nothing else changes).
+    if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) throw new Error('Unknown schema version');
     // Merge onto defaults so newly added fields always exist.
-    return { state: migrateLegacy({ ...emptyState(), ...parsed } as AppState) };
+    return { state: migrateLegacy({ ...emptyState(), ...parsed, schemaVersion: 3 } as AppState) };
   } catch {
     // Never silently discard user data: keep a copy for recovery.
     try {
@@ -123,7 +124,7 @@ export function loadState(): LoadResult {
 
 /** All one-time clean-ups of older stored data, applied on load. */
 function migrateLegacy(state: AppState): AppState {
-  return markEatingOutSkips(renameLegacyWorkouts(normalizeLegacyDayModes(dropLegacyEurBudget(state))));
+  return migrateOnboarding(markEatingOutSkips(renameLegacyWorkouts(normalizeLegacyDayModes(dropLegacyEurBudget(state)))));
 }
 
 /**

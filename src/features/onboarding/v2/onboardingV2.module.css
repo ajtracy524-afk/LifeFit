@@ -1,0 +1,221 @@
+.shell {
+  min-height: 100dvh;
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* Row 1: back + "Später fortsetzen"; row 2: the three sections over the full width (labels stay readable at 320 px). */
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: calc(var(--safe-top) + 8px) 8px 8px 4px;
+  background: var(--bg);
+}
+
+/* Progress in three segments A / B / C – label and bar, the current one stands out. */
+.segments {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0 4px 0 8px;
+  list-style: none;
+  min-width: 0;
+}
+
+.top > button:last-child {
+  grid-column: 3;
+}
+
+.segment {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.segmentBar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.segmentBar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.segmentLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.segment[data-current] .segmentLabel {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.content {
+  flex: 1;
+  padding: 12px var(--space) 24px;
+}
+
+/* A gentle step change; nothing moves when the user prefers reduced motion. */
+.step {
+  animation: stepIn 0.28s ease-out both;
+}
+
+@keyframes stepIn {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step {
+    animation: none;
+  }
+  .segmentBar > span {
+    transition: none;
+  }
+}
+
+.eyebrow {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--accent);
+}
+
+.title {
+  margin: 4px 0 6px;
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.title:focus {
+  outline: none;
+}
+
+.title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.why {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.why strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.stack {
+  display: grid;
+  gap: 10px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.placeholder {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.values {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.values > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 14px;
+}
+
+.values dt {
+  color: var(--text-2);
+}
+
+.values dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.source {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.summaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.footer {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: 8px;
+  padding: 12px var(--space) calc(16px + var(--safe-bottom));
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+}
+
+.secondary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.secondary > button,
+.top > button {
+  min-height: 44px;
+}

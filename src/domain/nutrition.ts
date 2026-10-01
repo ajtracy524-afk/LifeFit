@@ -165,14 +165,18 @@ export function calculateTargets(
   return { bmr: Math.round(bmr), tdee: Math.round(tdee), ...macrosForCalories(kcal, protein, weightKg) };
 }
 
-/** Mifflin-St Jeor. */
+/**
+ * Mifflin-St Jeor (Mifflin et al., Am J Clin Nutr 1990;51:241–247): +5 for men, −161 for women.
+ * "Keine Angabe": the mean of both constants, −78 (docs/ONBOARDING_PLAN.md E2).
+ */
 export function basalMetabolicRate(profile: Pick<Profile, 'sex' | 'age' | 'heightCm'>, weightKg: number): number {
-  return 10 * weightKg + 6.25 * profile.heightCm - 5 * profile.age + (profile.sex === 'male' ? 5 : -161);
+  const sexConstant = profile.sex === 'male' ? 5 : profile.sex === 'female' ? -161 : -78;
+  return 10 * weightKg + 6.25 * profile.heightCm - 5 * profile.age + sexConstant;
 }
 
-/** Safety floor: no target (formula or adaptive) may go below this. */
+/** Safety floor: no target (formula or adaptive) may go below this. "Keine Angabe" takes the more careful 1500 kcal (E2/E11). */
 export function calorieFloor(profile: Pick<Profile, 'sex' | 'age' | 'heightCm'>, weightKg: number): number {
-  return Math.max(basalMetabolicRate(profile, weightKg) * 1.1, profile.sex === 'male' ? 1500 : 1200);
+  return Math.max(basalMetabolicRate(profile, weightKg) * 1.1, profile.sex === 'female' ? 1200 : 1500);
 }
 
 /** Splits calories into macros: protein fixed, fat ≥ 25 % (and ≥ 0.8 g/kg), rest carbs. */

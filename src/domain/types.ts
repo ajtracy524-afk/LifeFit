@@ -1,3 +1,4 @@
+import type { OnboardingProfile } from './onboarding/types';
 /**
  * Domain types. Mirrors the LifeFit data model (plan vs. actual kept separate,
  * nutrient snapshots on log entries, canonical units: g, kg, kcal, s).
@@ -8,7 +9,8 @@ export type ISODate = string;
 
 /** The ENERGY goal – drives calories and protein. The training focus is separate (TrainingSetup.focus). */
 export type GoalType = 'muscle_gain' | 'fat_loss' | 'maintain' | 'recomp';
-export type Sex = 'male' | 'female';
+/** 'unspecified' = keine Angabe: energy formulas use the mean of the sex constants (docs/ONBOARDING_PLAN.md E2). */
+export type Sex = 'male' | 'female' | 'unspecified';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active';
 export type Experience = 'beginner' | 'intermediate' | 'advanced';
 export type DietType = 'omnivore' | 'vegetarian' | 'vegan';
@@ -650,7 +652,7 @@ export interface PlannerSettings {
 }
 
 export interface AppState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   profile: Profile | null;
   goal: FitnessGoal | null;
   nutritionProfile: NutritionProfile | null;
@@ -693,6 +695,8 @@ export interface AppState {
   measurements: MeasurementEntry[];
   /** History of the training plan (see domain/planVersions.ts). Missing in older data – a v1 is derived. */
   planVersions?: PlanVersion[];
+  /** Answers and progress of the new onboarding (domain/onboarding). Derived from the core data for older states. */
+  onboarding?: OnboardingProfile;
 }
 
 /** Why a plan version was created. */

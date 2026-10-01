@@ -5,14 +5,14 @@ import { useSyncExternalStore } from 'react';
  * Hash routing keeps the browser/Android back button working without a library.
  */
 export type Tab = 'today' | 'nutrition' | 'training' | 'shopping' | 'progress';
-export type Path = Tab | 'profile' | 'session' | 'workout' | 'exercises' | 'routine' | 'programs' | 'history';
+export type Path = Tab | 'profile' | 'session' | 'workout' | 'exercises' | 'routine' | 'programs' | 'history' | 'onboarding';
 
 export interface Route {
   path: Path;
   params: URLSearchParams;
 }
 
-const PATHS: Path[] = ['today', 'nutrition', 'training', 'shopping', 'progress', 'profile', 'session', 'workout', 'exercises', 'routine', 'programs', 'history'];
+const PATHS: Path[] = ['today', 'nutrition', 'training', 'shopping', 'progress', 'profile', 'session', 'workout', 'exercises', 'routine', 'programs', 'history', 'onboarding'];
 
 function parse(hash: string): Route {
   const [rawPath = '', query = ''] = hash.replace(/^#\/?/, '').split('?');
