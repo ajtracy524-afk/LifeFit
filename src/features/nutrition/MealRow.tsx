@@ -8,6 +8,7 @@ import { Icon } from '../../components/ui/Icon';
 import { runMealEaten } from './logFeedback';
 import { SwapText, motionStyles } from '../../components/ui/SwapText';
 import { useJustChanged } from '../../lib/motion';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 interface MealRowProps {
@@ -22,6 +23,7 @@ interface MealRowProps {
 export function MealRow({ meal, label, onOpen, highlight, checkable = true }: MealRowProps) {
   const recipe = getRecipe(meal.recipeId);
   const macros = plannedMealMacros(meal);
+  const energy = useEnergyText(meal.date);
   const eaten = meal.status === 'eaten';
   const skipped = meal.status === 'skipped';
 
@@ -46,7 +48,7 @@ export function MealRow({ meal, label, onOpen, highlight, checkable = true }: Me
           {label && <span className={styles.mealLabel}>{label}</span>}
           <SwapText className={styles.mealTitle} text={recipe?.title ?? 'Unbekanntes Rezept'} />
           <span className={styles.mealMeta}>
-            {skipped ? (meal.skippedFor === 'eating_out' ? 'Auswärts – nicht im Plan' : 'Anders gegessen') : `${fmt.kcal(macros.kcal)} · ${fmt.int(macros.protein)} g Protein`}
+            {skipped ? (meal.skippedFor === 'eating_out' ? 'Auswärts – nicht im Plan' : 'Anders gegessen') : `${energy.kcal(macros.kcal)} · ${fmt.int(macros.protein)} g Protein`}
           </span>
         </span>
       </button>

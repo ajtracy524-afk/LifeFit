@@ -47,7 +47,7 @@ describe('calculateTargets', () => {
     const t = calculateTargets(profile, 'muscle_gain', 78, 4);
     expect(t.bmr).toBe(1775);
     expect(t.kcal).toBeGreaterThan(t.tdee);
-    expect(t.protein).toBe(156);
+    expect(t.protein).toBe(140); // 1.8 g/kg for muscle gain (E11, Morton et al. 2018)
     // Macros add up to the calorie target (±rounding).
     expect(Math.abs(t.protein * 4 + t.carbs * 4 + t.fat * 9 - t.kcal)).toBeLessThan(10);
   });

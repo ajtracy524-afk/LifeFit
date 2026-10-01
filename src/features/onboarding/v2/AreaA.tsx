@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ageFromBirthYear,
   bmi,
@@ -25,13 +25,14 @@ import { fmt } from '../../../lib/format';
 import { setOnboardingAnswer } from '../../../store/onboardingActions';
 import { useAppState } from '../../../store/store';
 import { Card } from '../../../components/ui/Card';
-import { Chip, OptionCard, parseNumber } from '../../../components/ui/Controls';
-import { Icon } from '../../../components/ui/Icon';
+import { Chip, OptionCard } from '../../../components/ui/Controls';
 import { Sheet } from '../../../components/ui/Sheet';
+import { GoalStep, HealthStep } from './AreaAGoal';
+import { NumberField } from './NumberField';
 import styles from './onboardingV2.module.css';
 
 /** Steps of section A that have their content (Prompt 2). */
-export const AREA_A_STEPS: OnboardingStepId[] = ['weight', 'height', 'birthYear', 'sex', 'experience', 'activity', 'waist', 'analysis', 'bodyFat'];
+export const AREA_A_STEPS: OnboardingStepId[] = ['weight', 'height', 'birthYear', 'sex', 'experience', 'activity', 'waist', 'analysis', 'bodyFat', 'health', 'goal'];
 
 const dec = (n: number, digits = 1) => n.toLocaleString('de-DE', { maximumFractionDigits: digits, minimumFractionDigits: digits });
 /** 1,375 / 1,5 / 1,2 – factors without trailing zeros. */
@@ -156,6 +157,10 @@ export function AreaAStep({ step }: { step: OnboardingStepId }) {
       return <Analysis />;
     case 'bodyFat':
       return <BodyFat />;
+    case 'health':
+      return <HealthStep />;
+    case 'goal':
+      return <GoalStep />;
     default:
       return null;
   }
@@ -166,80 +171,6 @@ function StringTip() {
     <p className={styles.tip}>
       <strong>Ohne Massband:</strong> Schneide eine Schnur in deiner Körpergröße ab und falte sie in der Mitte. Passt sie um deine Taille, liegt dein WHtR unter 0,5.
     </p>
-  );
-}
-
-// ---------- Number input with big −/+ ----------
-
-function NumberField({
-  label,
-  unit,
-  value,
-  step,
-  start,
-  decimals = 0,
-  plausible,
-  plain = false,
-  hint,
-  onChange,
-}: {
-  label: string;
-  unit?: string;
-  value: number | undefined;
-  step: number;
-  start: number;
-  decimals?: number;
-  plausible: readonly [number, number];
-  /** Years: no thousands separator. */
-  plain?: boolean;
-  hint?: string;
-  onChange: (v: number) => void;
-}) {
-  const id = useId();
-  const show = (v: number | undefined) => (v === undefined ? '' : plain ? String(v) : decimals ? dec(v, decimals).replace(/,0$/, '') : String(v));
-  const [text, setText] = useState(show(value));
-  // A value changed elsewhere (e.g. the stepper) – show it.
-  useEffect(() => setText((t) => (parseNumber(t) === value ? t : show(value))), [value]);
-  const round = (v: number) => Math.round(v * 10 ** decimals) / 10 ** decimals;
-  const commit = (v: number) => {
-    const r = round(v);
-    setText(show(r));
-    onChange(r);
-  };
-  const n = parseNumber(text);
-  const outside = Number.isFinite(n) && (n < plausible[0] || n > plausible[1]);
-  return (
-    <div className={styles.number}>
-      <label htmlFor={id} className={styles.label}>
-        {label}
-      </label>
-      <div className={styles.numberRow}>
-        <button type="button" className={styles.numberBtn} aria-label={`${label} verringern`} onClick={() => commit((value ?? start) - step)}>
-          <Icon name="minus" size={22} />
-        </button>
-        <span className={styles.numberInput}>
-          <input
-            id={id}
-            inputMode={decimals ? 'decimal' : 'numeric'}
-            value={text}
-            placeholder={show(start)}
-            aria-describedby={`${id}-hint`}
-            onChange={(e) => {
-              setText(e.target.value);
-              const v = parseNumber(e.target.value);
-              if (Number.isFinite(v) && v > 0) onChange(round(v));
-            }}
-          />
-          {unit && <span>{unit}</span>}
-        </span>
-        <button type="button" className={styles.numberBtn} aria-label={`${label} erhöhen`} onClick={() => commit((value ?? start) + step)}>
-          <Icon name="plus" size={22} />
-        </button>
-      </div>
-      <p id={`${id}-hint`} className={outside ? styles.notice : styles.hint} role={outside ? 'status' : undefined}>
-        {outside ? `Bitte kurz prüfen – üblich sind ${plain ? plausible[0] : fmt.int(plausible[0])}–${plain ? plausible[1] : fmt.int(plausible[1])}${unit ? ` ${unit}` : ''}. Du kannst trotzdem weiter.` : hint}
-      </p>
-    </div>
   );
 }
 

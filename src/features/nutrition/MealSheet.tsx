@@ -3,7 +3,7 @@ import { getFood } from '../../data/foods';
 import { getRecipe } from '../../data/recipes';
 import { today } from '../../domain/dates';
 import { explainMeal } from '../../domain/explain';
-import { fmt, relativeDay, SLOT_LABEL } from '../../lib/format';
+import { relativeDay, SLOT_LABEL } from '../../lib/format';
 import { applyWithUndo, withUndo } from '../../lib/undo';
 import { markEaten, removePlannedMeal, unmarkEaten, updateServings } from '../../store/actions';
 import { useAppState } from '../../store/store';
@@ -13,6 +13,7 @@ import { Sheet } from '../../components/ui/Sheet';
 import { RecipeDetail } from './RecipeDetail';
 import { ReplacePanel } from './ReplacePanel';
 import { runMealEaten } from './logFeedback';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 interface MealSheetProps {
@@ -29,6 +30,7 @@ interface MealSheetProps {
 export function MealSheet({ mealId, onClose, startReplacing = false }: MealSheetProps) {
   const state = useAppState();
   const meal = state.plannedMeals.find((m) => m.id === mealId);
+  const energy = useEnergyText(meal?.date);
   const [disliking, setDisliking] = useState(false);
   const [replacing, setReplacing] = useState(startReplacing);
   const recipe = meal ? getRecipe(meal.recipeId) : undefined;
@@ -89,7 +91,7 @@ export function MealSheet({ mealId, onClose, startReplacing = false }: MealSheet
       {skipped && (
         <p className={styles.hubNote}>
           {replacement.length
-            ? `Ersetzt durch ${replacement.map((e) => `${e.name} (${fmt.kcal(e.macros.kcal)})`).join(', ')}.`
+            ? `Ersetzt durch ${replacement.map((e) => `${e.name} (${energy.kcal(e.macros.kcal)})`).join(', ')}.`
             : 'Anders gegessen – nicht in deiner Tagesbilanz.'}
         </p>
       )}

@@ -34,7 +34,7 @@ export type OnboardingStepId =
   | 'waist'
   | 'analysis'
   | 'bodyFat'
-  | 'pregnancy'
+  | 'health'
   | 'goal'
   // B – Essen & Einkauf
   | 'diet'

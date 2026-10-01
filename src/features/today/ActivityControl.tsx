@@ -3,6 +3,7 @@ import type { ISODate } from '../../domain/types';
 import { fmt } from '../../lib/format';
 import { setActivity } from '../../store/actions';
 import { useAppState } from '../../store/store';
+import { isNumberFree } from '../../domain/numberFree';
 import { Button } from '../../components/ui/Button';
 import { Field, parseNumber } from '../../components/ui/Controls';
 import { Sheet } from '../../components/ui/Sheet';
@@ -17,6 +18,7 @@ import styles from './today.module.css';
  */
 export function ActivityControl({ date }: { date: ISODate }) {
   const state = useAppState();
+  const numberFree = isNumberFree(state);
   const a = state.activity?.[date];
   const [open, setOpen] = useState(false);
   const [kcal, setKcal] = useState('');
@@ -32,11 +34,11 @@ export function ActivityControl({ date }: { date: ISODate }) {
 
   return (
     <>
-      <button type="button" className={styles.activityRow} onClick={start} aria-label={a ? `Aktivität heute: ${[a.activeKcal ? fmt.kcal(a.activeKcal) : '', a.steps ? `${fmt.int(a.steps)} Schritte` : ''].filter(Boolean).join(', ')} – bearbeiten` : 'Aktivität eintragen'}>
+      <button type="button" className={styles.activityRow} onClick={start} aria-label={a ? `Aktivität heute: ${[a.activeKcal && !numberFree ? fmt.kcal(a.activeKcal) : '', a.steps ? `${fmt.int(a.steps)} Schritte` : ''].filter(Boolean).join(', ')} – bearbeiten` : 'Aktivität eintragen'}>
         <span aria-hidden>🔥</span>
         {a ? (
           <span>
-            <strong>Aktivität</strong> {[a.activeKcal ? fmt.kcal(a.activeKcal) : undefined, a.steps ? `${fmt.int(a.steps)} Schritte` : undefined].filter(Boolean).join(' · ')}
+            <strong>Aktivität</strong> {[a.activeKcal ? (numberFree ? 'eingetragen' : fmt.kcal(a.activeKcal)) : undefined, a.steps ? `${fmt.int(a.steps)} Schritte` : undefined].filter(Boolean).join(' · ')}
           </span>
         ) : (
           <span className={styles.muted}>Aktivität eintragen (optional)</span>

@@ -1165,3 +1165,19 @@ button.timelineItem:active {
   padding-top: 0;
   border-top: 0;
 }
+
+/* "Gilt das noch?" – a quiet question, two taps. */
+.recheckText {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.recheckActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recheckActions > button {
+  min-height: 44px;
+}

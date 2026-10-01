@@ -4,8 +4,11 @@ import { NUTRIENTS } from '../data/nutrients';
 import { getRecipe } from '../data/recipes';
 import { newId } from '../lib/id';
 import { bmrFor, energyEstimate, type EnergyInput } from './body';
+import { FAT_MIN } from './constants';
+import { calorieFloorFor, goalCalories, isMinor, macroTargets, type Pace } from './goal';
 import type {
   BasicNutrient,
+  Experience,
   Food,
   FitnessGoal,
   ISODate,
@@ -137,10 +140,18 @@ export interface TargetCalculation extends Macros {
 }
 
 export interface TargetOptions {
-  /** Known body fat – decides the BMR formula (Katch-McArdle / mean, see body.ts). */
+  /** Known body fat – decides the BMR formula (Katch-McArdle / mean, see body.ts) and the protein reference. */
   bodyFat?: EnergyInput['bodyFat'];
   /** Length of a planned session (training surcharge); default in constants. */
   sessionMinutes?: number;
+  /** Pace of the goal (default "normal"). */
+  pace?: Pace;
+  /** Training level – muscle gain is slower for trained people. */
+  experience?: Experience;
+  /** Target weight – the protein reference with high body fat. */
+  targetWeightKg?: number;
+  /** Pregnancy / breastfeeding: never a deficit. */
+  pregnant?: boolean;
 }
 
 /**
@@ -158,15 +169,19 @@ export function calculateTargets(
 ): TargetCalculation {
   const energy = energyEstimate({ ...profile, weightKg, sessionsPerWeek: trainingDaysPerWeek, ...(options.bodyFat ? { bodyFat: options.bodyFat } : {}), ...(options.sessionMinutes ? { sessionMinutes: options.sessionMinutes } : {}) });
   const { bmr, tdee } = energy;
-
-  // Recomposition: close to maintenance, slightly below – muscle is built from training and protein, fat is lost slowly.
-  const goalFactor = goalType === 'muscle_gain' ? 1.1 : goalType === 'fat_loss' ? 0.8 : goalType === 'recomp' ? 0.95 : 1;
-  const kcal = Math.round(Math.max(tdee * goalFactor, calorieFloor(profile, weightKg)) / 10) * 10;
-
-  const proteinPerKg = goalType === 'maintain' ? 1.8 : 2;
-  const protein = Math.round(Math.min(weightKg * proteinPerKg, 220));
-
-  return { bmr: Math.round(bmr), tdee: Math.round(tdee), ...macrosForCalories(kcal, protein, weightKg) };
+  // Calories from the pace with all safety limits, macros by the same rules as the onboarding (goal.ts, E11).
+  const { kcal } = goalCalories({
+    goal: goalType,
+    tdee,
+    bmr,
+    sex: profile.sex,
+    weightKg,
+    noDeficit: isMinor(profile.age) || !!options.pregnant,
+    ...(options.pace ? { pace: options.pace } : {}),
+    ...(options.experience ? { experience: options.experience } : {}),
+  });
+  const macros = macroTargets({ kcal, weightKg, goal: goalType, sex: profile.sex, ...(options.bodyFat ? { bodyFatPct: options.bodyFat.percent } : {}), ...(options.targetWeightKg ? { targetWeightKg: options.targetWeightKg } : {}) });
+  return { bmr: Math.round(bmr), tdee: Math.round(tdee), ...macros };
 }
 
 /** Mifflin-St Jeor (one formula, body.ts; "keine Angabe" −78, E2). */
@@ -174,14 +189,14 @@ export function basalMetabolicRate(profile: Pick<Profile, 'sex' | 'age' | 'heigh
   return bmrFor({ ...profile, weightKg }).kcal;
 }
 
-/** Safety floor: no target (formula or adaptive) may go below this. "Keine Angabe" takes the more careful 1500 kcal (E2/E11). */
+/** Safety floor: no target (formula or adaptive) may go below this – one rule (goal.calorieFloorFor, E11). */
 export function calorieFloor(profile: Pick<Profile, 'sex' | 'age' | 'heightCm'>, weightKg: number): number {
-  return Math.max(basalMetabolicRate(profile, weightKg) * 1.1, profile.sex === 'female' ? 1200 : 1500);
+  return calorieFloorFor(profile.sex, basalMetabolicRate(profile, weightKg));
 }
 
-/** Splits calories into macros: protein fixed, fat ≥ 25 % (and ≥ 0.8 g/kg), rest carbs. */
+/** Splits calories into macros with a fixed protein: fat ≥ 20 % and ≥ 0.8 g/kg (E11, constants), rest carbs. */
 export function macrosForCalories(kcal: number, protein: number, weightKg: number): Macros {
-  const fat = Math.round(Math.max((kcal * 0.25) / 9, weightKg * 0.8));
+  const fat = Math.round(Math.max((kcal * FAT_MIN.share) / 9, weightKg * FAT_MIN.perKg));
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
   return { kcal, protein, carbs, fat };
 }

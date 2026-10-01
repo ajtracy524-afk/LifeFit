@@ -4,6 +4,7 @@ import { today } from '../../domain/dates';
 import { plannedMealMacros } from '../../domain/nutrition';
 import type { ISODate } from '../../domain/types';
 import { useAppState } from '../../store/store';
+import { isNumberFree } from '../../domain/numberFree';
 import styles from './nutrition.module.css';
 
 /**
@@ -19,11 +20,13 @@ export function CalorieStatusBadge({ date, eatenKcal, targetKcal }: { date: ISOD
   );
   const status = calorieStatus({ eaten: eatenKcal, planned, targetKcal, finished: isDayFinished(date, today(), new Date().getHours()) });
   if (!status) return null;
+  // Number-free mode (E14): the status in words only, the kcal detail is left out.
+  const numberFree = isNumberFree(state);
   return (
     // Keyed by the status: a change ("Noch Platz" → "Im Ziel") plays the short entrance again.
-    <span key={status.key} className={`${styles.calorieBadge} ${styles[`tone_${status.tone}`]}`} role="status" aria-label={`${status.label.replace(' 🎯', '')}: ${status.detail}`}>
+    <span key={status.key} className={`${styles.calorieBadge} ${styles[`tone_${status.tone}`]}`} role="status" aria-label={numberFree ? status.label.replace(' 🎯', '') : `${status.label.replace(' 🎯', '')}: ${status.detail}`}>
       <strong>{status.label}</strong>
-      <span className={styles.calorieDetail}>{status.detail}</span>
+      {!numberFree && <span className={styles.calorieDetail}>{status.detail}</span>}
     </span>
   );
 }

@@ -1,3 +1,4 @@
+import { recommendGoal } from '../goal';
 import { calculateTargets } from '../nutrition';
 import { slotsFor } from '../planner';
 import { recommendProgram } from '../programs';
@@ -143,6 +144,11 @@ export function migrateOnboarding(state: AppState, now: Date = new Date()): AppS
   return { ...state, onboarding: next };
 }
 
+/** Training level from the experience answer until Prompt 7 estimates it (years, break, FFMI). */
+function levelFromBucket(bucket: OnboardingProfile['body']['trainingExperience'] extends { value: infer V } | undefined ? V | undefined : never): Profile['experience'] {
+  return bucket === 'gt5' ? 'advanced' : bucket === '1to2' || bucket === '3to5' ? 'intermediate' : 'beginner';
+}
+
 export interface CoreSetup {
   profile: Profile;
   goal: FitnessGoal;
@@ -171,22 +177,39 @@ export function defaultCoreSetup(p: OnboardingProfile, today: string, nowIso: st
     age: p.body.birthYear ? year - p.body.birthYear.value : D.age,
     heightCm: p.body.heightCm?.value ?? D.heightCm,
     activity: p.body.activity?.value ?? D.activity,
-    experience: p.training.level?.value ?? 'beginner',
+    experience: p.training.level?.value ?? levelFromBucket(p.body.trainingExperience?.value),
     createdAt: nowIso,
   };
-  // Pregnancy / breastfeeding: only "Halten & Gesundheit" (E4).
-  const pregnant = p.health.pregnancy && p.health.pregnancy.value !== 'no';
-  const goalType = pregnant ? 'maintain' : (p.goal.type?.value ?? D.goal);
+  // Pregnancy / breastfeeding: only "Halten & Gesundheit" (E4). Without a chosen goal: the recommendation, not a fixed default.
+  const pregnant = !!p.health.pregnancy && p.health.pregnancy.value !== 'no';
+  const fat = p.body.bodyFat?.value;
+  const rec = recommendGoal({
+    sex,
+    age: profile.age,
+    ...(p.health.pregnancy ? { pregnancy: p.health.pregnancy.value } : {}),
+    ...(fat ? { bodyFat: { percent: fat.percent, method: fat.method } } : {}),
+    ...(p.body.weightKg ? { weightKg: p.body.weightKg.value } : {}),
+    ...(p.body.heightCm ? { heightCm: p.body.heightCm.value } : {}),
+    ...(p.body.waistCm ? { waistCm: p.body.waistCm.value } : {}),
+    ...(p.body.trainingExperience ? { experience: p.body.trainingExperience.value } : {}),
+    ...(p.body.trainingPaused ? { paused: p.body.trainingPaused.value } : {}),
+  });
+  const chosen = p.goal.type?.value;
+  const goalType = rec.locked ? 'maintain' : chosen && !rec.blocked.some((b) => b.goal === chosen) ? chosen : rec.recommended;
+  const targetWeightKg = p.goal.targetWeightKg?.value;
   const weekdays = [...(p.training.weekdays?.value ?? D.weekdays)].sort((a, b) => a - b);
   const diet = p.food.diet?.value === 'pescatarian' ? 'omnivore' : (p.food.diet?.value ?? 'omnivore'); // pescetarian filter comes with Prompt 4
-  const fat = p.body.bodyFat?.value;
   const calc = calculateTargets(profile, goalType, weightKg, weekdays.length, {
     ...(fat ? { bodyFat: { method: fat.method, percent: fat.percent, range: fat.range } } : {}),
     ...(p.training.sessionMinutes ? { sessionMinutes: p.training.sessionMinutes.value } : {}),
+    ...(p.goal.pace ? { pace: p.goal.pace.value } : {}),
+    ...(targetWeightKg ? { targetWeightKg } : {}),
+    experience: profile.experience,
+    pregnant,
   });
   return {
     profile,
-    goal: { type: goalType, startWeightKg: weightKg, startedAt: today },
+    goal: { type: goalType, startWeightKg: weightKg, startedAt: today, ...(targetWeightKg && goalType !== 'maintain' && goalType !== 'recomp' ? { targetWeightKg } : {}) },
     nutritionProfile: { diet, excluded: [], slots: p.food.meals?.value ?? slotsFor(4) },
     training: {
       programId: recommendProgram({ days: weekdays.length, experience: profile.experience, goal: goalType }),

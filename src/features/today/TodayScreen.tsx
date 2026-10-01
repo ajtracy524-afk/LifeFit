@@ -25,9 +25,11 @@ import { WaterControl } from '../nutrition/WaterControl';
 import { NutrientReportEntry } from '../nutrition/NutrientReport';
 import { BudgetLine } from '../nutrition/BudgetLine';
 import { CalorieStatusBadge } from '../nutrition/CalorieStatusBadge';
+import { useEnergyText } from '../nutrition/useEnergyText';
 import { DayTypeBadge } from './DayTypeBadge';
 import { DayGoals } from './DayGoals';
 import { DayReviewCard } from './DayReviewCard';
+import { PregnancyRecheck } from './PregnancyRecheck';
 import { ActivityControl } from './ActivityControl';
 import { WeekProgressCard } from './WeekProgressCard';
 import { calorieStatus } from '../../domain/calorieStatus';
@@ -63,6 +65,7 @@ export function TodayScreen() {
   const [quickOpen, setQuickOpen] = useState(false);
 
   const target = dayTargetFor(state, t);
+  const energy = useEnergyText(t);
   // One summary of what was eaten today – macros and micronutrients from the same entries.
   const day = useMemo(() => daySummary(state.logEntries, t).day, [state.logEntries, t]);
   const totals = day.macros;
@@ -163,6 +166,7 @@ export function TodayScreen() {
 
       {/* Yesterday, reviewed once: good things, patterns, one simple step – until read. */}
       <DayReviewCard />
+      <PregnancyRecheck />
 
       {/* Training or rest day – at a glance, a training day links to the session. */}
       <DayTypeBadge
@@ -192,13 +196,14 @@ export function TodayScreen() {
             <ProgressRing
               value={totals.kcal}
               max={target.kcal}
-              label={`${fmt.int(totals.kcal)} von ${fmt.int(target.kcal)} Kilokalorien`}
+              label={energy.numberFree ? `Heute gegessen: ${energy.day(totals.kcal).text}` : `${fmt.int(totals.kcal)} von ${fmt.int(target.kcal)} Kilokalorien`}
               impact={ringImpact}
               success={ringSuccess}
               tone={zone === 'over' || zone === 'well_over' ? 'over' : 'default'}
             >
+              {/* Number-free mode (E14): the ring stays, the centre speaks in meals instead of kcal. */}
               <span className={styles.ringValue}>
-                <CountUp value={Math.abs(target.kcal - totals.kcal)} format={fmt.int} />
+                {energy.numberFree ? `${energy.day(totals.kcal).amount}/${energy.day(totals.kcal).total}` :<CountUp value={Math.abs(target.kcal - totals.kcal)} format={fmt.int} />}
               </span>
               <span className={styles.ringLabel}>
                 {zone === 'in_zone' && (
@@ -206,16 +211,22 @@ export function TodayScreen() {
                     ✓{' '}
                   </span>
                 )}
-                {totals.kcal <= target.kcal ? 'kcal übrig' : 'kcal drüber'}
+                {energy.numberFree ? 'Mahlzeiten' : totals.kcal <= target.kcal ? 'kcal übrig' : 'kcal drüber'}
               </span>
             </ProgressRing>
             <div className={styles.targetSide}>
-              <p className={styles.targetKcal}>
-                <strong>
-                  <CountUp value={totals.kcal} format={fmt.int} />
-                </strong>{' '}
-                / {fmt.kcal(target.kcal)}
-              </p>
+              {energy.numberFree ? (
+                <p className={styles.targetKcal}>
+                  <strong>{energy.day(totals.kcal).text}</strong>
+                </p>
+              ) : (
+                <p className={styles.targetKcal}>
+                  <strong>
+                    <CountUp value={totals.kcal} format={fmt.int} />
+                  </strong>{' '}
+                  / {fmt.kcal(target.kcal)}
+                </p>
+              )}
               <p className={styles.muted}>heute gegessen</p>
               <CalorieStatusBadge date={t} eatenKcal={totals.kcal} targetKcal={target.kcal} />
             </div>

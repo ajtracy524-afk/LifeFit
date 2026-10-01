@@ -35,8 +35,8 @@ describe('personal references – from the person, not one value for all', () =>
     const profile = { sex: 'male' as const, age: 30, heightCm: 180, activity: 'moderate' as const };
     const light = calculateTargets(profile, 'muscle_gain', 65, 3);
     const heavy = calculateTargets(profile, 'muscle_gain', 95, 3);
-    expect(references({ ...target(light.kcal), ...light }, undefined).protein!.amount).toBe(130);
-    expect(references({ ...target(heavy.kcal), ...heavy }, undefined).protein!.amount).toBe(190);
+    expect(references({ ...target(light.kcal), ...light }, undefined).protein!.amount).toBe(117); // 65 kg × 1.8 g/kg (E11)
+    expect(references({ ...target(heavy.kcal), ...heavy }, undefined).protein!.amount).toBe(171); // 95 kg × 1.8 g/kg
   });
 
   it('vitamins and minerals use the general labelling reference (NRV) and say so; sodium has the WHO upper value; water only with a goal', () => {

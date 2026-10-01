@@ -2898,8 +2898,8 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
     await click('Weiblich');
     await click('Weiter');
     expect(title()).toBe('Gesundheit');
-    expect(store.getState().onboarding!.progress).toMatchObject({ step: 'pregnancy', active: true });
-    expect(JSON.parse(localStorage.getItem(KEY)!).onboarding.progress.step).toBe('pregnancy'); // saved after each step
+    expect(store.getState().onboarding!.progress).toMatchObject({ step: 'health', active: true });
+    expect(JSON.parse(localStorage.getItem(KEY)!).onboarding.progress.step).toBe('health'); // saved after each step
 
     // App closed and opened again → same step.
     store = await restart();
@@ -2910,7 +2910,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
     await click('Weiter');
     await click('Überspringen');
     expect(title()).toBe('Dein Ziel');
-    expect(store.getState().onboarding!.progress.skipped).toEqual(['pregnancy']);
+    expect(store.getState().onboarding!.progress.skipped).toEqual(['health']);
     await click('Weiter');
     expect(title()).toBe('Dein Rahmen');
     await click('Weiter');
@@ -3030,7 +3030,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       expect(button('Körperfett ergänzen (empfohlen)')).toBeTruthy();
       // "Überspringen" here skips the body fat estimate as well.
       await click('Überspringen');
-      expect(title()).toBe('Dein Ziel');
+      expect(title()).toBe('Gesundheit'); // the health check (for everyone) comes before the goal
       expect(store.getState().onboarding!.progress.skipped).toEqual(['waist', 'bodyFat']);
     });
 
@@ -3061,6 +3061,136 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       await act(async () => (stages[1] as HTMLButtonElement).click()); // 11–14 %
       expect(store.getState().onboarding!.body.bodyFat).toMatchObject({ value: { method: 'visual', percent: 13, range: [8, 18] }, source: 'estimated' });
       expect(container.querySelector('[aria-label="Körperfett"]')!.textContent).toContain('ca. 13 % (8–18 %)');
+    });
+  });
+
+  describe('area A (Prompt 3): health check and goal', () => {
+    const AT = '2026-10-01T07:00:00.000Z';
+    const f = <T,>(value: T, source = 'user') => ({ value, source, updatedAt: AT });
+    /** A stored onboarding at a step with the answers of section A. */
+    const seed = (step: string, body: Record<string, unknown>, extra: Record<string, unknown> = {}, core: Record<string, unknown> = {}) => {
+      localStorage.setItem(
+        KEY,
+        JSON.stringify({
+          schemaVersion: 3,
+          ...core,
+          onboarding: { version: 1, mode: 'full', progress: { step, active: true, completed: {}, skipped: [] }, body, health: {}, goal: {}, food: {}, training: {}, ...extra },
+        }),
+      );
+    };
+    const man = { weightKg: f(90), heightCm: f(180), birthYear: f(1990), sex: f('male'), trainingExperience: f('3to5'), activity: f('moderate') };
+
+    it('health: the pregnancy question only for "weiblich" / "keine Angabe", the number-free option for everyone, a note on medical advice', async () => {
+      seed('health', { ...man, sex: f('female') });
+      let store = await startApp();
+      expect(title()).toBe('Gesundheit');
+      expect(text()).toContain('Bist du schwanger oder stillst du?');
+      await click('Ja, ich stille');
+      expect(store.getState().onboarding!.health.pregnancy).toMatchObject({ value: 'breastfeeding', source: 'user' });
+      expect(text()).toContain('Hebamme');
+      expect(text()).toContain('LifeFit ersetzt keinen ärztlichen Rat.');
+      await click('Ohne Kalorienzahlen');
+      expect(store.getState().onboarding!.health.numberFree).toMatchObject({ value: true });
+
+      await act(async () => root?.unmount());
+      seed('health', man);
+      store = await startApp();
+      expect(text()).not.toContain('Bist du schwanger oder stillst du?');
+      expect(text()).toContain('Möchtest du lieber ohne Kalorienzahlen arbeiten?');
+    });
+
+    it('under 18: no question – the rule applies automatically and only "Halten & Gesundheit" is offered', async () => {
+      seed('health', { ...man, sex: f('female'), birthYear: f(2010) });
+      await startApp();
+      expect(text()).not.toContain('Bist du schwanger oder stillst du?');
+      expect(text()).toContain('Unter 18 plant LifeFit automatisch kein Kaloriendefizit');
+      await click('Weiter');
+      expect(title()).toBe('Dein Ziel');
+      expect(container.querySelector('[aria-label="Empfehlung"]')!.textContent).toMatch(/Dein Ziel\s*Halten & Gesundheit/);
+      expect(container.querySelector('[aria-label="Ziel wählen"]')).toBeNull();
+      expect(text()).not.toContain('Tempo');
+    });
+
+    it('goal: recommendation big with confidence and "Warum?", alternatives selectable without lecturing, pace, forecast as a period, the daily target', async () => {
+      // 16 % (Navy) with 3–5 years → mid band, trained → "Fett verlieren"
+      seed('goal', { ...man, bodyFat: f({ method: 'navy', percent: 16, range: [13, 20] }, 'estimated') });
+      const store = await startApp();
+      const card = container.querySelector('[aria-label="Empfehlung"]')!.textContent!;
+      expect(card).toMatch(/Unsere Empfehlung\s*Fett verlieren/);
+      expect(card).toContain('Sicherheit: hoch');
+      expect(card).toContain('Körperfett ca. 16 %');
+      const choices = [...container.querySelectorAll('[aria-label="Ziel wählen"] button')].map((b) => b.textContent);
+      expect(choices[0]).toMatch(/^Fett verlieren \(empfohlen\)/);
+      expect(choices).toHaveLength(4);
+      // jsdom has no <dialog> modal support – the Sheet only needs open/close.
+      HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+        this.setAttribute('open', '');
+      };
+      HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+        this.removeAttribute('open');
+      };
+      await click('Warum?');
+      expect(document.body.textContent).toContain('Barakat et al. 2020');
+
+      expect(text()).toContain('0,75 % pro Woche'); // normal pace
+      await click('Sanft');
+      expect(store.getState().onboarding!.goal.pace).toMatchObject({ value: 'gentle' });
+      expect(text()).toContain('0,5 % pro Woche');
+      await type('Zielgewicht (optional)', '85');
+      expect(text()).toMatch(/Prognose für 85 kg: ca\. .+ bis .+ – ein Zeitraum/);
+      const target = container.querySelector('[aria-label="Tagesziel"]')!.textContent!;
+      expect(target).toMatch(/\d\.\d{3} kcal/);
+      expect(target).toMatch(/Protein \d+ g · Kohlenhydrate \d+ g · Fett \d+ g/);
+
+      await click('Muskelaufbau');
+      expect(store.getState().onboarding!.goal.type).toMatchObject({ value: 'muscle_gain', source: 'user' });
+      expect(text()).toContain('Passt – ein kleiner Überschuss reicht'); // respected, briefly placed
+    });
+
+    it('very lean or BMI < 18.5: "Fett verlieren" is not offered, with a friendly reason', async () => {
+      seed('goal', { ...man, weightKg: f(58), bodyFat: f({ method: 'measured', percent: 7, range: [4, 10] }) });
+      await startApp();
+      const choices = [...container.querySelectorAll('[aria-label="Ziel wählen"] button')].map((b) => b.textContent);
+      expect(choices.some((c) => c!.startsWith('Fett verlieren'))).toBe(false);
+      expect(text()).toMatch(/Nicht angeboten: Fett verlieren\./);
+    });
+
+    it('an existing user takes the goal over as a new target version – only on confirmation, the old version stays', async () => {
+      localStorage.setItem(KEY, JSON.stringify(completeState()));
+      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      const store = await startApp();
+      const before = JSON.stringify(store.getState().targets);
+      await click('Körper & Ziel');
+      // through weight … health with the primary footer button (on the analysis it reads 'Körperfett ergänzen')
+      for (let i = 0; i < 15 && title() !== 'Dein Ziel'; i++) await act(async () => (container.querySelector('footer button') as HTMLButtonElement).click());
+      expect(title()).toBe('Dein Ziel');
+      expect(store.getState().targets).toHaveLength(1); // nothing changed by just looking
+      await click('Als neues Tagesziel übernehmen');
+      const after = store.getState().targets;
+      expect(after).toHaveLength(2);
+      expect(JSON.stringify([after.find((t) => t.id === 't1')])).toBe(before);
+      expect(text()).toContain('Neues Tagesziel gespeichert'); // undo toast
+    });
+
+    it('number-free mode: Heute shows meals and rings instead of kcal', async () => {
+      localStorage.setItem(KEY, JSON.stringify({ ...completeState(), onboarding: { version: 1, progress: { completed: {}, skipped: [], finishedAt: AT }, body: {}, health: { numberFree: f(true) }, goal: {}, food: {}, training: {} } }));
+      window.history.replaceState(null, '', '/#/today');
+      await startApp();
+      expect(text()).toContain('Mahlzeiten');
+      expect(text()).toMatch(/ca\. 0 von 3 Mahlzeiten/);
+      expect(text()).not.toMatch(/kcal übrig/);
+      expect(container.querySelector('[aria-label^="Kalorien:"]')!.textContent).toContain('0 / 3');
+    });
+
+    it('pregnancy: "Gilt das noch?" after about 3 months – one quiet card on Heute', async () => {
+      const old = '2026-06-01T08:00:00.000Z';
+      localStorage.setItem(KEY, JSON.stringify({ ...completeState(), onboarding: { version: 1, progress: { completed: {}, skipped: [], finishedAt: AT }, body: {}, health: { pregnancy: { value: 'pregnant', source: 'user', updatedAt: old } }, goal: {}, food: {}, training: {} } }));
+      window.history.replaceState(null, '', '/#/today');
+      const store = await startApp();
+      expect(text()).toContain('Du hattest „Schwangerschaft“ angegeben. Gilt das noch?');
+      await click('Nein, nicht mehr');
+      expect(store.getState().onboarding!.health.pregnancy!.value).toBe('no');
+      expect(text()).not.toContain('Gilt das noch?');
     });
   });
 });

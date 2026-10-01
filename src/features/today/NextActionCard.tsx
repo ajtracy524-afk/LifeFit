@@ -8,6 +8,7 @@ import { mealTimeState, type NextAction } from '../../domain/today';
 import { estimateMinutes } from '../../domain/training';
 import type { WorkoutTemplate } from '../../domain/types';
 import { fmt, SLOT_LABEL } from '../../lib/format';
+import { useEnergyText } from '../nutrition/useEnergyText';
 import { navigate } from '../../lib/router';
 import { runMealEaten } from '../nutrition/logFeedback';
 import { useLateMount } from '../../lib/motion';
@@ -30,6 +31,7 @@ interface Props {
 /** "Was muss ich heute tun?" – one clear action, derived from the plan (domain/today.ts). */
 export function NextActionCard({ action, onPlanWeek, onStart, onOpenMeal, onReplaceMeal }: Props) {
   const state = useAppState();
+  const energy = useEnergyText();
   const price = useMemo(() => priceLookup(state.products), [state.products]);
   switch (action.kind) {
     case 'resume_workout':
@@ -64,7 +66,7 @@ export function NextActionCard({ action, onPlanWeek, onStart, onOpenMeal, onRepl
               {slot}: {recipe?.title ?? 'Mahlzeit'}
             </button>
           }
-          text={[fmt.kcal(macros.kcal), `${fmt.int(macros.protein)} g P · ${fmt.int(macros.carbs)} g KH · ${fmt.int(macros.fat)} g F`, cost && formatCostRange(cost)].filter(Boolean).join(' · ')}
+          text={[energy.kcal(macros.kcal), `${fmt.int(macros.protein)} g P · ${fmt.int(macros.carbs)} g KH · ${fmt.int(macros.fat)} g F`, cost && formatCostRange(cost)].filter(Boolean).join(' · ')}
         >
           <Button icon="check" onClick={() => runMealEaten(action.meal, `${slot} erfasst`, () => markEaten(action.meal.id))}>
             Gegessen

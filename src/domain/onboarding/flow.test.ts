@@ -12,6 +12,7 @@ import {
   skipSection,
   skipStep,
   stepsFor,
+  asksPregnancy,
   type FlowState,
 } from './flow';
 import { emptyOnboarding } from './migrate';
@@ -22,27 +23,29 @@ const at = (step: OnboardingStepId, mode: FlowState['mode'] = 'full', extra: Par
 
 describe('onboarding flow – paths', () => {
   it('Schnellstart asks only weight, height, birth year, sex, goal and training days (frame) – one topic per screen', () => {
-    expect(ids(stepsFor('quick', { sex: 'male' }))).toEqual(['welcome', 'weight', 'height', 'birthYear', 'sex', 'goal', 'frame', 'summary']);
+    expect(ids(stepsFor('quick', { sex: 'male' }))).toEqual(['welcome', 'weight', 'height', 'birthYear', 'sex', 'health', 'goal', 'frame', 'summary']);
   });
 
   it('the detailed path walks through A, B and C', () => {
     expect(ids(stepsFor('full', { sex: 'male' }))).toEqual([
-      'welcome', 'weight', 'height', 'birthYear', 'sex', 'experience', 'activity', 'waist', 'analysis', 'bodyFat', 'goal',
+      'welcome', 'weight', 'height', 'birthYear', 'sex', 'experience', 'activity', 'waist', 'analysis', 'bodyFat', 'health', 'goal',
       'diet', 'allergies', 'preferences', 'routine', 'week', 'pantry',
       'level', 'frame', 'cardio', 'focus', 'plan', 'summary',
     ]);
   });
 
-  it('the pregnancy question appears only for "weiblich" or "keine Angabe" (and while unanswered) – in both modes', () => {
+  it('the health check is for everyone (number-free mode); the pregnancy question inside only for "weiblich" or "keine Angabe", never under 18', () => {
     for (const mode of ['quick', 'full'] as const) {
-      expect(ids(stepsFor(mode, { sex: 'female' }))).toContain('pregnancy');
-      expect(ids(stepsFor(mode, { sex: 'unspecified' }))).toContain('pregnancy');
-      expect(ids(stepsFor(mode, {}))).toContain('pregnancy');
-      expect(ids(stepsFor(mode, { sex: 'male' }))).not.toContain('pregnancy');
+      for (const sex of ['male', 'female', 'unspecified', undefined] as const) expect(ids(stepsFor(mode, sex ? { sex } : {}))).toContain('health');
     }
+    expect(asksPregnancy('female', 30)).toBe(true);
+    expect(asksPregnancy('unspecified', 30)).toBe(true);
+    expect(asksPregnancy(undefined, undefined)).toBe(true); // while unanswered
+    expect(asksPregnancy('male', 30)).toBe(false);
+    expect(asksPregnancy('female', 17)).toBe(false); // the rule applies without asking
     // It sits right before the goal (the safety rules apply to the goal).
-    const full = ids(stepsFor('full', { sex: 'female' }));
-    expect(full.indexOf('pregnancy')).toBe(full.indexOf('goal') - 1);
+    const full = ids(stepsFor('full', {}));
+    expect(full.indexOf('health')).toBe(full.indexOf('goal') - 1);
   });
 
   it('next walks the list and reports done after the summary', () => {
@@ -54,7 +57,7 @@ describe('onboarding flow – paths', () => {
       s = r.state;
       seen.push(s.step);
     }
-    expect(seen).toEqual(['welcome', 'weight', 'height', 'birthYear', 'sex', 'pregnancy', 'goal', 'frame', 'summary']);
+    expect(seen).toEqual(['welcome', 'weight', 'height', 'birthYear', 'sex', 'health', 'goal', 'frame', 'summary']);
   });
 
   it('back goes one visible step back and stops at the welcome screen', () => {
@@ -68,10 +71,10 @@ describe('onboarding flow – paths', () => {
 });
 
 describe('onboarding flow – conditional steps change while answering', () => {
-  it('a step that became hidden (sex changed to "männlich" on the pregnancy step) continues correctly', () => {
-    const s = at('pregnancy', 'full');
-    expect(next(s, { sex: 'male' }).state.step).toBe('goal');
-    expect(back(s, { sex: 'male' }).step).toBe('bodyFat'); // the visible step before its place
+  it('a current step that is not visible (e.g. the mode changed) continues from its place in the catalog', () => {
+    const s = at('diet', 'quick'); // B is not part of the Schnellstart
+    expect(next(s, {}).state.step).toBe('frame');
+    expect(back(s, {}).step).toBe('goal'); // the visible step before its place
   });
 });
 
@@ -88,7 +91,7 @@ describe('onboarding flow – skipping and jumping', () => {
   it('Bereich überspringen marks the rest of the section and starts the next section', () => {
     const r = skipSection(at('activity'), { sex: 'female' });
     expect(r.state.step).toBe('diet');
-    expect(r.state.skipped).toEqual(['activity', 'waist', 'analysis', 'bodyFat', 'pregnancy', 'goal']);
+    expect(r.state.skipped).toEqual(['activity', 'waist', 'analysis', 'bodyFat', 'health', 'goal']);
     // In the Schnellstart B has no steps – skipping A goes straight to training.
     expect(skipSection(at('weight', 'quick'), { sex: 'male' }).state.step).toBe('frame');
     // On the last section the summary follows.
@@ -97,7 +100,7 @@ describe('onboarding flow – skipping and jumping', () => {
 
   it('jumpTo goes to a visible step (e.g. "Ändern" in the summary) and ignores hidden ones', () => {
     expect(jumpTo(at('summary'), 'diet', {}).step).toBe('diet');
-    expect(jumpTo(at('summary'), 'pregnancy', { sex: 'male' }).step).toBe('summary');
+    expect(jumpTo(at('summary', 'quick'), 'experience', {}).step).toBe('summary'); // hidden in the Schnellstart
     expect(jumpTo(at('summary', 'quick'), 'diet', {}).step).toBe('summary'); // not part of the Schnellstart
   });
 });
@@ -106,13 +109,13 @@ describe('onboarding flow – progress per section', () => {
   it('steps before the current one count as done; Schnellstart has no B steps', () => {
     const p = sectionProgress(at('diet'), { sex: 'male' });
     expect(p.map((x) => [x.section, x.done, x.total, x.current])).toEqual([
-      ['A', 10, 10, false],
+      ['A', 11, 11, false],
       ['B', 0, 6, true],
       ['C', 0, 5, false],
     ]);
     const quick = sectionProgress(at('frame', 'quick'), { sex: 'male' });
     expect(quick.map((x) => [x.section, x.done, x.total])).toEqual([
-      ['A', 5, 5],
+      ['A', 6, 6],
       ['B', 0, 0],
       ['C', 0, 1],
     ]);

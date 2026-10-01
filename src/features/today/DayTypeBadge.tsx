@@ -2,6 +2,8 @@ import type { PlannedWorkout } from '../../domain/training';
 import { estimateMinutes } from '../../domain/training';
 import type { Workout } from '../../domain/types';
 import { href } from '../../lib/router';
+import { isNumberFree } from '../../domain/numberFree';
+import { useAppState } from '../../store/store';
 import { Icon } from '../../components/ui/Icon';
 import styles from './today.module.css';
 
@@ -21,7 +23,9 @@ interface Props {
  * a rest day is plain information, nothing to tap.
  */
 export function DayTypeBadge({ session, completed, running, targetDelta, load }: Props) {
-  const delta = targetDelta ? `Tagesziel ${targetDelta > 0 ? '+' : '−'}${Math.abs(targetDelta)} kcal` : undefined;
+  const numberFree = isNumberFree(useAppState());
+  // Number-free mode (E14): the direction in words instead of kcal.
+  const delta = targetDelta ? (numberFree ? `Tagesziel heute etwas ${targetDelta > 0 ? 'höher' : 'niedriger'}` : `Tagesziel ${targetDelta > 0 ? '+' : '−'}${Math.abs(targetDelta)} kcal`) : undefined;
   if (running || completed || session) {
     const target = running ? href('session') : completed ? href('workout', { id: completed.id }) : href('training');
     const title = running?.name ?? completed?.name ?? session?.template.name ?? 'Training';

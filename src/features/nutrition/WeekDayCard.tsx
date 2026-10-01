@@ -10,6 +10,7 @@ import { closedMeals, type PlanDay } from '../../domain/week';
 import { applyWithUndo } from '../../lib/undo';
 import { useAppState } from '../../store/store';
 import { Segmented } from '../../components/ui/Controls';
+import { isNumberFree } from '../../domain/numberFree';
 import { fmt, SLOT_LABEL, weekdayShort } from '../../lib/format';
 import { href } from '../../lib/router';
 import { Card } from '../../components/ui/Card';
@@ -42,6 +43,7 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
   const context = day.context;
   const label = `${weekdayShort(weekdayIndex(day.date))} ${isToday ? 'Heute' : shortDate(day.date)}`;
   const state = useAppState();
+  const numberFree = isNumberFree(state);
   const closed = closedMeals(state, day.date);
   // Where dinner happens is a planning decision – made here (and in the check-in), shown on Heute.
   const dinnerChoice = !past && slots.some((s) => EATING_OUT_SLOTS.includes(s));
@@ -87,7 +89,8 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
 
       {o.kcalRef !== undefined && (o.meals > 0 || o.kcal > 0) && (
         <div className={styles.weekDayBars}>
-          <DayBar label="kcal" value={o.kcal} max={o.kcalRef} tone={o.kcalTone} format={(v) => fmt.int(v)} />
+          {/* Number-free mode (E14): the bar stays, the kcal numbers go. */}
+          <DayBar label={numberFree ? 'Essen' : 'kcal'} value={o.kcal} max={o.kcalRef} tone={o.kcalTone} format={(v) => (numberFree ? '' : fmt.int(v))} />
           <DayBar label="Protein" value={o.protein} max={o.proteinRef ?? 0} tone={o.proteinTone} format={(v) => `${fmt.int(v)} g`} />
           {o.carbsRef !== undefined && o.fatRef !== undefined && (
             <p className={styles.weekMacros}>

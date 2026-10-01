@@ -124,7 +124,9 @@ describe('defaults for an app used without finishing the onboarding', () => {
     p.body.bodyFat = { value: { method: 'navy', percent: 18, range: [15, 22] }, source: 'estimated', updatedAt: AT };
     const setup = defaultCoreSetup(p, '2026-10-01', AT);
     expect(setup.bodyFat).toEqual({ value: 18, method: 'estimate' });
-    const { kcal } = calculateTargets(setup.profile, 'maintain', 80, 3, { bodyFat: { method: 'navy', percent: 18, range: [15, 22] } });
+    // No goal chosen → the recommendation (18 % with "keine Angabe" is in the low band → muscle gain).
+    expect(setup.goal.type).toBe('muscle_gain');
+    const { kcal } = calculateTargets(setup.profile, setup.goal.type, 80, 3, { bodyFat: { method: 'navy', percent: 18, range: [15, 22] }, experience: 'beginner', pregnant: false });
     expect(setup.target.kcal).toBe(kcal);
     expect(setup.target.kcal).not.toBe(defaultCoreSetup({ ...p, body: { weightKg: p.body.weightKg } }, '2026-10-01', AT).target.kcal);
   });

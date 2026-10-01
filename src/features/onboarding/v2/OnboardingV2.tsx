@@ -175,11 +175,6 @@ export function OnboardingV2() {
 
 /** Which stored answers belong to a step – shown read-only until the step gets its content (Prompts 2–8). */
 const STEP_FIELDS: Partial<Record<OnboardingStepId, Array<[keyof OnboardingProfile, string, string]>>> = {
-  pregnancy: [['health', 'pregnancy', 'Schwangerschaft/Stillzeit']],
-  goal: [
-    ['goal', 'type', 'Ziel'],
-    ['goal', 'targetWeightKg', 'Zielgewicht (kg)'],
-  ],
   diet: [['food', 'diet', 'Ernährungsform']],
   allergies: [
     ['food', 'allergens', 'Allergene'],

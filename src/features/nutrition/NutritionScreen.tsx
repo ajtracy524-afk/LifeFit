@@ -40,6 +40,7 @@ import { DishEditorSheet } from './Dishes';
 import { draftFromEntries, type DishDraft } from '../../domain/dishes';
 import { newId } from '../../lib/id';
 import { CalorieStatusBadge } from './CalorieStatusBadge';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 type View = 'day' | 'week';
@@ -98,6 +99,7 @@ interface DayViewProps {
 function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
   const state = useAppState();
   const target = dayTargetFor(state, date);
+  const energy = useEnergyText(date);
   const summary = useMemo(() => daySummary(state.logEntries, date), [state.logEntries, date]);
   const totals = summary.day.macros;
   // The day total bumps on every real increase (e.g. an entry just logged).
@@ -130,17 +132,24 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
 
       {target && (
         <Card>
-          <div className={styles.dayTotals}>
-            <div>
-              <span key={kcalBump} className={kcalBump ? `${styles.bigNumber} ${styles.numberBump}` : styles.bigNumber}>
-                <CountUp value={totals.kcal} format={fmt.int} />
-              </span>
-              <span className={styles.muted}> / {fmt.kcal(target.kcal)}</span>
+          {/* Number-free mode (E14): the day in meals instead of kcal. */}
+          {energy.numberFree ? (
+            <div className={styles.dayTotals}>
+              <span className={styles.bigNumber}>{energy.day(totals.kcal).text}</span>
             </div>
-            <span className={styles.remaining}>
-              {totals.kcal <= target.kcal ? `${fmt.int(target.kcal - totals.kcal)} übrig` : `+${fmt.int(totals.kcal - target.kcal)} kcal`}
-            </span>
-          </div>
+          ) : (
+            <div className={styles.dayTotals}>
+              <div>
+                <span key={kcalBump} className={kcalBump ? `${styles.bigNumber} ${styles.numberBump}` : styles.bigNumber}>
+                  <CountUp value={totals.kcal} format={fmt.int} />
+                </span>
+                <span className={styles.muted}> / {fmt.kcal(target.kcal)}</span>
+              </div>
+              <span className={styles.remaining}>
+                {totals.kcal <= target.kcal ? `${fmt.int(target.kcal - totals.kcal)} übrig` : `+${fmt.int(totals.kcal - target.kcal)} kcal`}
+              </span>
+            </div>
+          )}
           {!isFuture && <CalorieStatusBadge date={date} eatenKcal={totals.kcal} targetKcal={target.kcal} />}
           <div className={styles.macroStack}>
             <MacroStrip protein={totals.protein} carbs={totals.carbs} fat={totals.fat} target={target} />
@@ -185,7 +194,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
                 <h2>{SLOT_LABEL[slot]}</h2>
                 <span className={styles.slotTime}>{state.plannerSettings.mealTimes[slot]}</span>
               </span>
-              {eaten.entries > 0 && <span>{fmt.kcal(eaten.macros.kcal)}</span>}
+              {eaten.entries > 0 && <span>{energy.kcal(eaten.macros.kcal)}</span>}
             </header>
             {eaten.entries > 0 && (
               <p className={styles.slotMacros} aria-label={`${SLOT_LABEL[slot]}: Makros`}>
@@ -275,6 +284,7 @@ const UNIT_LABEL = { g: 'g', ml: 'ml', portion: 'Portion', piece: 'Stück' } as 
 /** One logged food. `replaces`: the planned dish it was eaten instead of (shown like on Heute). */
 function LogRow({ entry, replaces }: { entry: LogEntry; replaces?: string }) {
   const late = useLateMount();
+  const energy = useEnergyText(entry.date);
   const unknown = new Set(entry.unknown ?? []);
   const amount = entry.amount !== undefined && entry.unit ? `${fmt.dec(entry.amount)} ${UNIT_LABEL[entry.unit]}` : entry.grams ? fmt.g(entry.grams) : undefined;
   return (
@@ -290,7 +300,7 @@ function LogRow({ entry, replaces }: { entry: LogEntry; replaces?: string }) {
         <span className={styles.mealMeta}>
           {[
             amount,
-            fmt.kcal(entry.macros.kcal),
+            energy.kcal(entry.macros.kcal),
             unknown.has('protein') ? 'Protein –' : `${fmt.int(entry.macros.protein)} g P`,
             unknown.has('carbs') ? 'KH –' : `${fmt.int(entry.macros.carbs)} g KH`,
             unknown.has('fat') ? 'Fett –' : `${fmt.int(entry.macros.fat)} g F`,

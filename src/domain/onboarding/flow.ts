@@ -58,14 +58,8 @@ export const STEPS: StepDef[] = [
   { id: 'waist', section: 'A', quick: false, title: 'Taillenumfang', why: 'Der Taillenumfang sagt mehr über Bauchfett aus als das Gewicht allein.' },
   { id: 'analysis', section: 'A', quick: false, title: 'Deine Werte', why: 'So siehst du, was die Zahlen bedeuten – und was nicht.' },
   { id: 'bodyFat', section: 'A', quick: false, title: 'Körperfett', why: 'Mit deinem Körperfettanteil wird die Zielempfehlung genauer.' },
-  {
-    id: 'pregnancy',
-    section: 'A',
-    quick: true,
-    title: 'Gesundheit',
-    why: 'In Schwangerschaft und Stillzeit gelten andere Empfehlungen.',
-    when: (a) => a.sex !== 'male',
-  },
+  // Health check before the goal: number-free mode for everyone, the pregnancy question inside only where it applies (asksPregnancy).
+  { id: 'health', section: 'A', quick: true, title: 'Gesundheit', why: 'Damit die Empfehlung zu deiner Situation passt – alles freiwillig.' },
   { id: 'goal', section: 'A', quick: true, title: 'Dein Ziel', why: 'Dein Ziel bestimmt Kalorien, Makros und den Trainingsfokus.' },
   // B – Essen & Einkauf
   { id: 'diet', section: 'B', quick: false, title: 'Ernährungsform', why: 'Wir schlagen nur vor, was du auch isst.' },
@@ -86,7 +80,15 @@ export const STEPS: StepDef[] = [
 const BY_ID = new Map(STEPS.map((s) => [s.id, s]));
 
 /** Step ids of earlier versions (Prompt 1 had one "body" screen) → where they continue now. */
-const RENAMED: Record<string, OnboardingStepId> = { body: 'weight' };
+const RENAMED: Record<string, OnboardingStepId> = { body: 'weight', pregnancy: 'health' };
+
+/**
+ * The pregnancy question: only for "weiblich" or "keine Angabe" (also while the sex is open), never under 18 – there the
+ * safety rule applies without asking (goal.recommendGoal).
+ */
+export function asksPregnancy(sex: FlowAnswers['sex'], age: number | undefined): boolean {
+  return sex !== 'male' && !(age !== undefined && age < 18);
+}
 
 export function stepDef(id: OnboardingStepId): StepDef {
   return BY_ID.get(id)!;

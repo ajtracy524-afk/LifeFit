@@ -17,6 +17,7 @@ import { Card, CardHeader } from '../../components/ui/Card';
 import { Icon } from '../../components/ui/Icon';
 import { SwapText, motionStyles } from '../../components/ui/SwapText';
 import { useJustChanged, useLateMount } from '../../lib/motion';
+import { useEnergyText } from '../nutrition/useEnergyText';
 import styles from './today.module.css';
 
 /** The meal's mark: its emoji, or a check that snaps in the moment it is eaten (or set in as a replacement). */
@@ -48,6 +49,7 @@ interface Props {
  */
 export function DayPlanCard({ date, weekStartDate, startInNextAction, running, onOpenMeal, onStart, onMoveTraining, onLogFood }: Props) {
   const state = useAppState();
+  const energy = useEnergyText(date);
   const [why, setWhy] = useState(false);
   const items = dayTimeline(state, date);
   // Skipped meals are shown but never counted – "x / y gegessen" is about what is (still) on the plan.
@@ -141,7 +143,7 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
                       <SwapText text={item.entries.map((e) => e.name).join(', ')} />
                     </strong>
                     <span className={styles.muted}>
-                      {[fmt.kcal(kcal), `${fmt.g(protein)} Protein`, realCost(item.entries)].filter(Boolean).join(' · ')} · statt {recipe?.title ?? 'Mahlzeit'}
+                      {[energy.kcal(kcal), `${fmt.g(protein)} Protein`, realCost(item.entries)].filter(Boolean).join(' · ')} · statt {recipe?.title ?? 'Mahlzeit'}
                     </span>
                   </span>
                 </button>
@@ -193,7 +195,7 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
                     <SwapText text={recipe?.title ?? 'Mahlzeit'} />
                   </strong>
                   <span className={styles.muted}>
-                    {[fmt.kcal(macros.kcal), `${fmt.g(macros.protein)} Protein`, !done && `${recipe?.prepMin ?? 0} min`, recipe && costRange(recipe, item.meal.servings, price)].filter(Boolean).join(' · ')}
+                    {[energy.kcal(macros.kcal), `${fmt.g(macros.protein)} Protein`, !done && `${recipe?.prepMin ?? 0} min`, recipe && costRange(recipe, item.meal.servings, price)].filter(Boolean).join(' · ')}
                   </span>
                 </span>
               </button>
@@ -209,7 +211,7 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
       )}
 
       <div className={styles.mealsFooter}>
-        {extrasKcal > 0 && <span className={styles.muted}>+ {fmt.kcal(extrasKcal)} zusätzlich erfasst</span>}
+        {extrasKcal > 0 && <span className={styles.muted}>{energy.numberFree ? 'Zusätzlich erfasst' : `+ ${fmt.kcal(extrasKcal)} zusätzlich erfasst`}</span>}
         <Button variant="ghost" size="sm" icon="plus" onClick={onLogFood}>
           Essen erfassen
         </Button>

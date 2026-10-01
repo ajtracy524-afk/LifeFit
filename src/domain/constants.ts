@@ -193,3 +193,91 @@ export const TRAINING_SURCHARGE = { strengthMet: 3.5, defaultMinutes: 60 } as co
 
 /** Energy values are rounded to this (a start value, not a measurement). */
 export const ENERGY_ROUND_KCAL = 10;
+
+// ---------- Goal recommendation ----------
+
+/**
+ * Body fat bands for the goal recommendation (percent). Orientation from the
+ * ACE body fat categories (American Council on Exercise: "obese" from about
+ * 25 % for men and 32 % for women; "fitness" around 14–17 % / 21–24 %). The
+ * prompt's starting points (25 / 33 and 15 / 23) sit within these ranges and
+ * are used as such. "Very low" (no fat loss offered): men < 8 %, women < 15 %
+ * – near essential fat (ACE: 2–5 % / 10–13 %), cf. Helms, Aragon & Fitschen,
+ * J Int Soc Sports Nutr 2014;11:20 on the risks of very lean phases.
+ */
+export const GOAL_BODY_FAT = {
+  male: { high: 25, low: 15, veryLow: 8 },
+  female: { high: 33, low: 23, veryLow: 15 },
+} as const;
+
+/**
+ * Recomposition (losing fat and building muscle at once) is realistic mainly
+ * for beginners, people returning after a break and those with more body fat
+ * (Barakat et al., Strength Cond J 2020;42(5):7–21, "Body Recomposition: Can
+ * Trained Individuals Build Muscle and Lose Fat at the Same Time?").
+ */
+export const RECOMP_NOTE = 'Barakat et al. 2020';
+
+/** Without body fat: BMI bands as a rough substitute (WHO classes, see BMI_CLASSES). */
+export const GOAL_BMI = { underweight: 18.5, high: 30, elevated: 25 } as const;
+
+/** When the possible deficit (target energy above the floor) is below this share of the total, "Halten" is recommended (E2). */
+export const MIN_DEFICIT_SHARE = 0.1;
+
+// ---------- Pace & calories ----------
+
+/**
+ * Approximation: about 7'700 kcal per kg of body weight change (the classic
+ * 3'500 kcal per pound; Wishnofsky 1958). Real changes are not linear (Hall et
+ * al., Lancet 2011;378:826–837) – that is why the app shows a period, not a
+ * date, and adapts the target to the real weight trend.
+ */
+export const KCAL_PER_KG = 7700;
+
+/**
+ * Weekly change in % of body weight per pace.
+ *   fat loss: 0.5 / 0.75 / 1 % – Helms, Aragon & Fitschen 2014 (0.5–1 %/week preserves lean mass)
+ *   muscle gain: beginners 0.25–0.5 %, trained 0.1–0.25 %/week – Iraki et al., Sports 2019;7(7):154
+ *   recomposition: maintenance to −10 % of the total energy (prompt; Barakat et al. 2020)
+ */
+export const PACE = {
+  fat_loss: { gentle: -0.5, normal: -0.75, brisk: -1 },
+  muscle_gain: {
+    beginner: { gentle: 0.25, normal: 0.375, brisk: 0.5 },
+    trained: { gentle: 0.1, normal: 0.175, brisk: 0.25 },
+  },
+  /** Share of the total energy (not of body weight). */
+  recomp: { gentle: 0, normal: -0.05, brisk: -0.1 },
+} as const;
+
+/** Safety: the deficit never exceeds this share of the total energy (prompt; in line with Helms et al. 2014). */
+export const MAX_DEFICIT_SHARE = 0.25;
+
+/** Calorie floor (E11): max(BMR × 1.1; 1'200 kcal women / 1'500 kcal men and "keine Angabe"). */
+export const CALORIE_FLOOR = { bmrFactor: 1.1, female: 1200, male: 1500, unspecified: 1500 } as const;
+
+/** The forecast shows a period: the real pace is assumed between 75 % and 125 % of the planned one. */
+export const FORECAST_PACE_SPREAD = [0.75, 1.25] as const;
+
+// ---------- Macros ----------
+
+/**
+ * Protein in g per kg of (reference) body weight, within 1.6–2.2 g/kg:
+ * 1.6 g/kg covers the benefit for muscle gain on average (Morton et al., Br J
+ * Sports Med 2018;52:376–384, upper confidence limit ≈ 2.2 g/kg); in a deficit
+ * the upper end protects lean mass (Helms et al. 2014; ISSN position stand,
+ * Jäger et al., J Int Soc Sports Nutr 2017;14:20). Hard cap per day for very
+ * heavy people.
+ */
+export const PROTEIN_PER_KG = { fat_loss: 2.2, recomp: 2.0, muscle_gain: 1.8, maintain: 1.6, maxPerDay: 220 } as const;
+
+/**
+ * With high body fat, protein is based on a reference weight instead of the
+ * current one: the target weight if given, else the weight at a moderate body
+ * fat (fat-free mass / (1 − reference)). Reference = the middle of the "mid"
+ * band (men 20 %, women 28 %).
+ */
+export const PROTEIN_REFERENCE_BODY_FAT = { male: 20, female: 28, unspecified: 24 } as const;
+
+/** Fat at least 0.8 g/kg and at least 20 % of the energy (ISSN 2017; Helms et al. 2014: 20–30 %). */
+export const FAT_MIN = { perKg: 0.8, share: 0.2 } as const;

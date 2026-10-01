@@ -2,8 +2,8 @@ import { today } from '../domain/dates';
 import { answersOf, flowStateOf, initialState, sectionState, type FlowState } from '../domain/onboarding/flow';
 import { defaultAnswers, defaultCoreSetup, emptyOnboarding, isSetupComplete } from '../domain/onboarding/migrate';
 import type { AnswerGroup, Field, OnboardingMode, OnboardingProfile, OnboardingSection } from '../domain/onboarding/types';
-import type { AppState } from '../domain/types';
-import { completeOnboarding } from './actions';
+import type { AppState, GoalType, Macros } from '../domain/types';
+import { completeOnboarding, setTargets } from './actions';
 import { getState, update } from './store';
 
 /**
@@ -123,4 +123,20 @@ export function finishOnboarding(): void {
 /** The flow state to show now (resume position or a fresh start). */
 export function currentFlow(): FlowState {
   return flowStateOf(getState().onboarding);
+}
+
+/**
+ * "Als neues Tagesziel übernehmen" (existing users): the chosen goal and its
+ * macros become a new target version – only on this explicit confirmation;
+ * older versions stay as they are (E10). The pace answer is already stored.
+ */
+export function applyGoalAsTarget(goal: { type: GoalType; targetWeightKg?: number }, macros: Macros): void {
+  update((s) => {
+    if (s.goal) {
+      s.goal.type = goal.type;
+      if (goal.targetWeightKg && goal.type !== 'maintain' && goal.type !== 'recomp') s.goal.targetWeightKg = goal.targetWeightKg;
+      else delete s.goal.targetWeightKg;
+    }
+  });
+  setTargets(macros, 'formula');
 }

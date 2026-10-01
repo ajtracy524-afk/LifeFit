@@ -252,16 +252,33 @@ export function ageFromBirthYear(birthYear: number, today: string): number {
 
 /**
  * Options for the daily target from what is stored: the latest body fat entry
- * (a measured value counts like a), an estimate like d)) and the planned
- * session length. One helper for every place that (re)calculates targets.
+ * (a measured value counts like a), an estimate like d)), the planned session
+ * length, the pace and target weight of the goal, the training level and
+ * pregnancy / breastfeeding (never a deficit). One helper for every place
+ * that (re)calculates targets.
  */
-export function targetOptionsFor(state: { measurements?: Array<{ kind: string; date: string; value: number; method: 'measured' | 'estimate' }>; training?: { sessionMinutes?: number } | null }): {
+export function targetOptionsFor(state: {
+  measurements?: Array<{ kind: string; date: string; value: number; method: 'measured' | 'estimate' }>;
+  training?: { sessionMinutes?: number } | null;
+  profile?: { experience?: 'beginner' | 'intermediate' | 'advanced' } | null;
+  goal?: { targetWeightKg?: number } | null;
+  onboarding?: { goal: { pace?: { value: 'gentle' | 'normal' | 'brisk' } }; health: { pregnancy?: { value: 'no' | 'pregnant' | 'breastfeeding' } } };
+}): {
   bodyFat?: EnergyInput['bodyFat'];
   sessionMinutes?: number;
+  pace?: 'gentle' | 'normal' | 'brisk';
+  experience?: 'beginner' | 'intermediate' | 'advanced';
+  targetWeightKg?: number;
+  pregnant?: boolean;
 } {
   const fat = [...(state.measurements ?? [])].filter((m) => m.kind === 'body_fat').sort((a, b) => b.date.localeCompare(a.date))[0];
+  const pregnancy = state.onboarding?.health.pregnancy?.value;
   return {
     ...(fat ? { bodyFat: { method: fat.method === 'measured' ? 'measured' : 'visual', percent: fat.value } } : {}),
     ...(state.training?.sessionMinutes ? { sessionMinutes: state.training.sessionMinutes } : {}),
+    ...(state.onboarding?.goal.pace ? { pace: state.onboarding.goal.pace.value } : {}),
+    ...(state.profile?.experience ? { experience: state.profile.experience } : {}),
+    ...(state.goal?.targetWeightKg ? { targetWeightKg: state.goal.targetWeightKg } : {}),
+    ...(pregnancy === 'pregnant' || pregnancy === 'breastfeeding' ? { pregnant: true } : {}),
   };
 }

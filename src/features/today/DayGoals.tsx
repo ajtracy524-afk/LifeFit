@@ -4,6 +4,8 @@ import type { ISODate } from '../../domain/types';
 import { celebrate } from '../../lib/celebrate';
 import { useCrossing } from '../../lib/motion';
 import { useAppState } from '../../store/store';
+import { dayTotals } from '../../domain/nutrition';
+import { useEnergyText } from '../nutrition/useEnergyText';
 import styles from './today.module.css';
 
 /** Days already celebrated as complete in this session – the big moment happens once per day. */
@@ -16,7 +18,13 @@ const celebratedDays = new Set<string>();
  */
 export function DayGoals({ date }: { date: ISODate }) {
   const state = useAppState();
-  const { goals, done, complete } = useMemo(() => dayGoals(state, date), [state, date]);
+  const { goals: raw, done, complete } = useMemo(() => dayGoals(state, date), [state, date]);
+  // Number-free mode (E14): the calorie chip speaks in meals, its detail without kcal.
+  const energy = useEnergyText(date);
+  const eatenKcal = useMemo(() => dayTotals(state.logEntries, date).kcal, [state.logEntries, date]);
+  const goals = energy.numberFree
+    ? raw.map((g) => (g.key === 'calories' ? { ...g, value: `${energy.day(eatenKcal).amount} / ${energy.day(eatenKcal).total}`, detail: energy.day(eatenKcal).text } : g))
+    : raw;
   const finished = useCrossing(complete);
 
   useEffect(() => {
