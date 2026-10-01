@@ -24,8 +24,11 @@ export type OnboardingMode = 'quick' | 'full';
 
 export type OnboardingStepId =
   | 'welcome'
-  // A – Körper & Ziel
-  | 'body'
+  // A – Körper & Ziel (one topic per screen)
+  | 'weight'
+  | 'height'
+  | 'birthYear'
+  | 'sex'
   | 'experience'
   | 'activity'
   | 'waist'

@@ -20,6 +20,7 @@ import type { DbFood } from '../data/foodDb';
 import { addWater, WATER_REMINDER, waterReminderState } from '../domain/water';
 import { effectiveTimeBudget } from '../domain/timeBudget';
 import { currentWeight } from '../domain/progress';
+import { targetOptionsFor } from '../domain/body';
 import { newId } from '../lib/id';
 import type {
   AppState,
@@ -809,7 +810,7 @@ export function recalculateTargets(): Macros | undefined {
   const s = getState();
   if (!s.profile || !s.goal || !s.training) return undefined;
   const weight = currentWeight(s.weights) ?? s.goal.startWeightKg;
-  const calc = calculateTargets(s.profile, s.goal.type, weight, s.training.weekdays.length);
+  const calc = calculateTargets(s.profile, s.goal.type, weight, s.training.weekdays.length, targetOptionsFor(s));
   const macros = { kcal: calc.kcal, protein: calc.protein, carbs: calc.carbs, fat: calc.fat };
   setTargets(macros, 'formula');
   return macros;

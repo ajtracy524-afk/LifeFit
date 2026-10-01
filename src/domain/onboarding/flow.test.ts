@@ -21,13 +21,13 @@ const ids = (steps: { id: OnboardingStepId }[]) => steps.map((s) => s.id);
 const at = (step: OnboardingStepId, mode: FlowState['mode'] = 'full', extra: Partial<FlowState> = {}): FlowState => ({ mode, step, skipped: [], ...extra });
 
 describe('onboarding flow – paths', () => {
-  it('Schnellstart asks only weight/height/birth year/sex (body), goal and training days (frame)', () => {
-    expect(ids(stepsFor('quick', { sex: 'male' }))).toEqual(['welcome', 'body', 'goal', 'frame', 'summary']);
+  it('Schnellstart asks only weight, height, birth year, sex, goal and training days (frame) – one topic per screen', () => {
+    expect(ids(stepsFor('quick', { sex: 'male' }))).toEqual(['welcome', 'weight', 'height', 'birthYear', 'sex', 'goal', 'frame', 'summary']);
   });
 
   it('the detailed path walks through A, B and C', () => {
     expect(ids(stepsFor('full', { sex: 'male' }))).toEqual([
-      'welcome', 'body', 'experience', 'activity', 'waist', 'analysis', 'bodyFat', 'goal',
+      'welcome', 'weight', 'height', 'birthYear', 'sex', 'experience', 'activity', 'waist', 'analysis', 'bodyFat', 'goal',
       'diet', 'allergies', 'preferences', 'routine', 'week', 'pantry',
       'level', 'frame', 'cardio', 'focus', 'plan', 'summary',
     ]);
@@ -54,12 +54,12 @@ describe('onboarding flow – paths', () => {
       s = r.state;
       seen.push(s.step);
     }
-    expect(seen).toEqual(['welcome', 'body', 'pregnancy', 'goal', 'frame', 'summary']);
+    expect(seen).toEqual(['welcome', 'weight', 'height', 'birthYear', 'sex', 'pregnancy', 'goal', 'frame', 'summary']);
   });
 
   it('back goes one visible step back and stops at the welcome screen', () => {
-    expect(back(at('experience'), {}).step).toBe('body');
-    expect(back(at('body'), {}).step).toBe('welcome');
+    expect(back(at('experience'), {}).step).toBe('sex');
+    expect(back(at('weight'), {}).step).toBe('welcome');
     expect(back(at('welcome'), {}).step).toBe('welcome');
     expect(canGoBack(at('welcome'), {})).toBe(false);
     // From C back into B.
@@ -90,7 +90,7 @@ describe('onboarding flow – skipping and jumping', () => {
     expect(r.state.step).toBe('diet');
     expect(r.state.skipped).toEqual(['activity', 'waist', 'analysis', 'bodyFat', 'pregnancy', 'goal']);
     // In the Schnellstart B has no steps – skipping A goes straight to training.
-    expect(skipSection(at('body', 'quick'), { sex: 'male' }).state.step).toBe('frame');
+    expect(skipSection(at('weight', 'quick'), { sex: 'male' }).state.step).toBe('frame');
     // On the last section the summary follows.
     expect(skipSection(at('cardio'), {}).state.step).toBe('summary');
   });
@@ -106,13 +106,13 @@ describe('onboarding flow – progress per section', () => {
   it('steps before the current one count as done; Schnellstart has no B steps', () => {
     const p = sectionProgress(at('diet'), { sex: 'male' });
     expect(p.map((x) => [x.section, x.done, x.total, x.current])).toEqual([
-      ['A', 7, 7, false],
+      ['A', 10, 10, false],
       ['B', 0, 6, true],
       ['C', 0, 5, false],
     ]);
     const quick = sectionProgress(at('frame', 'quick'), { sex: 'male' });
     expect(quick.map((x) => [x.section, x.done, x.total])).toEqual([
-      ['A', 2, 2],
+      ['A', 5, 5],
       ['B', 0, 0],
       ['C', 0, 1],
     ]);
@@ -136,8 +136,11 @@ describe('onboarding flow – re-open a section, resume', () => {
     const p = emptyOnboarding();
     expect(flowStateOf(undefined)).toEqual(initialState('full'));
     expect(flowStateOf(p)).toEqual(initialState('full'));
-    const paused = { ...p, mode: 'quick' as const, progress: { ...p.progress, step: 'goal' as const, skipped: ['body' as const] } };
-    expect(flowStateOf(paused)).toEqual({ mode: 'quick', step: 'goal', skipped: ['body'] });
+    const paused = { ...p, mode: 'quick' as const, progress: { ...p.progress, step: 'goal' as const, skipped: ['height' as const] } };
+    expect(flowStateOf(paused)).toEqual({ mode: 'quick', step: 'goal', skipped: ['height'] });
+    // Saved by Prompt 1 (one "body" screen) → continues at the first of its four screens.
+    const legacy = { ...p, progress: { ...p.progress, step: 'body' as OnboardingStepId, skipped: ['body' as OnboardingStepId] } };
+    expect(flowStateOf(legacy)).toMatchObject({ step: 'weight', skipped: ['weight'] });
     const broken = { ...p, progress: { ...p.progress, step: 'nope' as OnboardingStepId } };
     expect(flowStateOf(broken).step).toBe('welcome');
     const scoped = { ...p, progress: { ...p.progress, step: 'diet' as const, scope: 'B' as const } };

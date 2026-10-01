@@ -103,8 +103,9 @@ export function Onboarding() {
       goal,
       weight,
       weekdays.length,
+      { ...(bodyFat ? { bodyFat: { method: bodyFat.method === 'measured' ? 'measured' : 'visual', percent: bodyFat.value } } : {}), ...(tp.sessionMinutes ? { sessionMinutes: tp.sessionMinutes } : {}) },
     );
-  }, [body, activity, goal, weight, weekdays.length]);
+  }, [body, activity, goal, weight, weekdays.length, bodyFat?.value, bodyFat?.method, tp.sessionMinutes]);
 
   const suggestedStyle = defaultMealStyle(goal, calc?.kcal);
   const effectiveStyle = mealStyle ?? suggestedStyle;

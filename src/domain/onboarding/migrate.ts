@@ -3,7 +3,7 @@ import { slotsFor } from '../planner';
 import { recommendProgram } from '../programs';
 import { currentWeight } from '../progress';
 import type { Allergen, AppState, FitnessGoal, Macros, NutritionProfile, Profile, TrainingSetup } from '../types';
-import { DEFAULT_SETUP, MIGRATED_BODY_FAT_RANGE, ONBOARDING_VERSION } from './constants';
+import { DEFAULT_SETUP, MEASURED_ACCURACY, ONBOARDING_VERSION, VISUAL_ACCURACY } from '../constants';
 import type { Field, FieldSource, Intolerance, LmivAllergen, OnboardingProfile } from './types';
 
 /**
@@ -94,7 +94,7 @@ function fillMissing(p: OnboardingProfile, state: AppState, at: string, year: nu
   const fat = [...(state.measurements ?? [])].filter((m) => m.kind === 'body_fat').sort((a, b) => b.date.localeCompare(a.date))[0];
   if (fat) {
     const method = fat.method === 'measured' ? 'measured' : 'visual';
-    const d = MIGRATED_BODY_FAT_RANGE[method];
+    const d = method === 'measured' ? MEASURED_ACCURACY : VISUAL_ACCURACY;
     set(body, 'bodyFat', field({ method, percent: fat.value, range: [Math.max(2, fat.value - d), fat.value + d] as [number, number] }, 'user', at));
   }
   if (goal) {
@@ -150,6 +150,8 @@ export interface CoreSetup {
   training: TrainingSetup;
   target: Macros;
   weightKg: number;
+  /** The body fat answer as a measurement (an estimate stays marked as such). */
+  bodyFat?: { value: number; method: 'measured' | 'estimate' };
 }
 
 /**
@@ -177,7 +179,11 @@ export function defaultCoreSetup(p: OnboardingProfile, today: string, nowIso: st
   const goalType = pregnant ? 'maintain' : (p.goal.type?.value ?? D.goal);
   const weekdays = [...(p.training.weekdays?.value ?? D.weekdays)].sort((a, b) => a - b);
   const diet = p.food.diet?.value === 'pescatarian' ? 'omnivore' : (p.food.diet?.value ?? 'omnivore'); // pescetarian filter comes with Prompt 4
-  const calc = calculateTargets(profile, goalType, weightKg, weekdays.length);
+  const fat = p.body.bodyFat?.value;
+  const calc = calculateTargets(profile, goalType, weightKg, weekdays.length, {
+    ...(fat ? { bodyFat: { method: fat.method, percent: fat.percent, range: fat.range } } : {}),
+    ...(p.training.sessionMinutes ? { sessionMinutes: p.training.sessionMinutes.value } : {}),
+  });
   return {
     profile,
     goal: { type: goalType, startWeightKg: weightKg, startedAt: today },
@@ -189,6 +195,7 @@ export function defaultCoreSetup(p: OnboardingProfile, today: string, nowIso: st
     },
     target: { kcal: calc.kcal, protein: calc.protein, carbs: calc.carbs, fat: calc.fat },
     weightKg,
+    ...(fat ? { bodyFat: { value: fat.percent, method: fat.method === 'measured' ? ('measured' as const) : ('estimate' as const) } } : {}),
   };
 }
 

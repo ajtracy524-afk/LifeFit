@@ -2885,8 +2885,15 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
 
     await click('Schnellstart (ca. 1 Minute)');
     await click('Weiter');
-    expect(title()).toBe('Deine Körperdaten');
+    // One topic per screen: weight, height, birth year, sex.
+    expect(title()).toBe('Dein Gewicht');
     expect(button('Überspringen')).toBeTruthy();
+    await click('Weiter');
+    expect(title()).toBe('Deine Größe');
+    await click('Weiter');
+    expect(title()).toBe('Dein Geburtsjahr');
+    await click('Weiter');
+    expect(title()).toBe('Dein Geschlecht');
     // "Weiblich" → the pregnancy question follows (conditional step).
     await click('Weiblich');
     await click('Weiter');
@@ -2899,7 +2906,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
     expect(title()).toBe('Gesundheit');
 
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Zurück"]')!.click());
-    expect(title()).toBe('Deine Körperdaten');
+    expect(title()).toBe('Dein Geschlecht');
     await click('Weiter');
     await click('Überspringen');
     expect(title()).toBe('Dein Ziel');
@@ -2921,7 +2928,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
   it('"Später fortsetzen" makes the app usable with defaults; the profile resumes the flow at the same step', async () => {
     const store = await startApp();
     await click('Weiter'); // detailed path
-    await click('Weiter');
+    for (let i = 0; i < 4; i++) await click('Weiter'); // weight, height, birth year, sex
     expect(title()).toBe('Kraftsport-Erfahrung');
     await click('Später fortsetzen');
     expect(text()).toMatch(/Guten Morgen/);
@@ -2957,10 +2964,103 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
     expect(store.getState().onboarding!.progress.active).toBe(false);
 
     await click('Körper & Ziel');
-    expect(title()).toBe('Deine Körperdaten');
-    expect(text()).toMatch(/Größe \(cm\)\s*180\s*eingegeben/);
-    expect(text()).toMatch(/Geburtsjahr\s*1996\s*geschätzt/);
+    const input = () => container.querySelector<HTMLInputElement>('main input')!;
+    expect(title()).toBe('Dein Gewicht');
+    expect(input().value).toBe('80'); // pre-filled from the saved data
+    await click('Weiter');
+    expect(input().value).toBe('180');
+    await click('Weiter');
+    expect(input().value).toBe('1996');
+    expect(text()).toContain('Das sind 30 Jahre.');
     await click('Schließen');
     expect(window.location.hash).toBe('#/profile');
+  });
+
+  describe('area A (Prompt 2): body data, analysis, body fat', () => {
+    const input = () => container.querySelector<HTMLInputElement>('main input')!;
+    /** Detailed path up to the analysis: 90 kg, 180 cm, born 1990, male, 3–5 years, active, no waist. */
+    const toAnalysis = async () => {
+      const store = await startApp();
+      await click('Weiter'); // welcome → detailed
+      await type('Gewicht', '90');
+      await click('Weiter');
+      await type('Größe', '180');
+      await click('Weiter');
+      await type('Geburtsjahr', '1990');
+      expect(text()).toContain('Das sind 36 Jahre.');
+      await click('Weiter');
+      await click('Männlich');
+      await click('Weiter');
+      await click('3–5 Jahre');
+      await click('Weiter');
+      await click('Aktiv');
+      await click('Weiter');
+      expect(title()).toBe('Taillenumfang');
+      expect(text()).toContain('Schneide eine Schnur in deiner Körpergröße ab');
+      await click('Überspringen');
+      expect(title()).toBe('Deine Werte');
+      return store;
+    };
+
+    it('big number inputs with −/+; an implausible value shows a friendly hint but blocks nothing', async () => {
+      const store = await startApp();
+      await click('Weiter');
+      expect(title()).toBe('Dein Gewicht');
+      await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Gewicht erhöhen"]')!.click());
+      expect(input().value).toBe('70,5'); // from the start value, one decimal
+      expect(store.getState().onboarding!.body.weightKg).toMatchObject({ value: 70.5, source: 'user' });
+      await type('Gewicht', '25');
+      expect(text()).toMatch(/Bitte kurz prüfen – üblich sind 30–300 kg\. Du kannst trotzdem weiter\./);
+      await click('Weiter');
+      expect(title()).toBe('Deine Größe'); // not blocked
+    });
+
+    it('analysis: BMI with neutral wording, the muscle card highlighted for experienced users, WHtR hint, energy start value', async () => {
+      const store = await toAnalysis();
+      const bmiCard = container.querySelector('[aria-label="BMI"]')!;
+      expect(bmiCard.textContent).toMatch(/27,8\s*Über dem Referenzbereich/);
+      expect(text()).toContain('Der BMI unterscheidet nicht zwischen Muskeln und Fett.');
+      expect(container.querySelector('[data-highlight]')).not.toBeNull();
+      expect(text()).toContain('Passt sie um deine Taille, liegt dein WHtR unter 0,5.'); // no waist → string trick
+      const energy = container.querySelector('[aria-label="Energiebedarf"]')!.textContent!;
+      expect(energy).toMatch(/Startwert Energiebedarf pro Tag/);
+      expect(energy).toContain('Wir passen ihn anhand deines Gewichtsverlaufs automatisch an.');
+      // Mifflin 90/180/36 male = 1850; × 1.5 (aktiv), no training planned yet.
+      expect(energy).toMatch(/ca\. 2\.780 kcal/);
+      expect(button('Körperfett ergänzen (empfohlen)')).toBeTruthy();
+      // "Überspringen" here skips the body fat estimate as well.
+      await click('Überspringen');
+      expect(title()).toBe('Dein Ziel');
+      expect(store.getState().onboarding!.progress.skipped).toEqual(['waist', 'bodyFat']);
+    });
+
+    it('body fat: four methods by accuracy; Navy from neck and waist, then the visual comparison – result as a range, method stored', async () => {
+      const store = await toAnalysis();
+      await click('Körperfett ergänzen (empfohlen)');
+      expect(title()).toBe('Körperfett');
+      const methods = [...container.querySelectorAll('[aria-label="Methode"] button')].map((b) => b.textContent);
+      expect(methods.map((m) => m!.match(/^(Ich kenne meinen Wert|Massband|Nur Taille|Ohne Hilfsmittel)/)?.[1])).toEqual(['Ich kenne meinen Wert', 'Massband', 'Nur Taille', 'Ohne Hilfsmittel']);
+      expect(methods[1]).toContain('Beste Methode ohne Gerät');
+
+      await click('Massband');
+      expect(text()).toContain('Hals unterhalb des Kehlkopfs');
+      expect(text()).not.toContain('Hüfte an der breitesten Stelle'); // men: no hip
+      await type('Hals', '38');
+      await type('Taille', '85');
+      // 180 cm, waist 85, neck 38 → 16.1 % → "ca. 16 % (13–20 %)"
+      expect(container.querySelector('[aria-label="Körperfett"]')!.textContent).toContain('ca. 16 % (13–20 %)');
+      expect(store.getState().onboarding!.body.bodyFat).toMatchObject({ value: { method: 'navy', percent: 16, range: [13, 20] }, source: 'estimated' });
+      expect(text()).toMatch(/FFMI \(normalisiert\) ca\. 23,3/); // 90 kg, 16 % → FFM 75.6 kg / 3.24
+      // Katch-McArdle over the body fat range 13–20 %: (370 + 21.6 · FFM) × 1.5 → 2'890–3'090 kcal.
+      expect(container.querySelector('[aria-label="Energiebedarf"]')!.textContent).toMatch(/ca\. 2\.890–3\.090 kcal/);
+
+      await click('Ohne Hilfsmittel');
+      const stages = container.querySelectorAll('[aria-label="Welches Bild passt am ehesten?"] button');
+      expect(stages).toHaveLength(6);
+      expect(container.querySelectorAll('[aria-label="Welches Bild passt am ehesten?"] svg')).toHaveLength(6); // own drawings, no images
+      await act(async () => (stages[1] as HTMLButtonElement).click()); // 11–14 %
+      expect(store.getState().onboarding!.body.bodyFat).toMatchObject({ value: { method: 'visual', percent: 13, range: [8, 18] }, source: 'estimated' });
+      expect(container.querySelector('[aria-label="Körperfett"]')!.textContent).toContain('ca. 13 % (8–18 %)');
+    });
   });
 });

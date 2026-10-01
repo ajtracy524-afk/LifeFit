@@ -3,8 +3,8 @@ import { isPersonalFoodId } from '../data/personal';
 import { NUTRIENTS } from '../data/nutrients';
 import { getRecipe } from '../data/recipes';
 import { newId } from '../lib/id';
+import { bmrFor, energyEstimate, type EnergyInput } from './body';
 import type {
-  ActivityLevel,
   BasicNutrient,
   Food,
   FitnessGoal,
@@ -131,29 +131,33 @@ export function plannedMealMacros(meal: PlannedMeal): Macros {
 
 // ---------- Targets ----------
 
-/** Daily activity outside the gym. Training days are added on top. */
-const ACTIVITY_BASE: Record<ActivityLevel, number> = {
-  sedentary: 1.25,
-  light: 1.35,
-  moderate: 1.45,
-  active: 1.6,
-};
-
 export interface TargetCalculation extends Macros {
   bmr: number;
   tdee: number;
 }
 
-/** Mifflin-St Jeor BMR × activity, adjusted for the goal. Includes safety floors. */
+export interface TargetOptions {
+  /** Known body fat – decides the BMR formula (Katch-McArdle / mean, see body.ts). */
+  bodyFat?: EnergyInput['bodyFat'];
+  /** Length of a planned session (training surcharge); default in constants. */
+  sessionMinutes?: number;
+}
+
+/**
+ * Daily target: total energy (body.energyEstimate – BMR × everyday factor +
+ * training surcharge, one calculation for the whole app, E10) adjusted for the
+ * goal. Includes safety floors. Stored targets are snapshots: changing this
+ * formula never rewrites an existing target version.
+ */
 export function calculateTargets(
   profile: Pick<Profile, 'sex' | 'age' | 'heightCm' | 'activity'>,
   goalType: FitnessGoal['type'],
   weightKg: number,
   trainingDaysPerWeek: number,
+  options: TargetOptions = {},
 ): TargetCalculation {
-  const bmr = basalMetabolicRate(profile, weightKg);
-  const factor = ACTIVITY_BASE[profile.activity] + 0.04 * trainingDaysPerWeek;
-  const tdee = bmr * factor;
+  const energy = energyEstimate({ ...profile, weightKg, sessionsPerWeek: trainingDaysPerWeek, ...(options.bodyFat ? { bodyFat: options.bodyFat } : {}), ...(options.sessionMinutes ? { sessionMinutes: options.sessionMinutes } : {}) });
+  const { bmr, tdee } = energy;
 
   // Recomposition: close to maintenance, slightly below – muscle is built from training and protein, fat is lost slowly.
   const goalFactor = goalType === 'muscle_gain' ? 1.1 : goalType === 'fat_loss' ? 0.8 : goalType === 'recomp' ? 0.95 : 1;
@@ -165,13 +169,9 @@ export function calculateTargets(
   return { bmr: Math.round(bmr), tdee: Math.round(tdee), ...macrosForCalories(kcal, protein, weightKg) };
 }
 
-/**
- * Mifflin-St Jeor (Mifflin et al., Am J Clin Nutr 1990;51:241–247): +5 for men, −161 for women.
- * "Keine Angabe": the mean of both constants, −78 (docs/ONBOARDING_PLAN.md E2).
- */
+/** Mifflin-St Jeor (one formula, body.ts; "keine Angabe" −78, E2). */
 export function basalMetabolicRate(profile: Pick<Profile, 'sex' | 'age' | 'heightCm'>, weightKg: number): number {
-  const sexConstant = profile.sex === 'male' ? 5 : profile.sex === 'female' ? -161 : -78;
-  return 10 * weightKg + 6.25 * profile.heightCm - 5 * profile.age + sexConstant;
+  return bmrFor({ ...profile, weightKg }).kcal;
 }
 
 /** Safety floor: no target (formula or adaptive) may go below this. "Keine Angabe" takes the more careful 1500 kcal (E2/E11). */

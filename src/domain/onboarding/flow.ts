@@ -49,7 +49,10 @@ export const SECTIONS: OnboardingSection[] = ['A', 'B', 'C'];
 export const STEPS: StepDef[] = [
   { id: 'welcome', section: 'welcome', quick: true, title: 'Willkommen bei LifeFit', why: 'Damit dein Plan zu dir passt. Jede Frage ist freiwillig.' },
   // A – Körper & Ziel
-  { id: 'body', section: 'A', quick: true, title: 'Deine Körperdaten', why: 'Gewicht, Größe, Alter und Geschlecht bestimmen deinen Energiebedarf.' },
+  { id: 'weight', section: 'A', quick: true, title: 'Dein Gewicht', why: 'Das Gewicht ist die wichtigste Größe für deinen Energiebedarf.' },
+  { id: 'height', section: 'A', quick: true, title: 'Deine Größe', why: 'Mit der Größe berechnen wir BMI, Taillen-Verhältnis und Grundumsatz.' },
+  { id: 'birthYear', section: 'A', quick: true, title: 'Dein Geburtsjahr', why: 'Der Grundumsatz sinkt mit dem Alter – das Geburtsjahr hält es aktuell.' },
+  { id: 'sex', section: 'A', quick: true, title: 'Dein Geschlecht', why: 'Die Formeln für den Energiebedarf unterscheiden nach biologischem Geschlecht.' },
   { id: 'experience', section: 'A', quick: false, title: 'Kraftsport-Erfahrung', why: 'Einsteiger, Wiedereinsteiger und Erfahrene bauen unterschiedlich schnell auf.' },
   { id: 'activity', section: 'A', quick: false, title: 'Dein Alltag', why: 'Dein Alltag verbraucht oft mehr Energie als dein Training.' },
   { id: 'waist', section: 'A', quick: false, title: 'Taillenumfang', why: 'Der Taillenumfang sagt mehr über Bauchfett aus als das Gewicht allein.' },
@@ -81,6 +84,9 @@ export const STEPS: StepDef[] = [
 ];
 
 const BY_ID = new Map(STEPS.map((s) => [s.id, s]));
+
+/** Step ids of earlier versions (Prompt 1 had one "body" screen) → where they continue now. */
+const RENAMED: Record<string, OnboardingStepId> = { body: 'weight' };
 
 export function stepDef(id: OnboardingStepId): StepDef {
   return BY_ID.get(id)!;
@@ -195,6 +201,7 @@ export function answersOf(profile: OnboardingProfile | undefined): FlowAnswers {
 /** The flow state stored in the profile (or a fresh one). */
 export function flowStateOf(profile: OnboardingProfile | undefined): FlowState {
   const p = profile?.progress;
-  if (!profile || !p?.step || !BY_ID.has(p.step)) return initialState(profile?.mode ?? 'full');
-  return { mode: profile.mode ?? 'full', step: p.step, skipped: p.skipped ?? [], ...(p.scope ? { scope: p.scope } : {}) };
+  const step = p?.step ? (RENAMED[p.step] ?? p.step) : undefined;
+  if (!profile || !p || !step || !BY_ID.has(step)) return initialState(profile?.mode ?? 'full');
+  return { mode: profile.mode ?? 'full', step, skipped: (p.skipped ?? []).map((id) => RENAMED[id] ?? id), ...(p.scope ? { scope: p.scope } : {}) };
 }

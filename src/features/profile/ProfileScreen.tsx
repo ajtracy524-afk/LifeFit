@@ -6,6 +6,7 @@ import { DEFAULT_ITEMS, defaultFocus } from '../../domain/trainingProfile';
 import { EquipmentItemsField, TrainingProfileFields, type TrainingProfileDraft } from '../training/TrainingProfileFields';
 import { today, weekStart } from '../../domain/dates';
 import { calculateTargets } from '../../domain/nutrition';
+import { targetOptionsFor } from '../../domain/body';
 import { currentWeight } from '../../domain/progress';
 import { slotsFor } from '../../domain/planner';
 import type { ActivityLevel, Allergen, DietType, EquipmentItem, GoalType, Macros, MealStyle, PlanPriority, TrainingSetup, WaterReminderMode } from '../../domain/types';
@@ -412,7 +413,7 @@ function GoalForm({ onDone }: { onDone: () => void }) {
   const recalc = (goalType: GoalType) => {
     if (!state.profile || !state.training) return;
     const weight = currentWeight(state.weights) ?? goal.startWeightKg;
-    const c = calculateTargets(state.profile, goalType, weight, state.training.weekdays.length);
+    const c = calculateTargets(state.profile, goalType, weight, state.training.weekdays.length, targetOptionsFor(state));
     setMacros({ kcal: c.kcal, protein: c.protein, carbs: c.carbs, fat: c.fat });
     setMethod('formula');
   };

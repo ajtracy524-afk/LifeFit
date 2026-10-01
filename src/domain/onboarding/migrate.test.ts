@@ -118,6 +118,17 @@ describe('defaults for an app used without finishing the onboarding', () => {
     expect(answers.body.sex).toMatchObject({ value: 'unspecified', source: 'default' });
   });
 
+  it('a body fat answer reaches the app: stored as a measurement, the target uses the matching formula', () => {
+    const p = emptyOnboarding();
+    p.body.weightKg = { value: 80, source: 'user', updatedAt: AT };
+    p.body.bodyFat = { value: { method: 'navy', percent: 18, range: [15, 22] }, source: 'estimated', updatedAt: AT };
+    const setup = defaultCoreSetup(p, '2026-10-01', AT);
+    expect(setup.bodyFat).toEqual({ value: 18, method: 'estimate' });
+    const { kcal } = calculateTargets(setup.profile, 'maintain', 80, 3, { bodyFat: { method: 'navy', percent: 18, range: [15, 22] } });
+    expect(setup.target.kcal).toBe(kcal);
+    expect(setup.target.kcal).not.toBe(defaultCoreSetup({ ...p, body: { weightKg: p.body.weightKg } }, '2026-10-01', AT).target.kcal);
+  });
+
   it('pregnancy / breastfeeding: only "Halten & Gesundheit", whatever goal was chosen (E4)', () => {
     const p = emptyOnboarding();
     p.goal.type = { value: 'fat_loss', source: 'user', updatedAt: AT };

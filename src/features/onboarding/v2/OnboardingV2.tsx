@@ -19,11 +19,12 @@ import {
 import type { Field, OnboardingMode, OnboardingProfile, OnboardingStepId } from '../../../domain/onboarding/types';
 import { navigate } from '../../../lib/router';
 import { showToast } from '../../../lib/toast';
-import { closeOnboardingSection, finishOnboarding, pauseOnboarding, saveOnboardingFlow, setOnboardingAnswer } from '../../../store/onboardingActions';
+import { closeOnboardingSection, finishOnboarding, pauseOnboarding, saveOnboardingFlow } from '../../../store/onboardingActions';
 import { useAppState } from '../../../store/store';
 import { Button, IconButton } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
-import { OptionCard, Segmented } from '../../../components/ui/Controls';
+import { OptionCard } from '../../../components/ui/Controls';
+import { AREA_A_STEPS, AreaAStep } from './AreaA';
 import styles from './onboardingV2.module.css';
 
 /**
@@ -62,8 +63,17 @@ export function OnboardingV2() {
   const inSection = def.section === 'A' || def.section === 'B' || def.section === 'C';
   const lastOfScope = !!flow.scope && next(flow, answers).done;
 
+  const isAnalysis = flow.step === 'analysis';
   const onNext = () => (isWelcome ? go(next({ ...initialState(mode) }, answers)) : go(next(flow, answers)));
-  const onSkip = () => (isWelcome ? finish() : go(skipStep(flow, answers)));
+  // The analysis is no question: "Überspringen" there skips the body fat estimate that follows.
+  const onSkip = () => {
+    if (isWelcome) return finish();
+    if (isAnalysis) {
+      const toBodyFat = next(flow, answers);
+      return go(toBodyFat.done ? toBodyFat : skipStep(toBodyFat.state, answers));
+    }
+    go(skipStep(flow, answers));
+  };
   const later = () => {
     if (flow.scope) return finish();
     pauseOnboarding();
@@ -115,24 +125,7 @@ export function OnboardingV2() {
             </div>
           )}
 
-          {flow.step === 'body' && (
-            <div className={styles.stack}>
-              <span className={styles.label}>Geschlecht</span>
-              <Segmented
-                label="Geschlecht"
-                value={answers.sex ?? 'unset'}
-                onChange={(v) => v !== 'unset' && setOnboardingAnswer('body', 'sex', v as 'male' | 'female' | 'unspecified')}
-                options={[
-                  { value: 'male', label: 'Männlich' },
-                  { value: 'female', label: 'Weiblich' },
-                  { value: 'unspecified', label: 'Keine Angabe' },
-                ]}
-              />
-              <p className={styles.hint}>Die Formeln für den Energiebedarf unterscheiden nach biologischem Geschlecht. Ohne Angabe rechnen wir mit einem Mittelwert.</p>
-            </div>
-          )}
-
-          {!isWelcome && !isSummary && <Placeholder step={flow.step} profile={profile} />}
+          {AREA_A_STEPS.includes(flow.step) ? <AreaAStep step={flow.step} /> : !isWelcome && !isSummary && <Placeholder step={flow.step} profile={profile} />}
 
           {isSummary && (
             <div className={styles.stack}>
@@ -163,7 +156,7 @@ export function OnboardingV2() {
 
       <footer className={styles.footer}>
         <Button block size="lg" onClick={onNext}>
-          {isSummary ? 'Los geht’s' : lastOfScope ? 'Fertig' : 'Weiter'}
+          {isSummary ? 'Los geht’s' : isAnalysis ? 'Körperfett ergänzen (empfohlen)' : lastOfScope ? 'Fertig' : 'Weiter'}
         </Button>
         <div className={styles.secondary}>
           <Button variant="secondary" onClick={onSkip}>
@@ -182,18 +175,6 @@ export function OnboardingV2() {
 
 /** Which stored answers belong to a step – shown read-only until the step gets its content (Prompts 2–8). */
 const STEP_FIELDS: Partial<Record<OnboardingStepId, Array<[keyof OnboardingProfile, string, string]>>> = {
-  body: [
-    ['body', 'weightKg', 'Gewicht (kg)'],
-    ['body', 'heightCm', 'Größe (cm)'],
-    ['body', 'birthYear', 'Geburtsjahr'],
-  ],
-  experience: [
-    ['body', 'trainingExperience', 'Erfahrung'],
-    ['body', 'trainingPaused', 'Pausiert'],
-  ],
-  activity: [['body', 'activity', 'Alltagsaktivität']],
-  waist: [['body', 'waistCm', 'Taille (cm)']],
-  bodyFat: [['body', 'bodyFat', 'Körperfett']],
   pregnancy: [['health', 'pregnancy', 'Schwangerschaft/Stillzeit']],
   goal: [
     ['goal', 'type', 'Ziel'],

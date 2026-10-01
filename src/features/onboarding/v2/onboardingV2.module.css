@@ -219,3 +219,178 @@
 .top > button {
   min-height: 44px;
 }
+
+/* ---------- Area A ---------- */
+
+/* Big number input with −/+ (44 px targets, typing works too). */
+.number {
+  display: grid;
+  gap: 8px;
+}
+
+.numberRow {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 56px;
+  align-items: center;
+  gap: 8px;
+}
+
+.numberBtn {
+  display: grid;
+  place-items: center;
+  min-height: 56px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.numberInput {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  min-height: 56px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.numberInput:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.numberInput input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  outline: none;
+}
+
+.numberInput span {
+  font-size: 16px;
+  color: var(--text-2);
+}
+
+/* A friendly "bitte prüfen" – information, never a block. */
+.notice {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tone-watch, var(--text));
+}
+
+.tip {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.result {
+  display: grid;
+  gap: 2px;
+}
+
+.resultLabel {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.resultValue {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.info p,
+.infoHighlight p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.infoHighlight {
+  border: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.whyLink {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.whySheet {
+  display: grid;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.whySheet p {
+  margin: 0;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stages {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.stage > span {
+  display: grid;
+  gap: 2px;
+}
+
+.stage[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.silhouette {
+  fill: var(--surface-2);
+  stroke: var(--text-2);
+  stroke-width: 2;
+}
+
+.silhouetteLines line {
+  stroke: var(--text-3, var(--text-2));
+  stroke-width: 1.5;
+}
