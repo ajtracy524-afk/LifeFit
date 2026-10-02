@@ -1,4 +1,5 @@
 import { getFood } from '../data/foods';
+import { legacySwapContext, substituteFood } from './catalogTags';
 import { isPersonalFoodId } from '../data/personal';
 import { NUTRIENTS } from '../data/nutrients';
 import { getRecipe } from '../data/recipes';
@@ -89,8 +90,11 @@ const RECIPE_SKIPS: ReadonlySet<MicroNutrient> = new Set(['salt', 'sodium']);
  * makes it unknown, never guessed or counted as 0.
  */
 export function recipeMicros(recipe: Recipe, servings = 1): Micros {
+  // Staples (salt, pepper, spices, vinegar – a few grams, E19) are left out: their micronutrients
+  // are negligible and mostly unknown, and one gap would make the whole recipe unknown.
+  const counted = recipe.personal ? recipe.ingredients : recipe.ingredients.filter((ing) => !getFood(ing.foodId)?.tags?.staple);
   return sumCompleteMicros(
-    recipe.ingredients.map((ing) => ({ micros100: getFood(ing.foodId)?.micros, grams: ing.grams * servings })),
+    counted.map((ing) => ({ micros100: getFood(ing.foodId)?.micros, grams: ing.grams * servings })),
     // Own dishes list every ingredient (salt included); catalog recipes leave out the unknown cooking salt.
     recipe.personal ? undefined : RECIPE_SKIPS,
   );
@@ -228,7 +232,12 @@ export function recipeAllowed(recipe: Recipe, profile: NutritionProfile | null):
       return true;
     }
     const food = getFood(ing.foodId);
-    return !!food && foodAllowed(food, profile);
+    if (!food) return false;
+    if (foodAllowed(food, profile)) return true;
+    // E20: swap instead of exclude – the lactose-free variant keeps the recipe allowed.
+    const swapped = substituteFood(food.id, legacySwapContext(profile));
+    const variant = swapped !== food.id ? getFood(swapped) : undefined;
+    return !!variant && foodAllowed(variant, profile);
   });
 }
 

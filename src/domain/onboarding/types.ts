@@ -1,3 +1,4 @@
+import type { LmivAllergen } from '../types';
 import type { ActivityLevel, BodyArea, EquipmentItem, Experience, Macros, MealSlot, MuscleGroup } from '../types';
 
 /**
@@ -51,22 +52,7 @@ export type OnboardingStepId =
   | 'plan'
   | 'summary';
 
-/** The 14 main allergens of the EU food information regulation (LMIV, Annex II). */
-export type LmivAllergen =
-  | 'gluten'
-  | 'crustaceans'
-  | 'eggs'
-  | 'fish'
-  | 'peanuts'
-  | 'soy'
-  | 'milk'
-  | 'tree_nuts'
-  | 'celery'
-  | 'mustard'
-  | 'sesame'
-  | 'sulphites'
-  | 'lupin'
-  | 'molluscs';
+export type { LmivAllergen } from '../types';
 
 export type Intolerance = 'lactose' | 'fructose' | 'celiac';
 export type CookingTime = '15' | '30' | '45' | 'any';

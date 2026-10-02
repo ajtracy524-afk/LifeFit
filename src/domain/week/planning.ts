@@ -27,7 +27,13 @@ function plannerContext(state: AppState, dates: ISODate[], today: ISODate) {
     // The weekly budget, pro rata for the days being planned.
     budgetChf: state.plannerSettings?.weeklyBudgetChf !== undefined ? (state.plannerSettings.weeklyBudgetChf * dates.length) / 7 : undefined,
     pantryAgeDays: pantryAge(state, today),
+    mealPrep: mealPrepEnabled(state),
   };
+}
+
+/** "Ich koche gern vor" (E18): new users no, existing users migrated to yes (domain/onboarding/migrate). */
+export function mealPrepEnabled(state: Pick<AppState, 'onboarding'>): boolean {
+  return state.onboarding?.food.mealPrep?.value === true;
 }
 
 /**
@@ -162,7 +168,7 @@ function rankForSlot(
       profile: state.nutritionProfile,
       context: p.week.filter((m) => m.date !== p.date),
       pantry: ctx.pantry,
-      extras: { affinity: ctx.affinity, budgetChf: ctx.budgetChf, pantryAgeDays: ctx.pantryAgeDays },
+      extras: { affinity: ctx.affinity, budgetChf: ctx.budgetChf, pantryAgeDays: ctx.pantryAgeDays, mealPrep: ctx.mealPrep },
       priority: ctx.priority,
       exclude: p.exclude,
     },

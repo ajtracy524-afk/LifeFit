@@ -35,9 +35,13 @@ const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 describe('personalization in the planner', () => {
   it('one event changes the plan only minimally', () => {
-    const before = count(all(), 'lentil-dal');
-    const after = count(all({ affinity: learned(1, 'meal_eaten', 'lentil-dal') }), 'lentil-dal');
-    expect(Math.abs(after - before)).toBeLessThanOrEqual(1);
+    // Ingredient overlap (F3) plans a dish in pairs, so a near-tie flips by 2.
+    // Minimal = at most one of the weeks reacts, and by at most one pair.
+    const before = all().map((p) => count([p], 'lentil-dal'));
+    const after = all({ affinity: learned(1, 'meal_eaten', 'lentil-dal') }).map((p) => count([p], 'lentil-dal'));
+    const changed = before.map((b, i) => Math.abs(after[i]! - b)).filter((d) => d > 0);
+    expect(changed.length).toBeLessThanOrEqual(1);
+    expect(Math.max(0, ...changed)).toBeLessThanOrEqual(2);
   });
 
   it('repeatedly eaten recipes come more often', () => {
@@ -170,7 +174,7 @@ describe('everything together through the central planner', () => {
     expect(meals).toHaveLength(21);
     const cooked = new Map<string, string[]>();
     meals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
-    for (const m of meals.filter((x) => x.date === '2026-09-24')) expect(effectivePrepMin(getRecipe(m.recipeId)!, m.date, cooked)).toBeLessThanOrEqual(20);
+    for (const m of meals.filter((x) => x.date === '2026-09-24')) expect(effectivePrepMin(getRecipe(m.recipeId)!, m.date, cooked, false)).toBeLessThanOrEqual(20);
     expect(meals.filter((m) => m.recipeId === 'lentil-dal').length).toBeGreaterThanOrEqual(1);
     for (const d of dates) {
       const kcal = sumMacros(meals.filter((m) => m.date === d).map(plannedMealMacros)).kcal;

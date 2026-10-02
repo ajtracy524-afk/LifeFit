@@ -29,6 +29,7 @@ import { useEnergyText } from '../nutrition/useEnergyText';
 import { DayTypeBadge } from './DayTypeBadge';
 import { DayGoals } from './DayGoals';
 import { DayReviewCard } from './DayReviewCard';
+import { MealPrepConfirm } from './MealPrepConfirm';
 import { PregnancyRecheck } from './PregnancyRecheck';
 import { ActivityControl } from './ActivityControl';
 import { WeekProgressCard } from './WeekProgressCard';
@@ -167,6 +168,7 @@ export function TodayScreen() {
       {/* Yesterday, reviewed once: good things, patterns, one simple step – until read. */}
       <DayReviewCard />
       <PregnancyRecheck />
+      <MealPrepConfirm />
 
       {/* Training or rest day – at a glance, a training day links to the session. */}
       <DayTypeBadge

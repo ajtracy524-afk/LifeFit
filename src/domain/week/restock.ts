@@ -1,5 +1,5 @@
 import { RESTOCK_MINIMUM_G } from '../../data/basics';
-import { getFood } from '../../data/foods';
+import { getFood, isStaple } from '../../data/foods';
 import { weekStart } from '../dates';
 import { foodAllowed } from '../nutrition';
 import { describeQuantity, PIECE_TOLERANCE, type ShoppingListItem } from '../shopping';
@@ -72,6 +72,36 @@ export function applyRestock(
       // Bought this week for the stock – shown as done.
       const q = describeQuantity(food, purchased[foodId]!);
       result.push({ foodId, name: food.name, category: food.category, grams: 0, neededG: 0, remainingG: 0, quantity: q.quantity, sources: [], state: 'checked', restockMinG: minimumG });
+    }
+  }
+  return result;
+}
+
+/**
+ * E19 – staples (salt, pepper, spices, vinegar) are assumed to be at home.
+ * They are recipe ingredients, but appear on the list only when the pantry
+ * marks them as empty ("aufgebraucht", 0 g) – then as one package. Bought
+ * this week → shown as done. Without a pantry entry they never appear.
+ */
+export function applyStaples(
+  items: ShoppingListItem[],
+  pantry: AppState['pantry'],
+  available: Record<string, number>,
+  purchased: Record<string, number>,
+): ShoppingListItem[] {
+  const empty = (id: string) => pantry[id] !== undefined && (available[id] ?? 0) <= 0;
+  const result = items.filter((i) => !isStaple(i.foodId));
+  const staples = new Set([...items.map((i) => i.foodId).filter(isStaple), ...Object.keys(pantry).filter(isStaple)]);
+  for (const foodId of staples) {
+    const food = getFood(foodId)!;
+    const fromPlan = items.find((i) => i.foodId === foodId);
+    const base = { foodId, name: food.name, category: food.category, grams: fromPlan?.grams ?? 0, neededG: fromPlan?.neededG ?? 0, sources: fromPlan?.sources ?? [] };
+    if (purchased[foodId]) {
+      result.push({ ...base, remainingG: 0, quantity: describeQuantity(food, purchased[foodId]!).quantity, state: 'checked' });
+    } else if (empty(foodId)) {
+      const remainingG = Math.max(food.packageG ?? 0, fromPlan?.neededG ?? 0);
+      const q = describeQuantity(food, remainingG);
+      result.push({ ...base, remainingG, quantity: q.quantity, hint: q.hint, state: 'open' });
     }
   }
   return result;

@@ -25,7 +25,6 @@ export const TIME_BUDGET_ORDER: TimeBudget[] = ['low', 'normal', 'high'];
 /** A meal-prep dish cooked on one of the previous days only needs reheating. */
 export const LEFTOVER_PREP_MIN = 5;
 export const LEFTOVER_DAYS = 2;
-export const MEAL_PREP_TAG = 'Meal Prep';
 
 /**
  * Two independent dimensions of a day, each with ONE meaning:

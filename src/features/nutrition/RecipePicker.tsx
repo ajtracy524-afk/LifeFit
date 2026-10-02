@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { allRecipes } from '../../data/recipes';
 import { today } from '../../domain/dates';
+import { recipeLabels } from '../../domain/catalogTags';
 import { recipeAllowed, recipeMacros } from '../../domain/nutrition';
 import { dayTargetFor } from '../../domain/week';
 import { servingsForSlot } from '../../domain/planner';
@@ -46,7 +47,7 @@ export function RecipePicker({ target, onClose }: RecipePickerProps) {
     if (!target) return [];
     const q = query.trim().toLowerCase();
     return allRecipes().filter((r) => recipeAllowed(r, state.nutritionProfile))
-      .filter((r) => !q || r.title.toLowerCase().includes(q) || r.tags.some((t) => t.toLowerCase().includes(q)))
+      .filter((r) => !q || r.title.toLowerCase().includes(q) || recipeLabels(r).some((t) => t.toLowerCase().includes(q)))
       .sort((a, b) => Number(b.slots.includes(target.slot)) - Number(a.slots.includes(target.slot)));
   }, [target, query, state.nutritionProfile]);
 

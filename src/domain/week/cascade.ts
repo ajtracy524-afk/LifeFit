@@ -12,7 +12,7 @@ import { closeCompletedDays, dayTargetFor } from './dayTargets';
 import { minutesOf } from '../schedule';
 import { recordEvent } from '../learning';
 import { addToPantry, purchaseAmount, setPantryQuantity } from './pantry';
-import { mealAlternatives, planMeals, weekMeals } from './planning';
+import { mealAlternatives, mealPrepEnabled, planMeals, weekMeals } from './planning';
 import { DEFAULT_DAY_CONTEXT, dayContextFor, weekShopping } from './weekPlan';
 
 /**
@@ -454,7 +454,7 @@ function retimeDay(s: AppState, date: ISODate, today: ISODate, nowIso: string, p
     // Meal-prep leftovers of the previous days count as quick (same rule as the planner).
     const cooked = new Map<string, ISODate[]>();
     for (const m of weekMeals(s, date)) if (m.id !== meal.id) cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]);
-    const fits = (r: Recipe) => effectivePrepMin(r, date, cooked) <= maxPrep;
+    const fits = (r: Recipe) => effectivePrepMin(r, date, cooked, mealPrepEnabled(s)) <= maxPrep;
     const options = mealAlternatives(s, meal, today, { includeCurrent: true, limit: Number.POSITIVE_INFINITY });
     // The time budget is the reason for this re-evaluation: only meals that fit it are offered (if any exist).
     const fitting = options.filter((o) => fits(o.recipe));

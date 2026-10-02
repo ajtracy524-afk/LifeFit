@@ -141,7 +141,7 @@ describe('Auswärts – portions never grow, shopping follows exactly', () => {
     expect(thursday.map((m) => m.slot).sort()).toEqual(['breakfast', 'lunch']);
     const cooked = new Map<string, string[]>();
     r.plannedMeals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
-    for (const m of thursday) expect(effectivePrepMin(getRecipe(m.recipeId)!, THU, cooked)).toBeLessThanOrEqual(20);
+    for (const m of thursday) expect(effectivePrepMin(getRecipe(m.recipeId)!, THU, cooked, false)).toBeLessThanOrEqual(20);
   });
 });
 

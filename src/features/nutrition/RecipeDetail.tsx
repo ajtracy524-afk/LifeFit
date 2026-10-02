@@ -1,4 +1,5 @@
 import { getFood } from '../../data/foods';
+import { recipeLabels } from '../../domain/catalogTags';
 import { recipeMacros } from '../../domain/nutrition';
 import { describeQuantity } from '../../domain/shopping';
 import type { Recipe } from '../../domain/types';
@@ -23,7 +24,7 @@ export function RecipeDetail({ recipe, servings, onServingsChange }: RecipeDetai
         </span>
         <div className={styles.recipeTags}>
           <span className={styles.tag}>{recipe.prepMin} min</span>
-          {recipe.tags.map((t) => (
+          {recipeLabels(recipe).map((t) => (
             <span key={t} className={styles.tag}>
               {t}
             </span>

@@ -240,7 +240,7 @@ describe('F2 · planner uses the pantry – together with F3 and F5', () => {
       const meals = run(seed, { pantry, low: true });
       const cooked = new Map<string, string[]>();
       meals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
-      for (const m of meals.filter((x) => x.date === dates[3])) expect(effectivePrepMin(getRecipe(m.recipeId)!, m.date, cooked)).toBeLessThanOrEqual(20);
+      for (const m of meals.filter((x) => x.date === dates[3])) expect(effectivePrepMin(getRecipe(m.recipeId)!, m.date, cooked, false)).toBeLessThanOrEqual(20);
     }
   });
 

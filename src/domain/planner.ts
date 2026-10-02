@@ -1,7 +1,7 @@
-import { getFood } from '../data/foods';
+import { getFood, isStaple } from '../data/foods';
 import { allRecipes, getRecipe } from '../data/recipes';
 import { newId } from '../lib/id';
-import { LEFTOVER_DAYS, LEFTOVER_PREP_MIN, MEAL_PREP_TAG, TIME_BUDGETS } from './timeBudget';
+import { LEFTOVER_DAYS, LEFTOVER_PREP_MIN, TIME_BUDGETS } from './timeBudget';
 import { recipeAllowed, recipeMacros, roundServings, plannedMealMacros, sumMacros } from './nutrition';
 import { purchaseCost } from './costs';
 import type { ISODate, Macros, MealSlot, NutritionProfile, PlanPriority, PlannedMeal, Recipe, TimeBudget } from './types';
@@ -44,6 +44,12 @@ export function servingsForSlot(recipe: Recipe, slot: MealSlot, target: Macros, 
 export const PLANNER_WEIGHTS = {
   /** Relative protein shortfall per day (0 … 1). */
   proteinGap: 1,
+  /**
+   * Step penalty for a day below PROTEIN_FLOOR of its protein target (grows
+   * with the shortfall). Only "Sparen" sets it: the price may trade a little
+   * protein, never below the floor – unless no recipe combination reaches it.
+   */
+  proteinFloor: 0,
   /** |ln(servings factor)| per day – avoids 0.5× or 3× portions. */
   extremeServing: 0.1,
   /** Per earlier use of the same recipe in the week (as before F3). */
@@ -99,7 +105,7 @@ export const POST_WORKOUT_PROTEIN_G = 35;
  * health: fiber (as available nutrient-quality signal) counts more.
  */
 export const PRIORITY_WEIGHTS: Record<PlanPriority, Partial<PlannerWeights>> = {
-  save: { cost: 0.6, budgetOver: 1.5 },
+  save: { cost: 0.6, budgetOver: 1.5, proteinFloor: 0.5 },
   balanced: {},
   protein: { proteinGap: 1.6, postWorkoutProtein: 0.35, cost: 0.03 },
   health: { fiberGap: 0.6 },
@@ -107,6 +113,15 @@ export const PRIORITY_WEIGHTS: Record<PlanPriority, Partial<PlannerWeights>> = {
 
 export function weightsFor(priority: PlanPriority = 'balanced', overrides: Partial<PlannerWeights> = {}): PlannerWeights {
   return { ...PLANNER_WEIGHTS, ...PRIORITY_WEIGHTS[priority], ...overrides };
+}
+
+/** Share of the day's protein target below which the steep penalty applies. */
+export const PROTEIN_FLOOR = 0.9;
+
+/** Checked with the ROUNDED servings – what the plan will really contain. */
+function belowProteinFloor(protein: number, target: number, W: PlannerWeights): number {
+  const shortfall = target > 0 ? PROTEIN_FLOOR - protein / target : 0;
+  return shortfall > 0 && W.proteinFloor > 0 ? W.proteinFloor * (1 + 10 * shortfall) : 0;
 }
 
 /** Leftovers of these categories spoil – opened packages count as waste. */
@@ -137,6 +152,8 @@ interface SuggestInput {
   pantryAgeDays?: Record<string, number>;
   random?: () => number;
   weights?: Partial<PlannerWeights>;
+  /** "Ich koche gern vor" (E18) – default no. */
+  mealPrep?: boolean;
 }
 
 /** One day of the week being planned: fixed (user) meals + the suggested picks. */
@@ -158,6 +175,8 @@ export interface ScoreExtras {
   affinity?: (recipeId: string, budget: TimeBudget) => number;
   budgetChf?: number;
   pantryAgeDays?: Record<string, number>;
+  /** "Ich koche gern vor" (E18): meal-prep dishes are bundled into leftovers. */
+  mealPrep?: boolean;
 }
 
 export interface WeekScore {
@@ -203,10 +222,11 @@ function markCooked(cooked: Cooked, recipeId: string, date: ISODate) {
 
 /**
  * Preparation a meal really costs on `date`: a meal-prep dish cooked on one of
- * the previous LEFTOVER_DAYS days only needs reheating.
+ * the previous LEFTOVER_DAYS days only needs reheating – only for users who
+ * like to cook ahead (E18), otherwise every meal is cooked fresh.
  */
-export function effectivePrepMin(recipe: Recipe, date: ISODate, cooked: Cooked): number {
-  if (recipe.tags.includes(MEAL_PREP_TAG)) {
+export function effectivePrepMin(recipe: Recipe, date: ISODate, cooked: Cooked, mealPrep: boolean): number {
+  if (mealPrep && recipe.mealPrep) {
     const today = dayNumber(date);
     const leftover = (cooked.get(recipe.id) ?? []).some((d) => {
       const age = today - dayNumber(d);
@@ -282,7 +302,8 @@ export function scoreWeek(
   const uses = new Map<string, number>();
   const need = new Map<string, number>();
   const addNeed = (r: Recipe, servings: number) => {
-    for (const i of r.ingredients) need.set(i.foodId, (need.get(i.foodId) ?? 0) + i.grams * servings);
+    // Staples (salt, pepper, spices) are at home – no purchase, no cost, no new food (E19).
+    for (const i of r.ingredients) if (!isStaple(i.foodId)) need.set(i.foodId, (need.get(i.foodId) ?? 0) + i.grams * servings);
   };
 
   const cooked: Cooked = new Map();
@@ -300,10 +321,10 @@ export function scoreWeek(
   let time = 0;
   for (const day of days) {
     const factor = dayFactor(day);
-    for (const r of day.picks) time += timeCost(effectivePrepMin(r, day.date, cooked), day.timeBudget, W);
+    for (const r of day.picks) time += timeCost(effectivePrepMin(r, day.date, cooked, !!extras.mealPrep), day.timeBudget, W);
     const fixedProtein = day.fixed.reduce((s, m) => s + plannedMealMacros(m).protein, 0);
     const protein = fixedProtein + day.picks.reduce((s, r) => s + baseMacros(r).protein, 0) * factor;
-    nutrition += W.proteinGap * (Math.max(0, day.target.protein - protein) / day.target.protein);
+    nutrition += W.proteinGap * (Math.max(0, day.target.protein - protein) / day.target.protein) + belowProteinFloor(fixedProtein + day.picks.reduce((s, r) => s + baseMacros(r).protein, 0) * roundServings(factor), day.target.protein, W);
     if (day.picks.length) nutrition += W.extremeServing * Math.abs(Math.log(factor));
 
     if (extras.affinity) for (const r of day.picks) preference -= W.preference * extras.affinity(r.id, day.timeBudget);
@@ -410,10 +431,11 @@ export function suggestWeek({
   pantryAgeDays,
   random = Math.random,
   weights: overrides = {},
+  mealPrep = false,
 }: SuggestInput): PlannedMeal[] {
   const W = weightsFor(priority, overrides);
   const weights = W;
-  const extras: ScoreExtras = { affinity, budgetChf, pantryAgeDays };
+  const extras: ScoreExtras = { affinity, budgetChf, pantryAgeDays, mealPrep };
   const usage = new Map<string, number>();
   for (const m of existing) usage.set(m.recipeId, (usage.get(m.recipeId) ?? 0) + 1);
 
@@ -480,11 +502,11 @@ export function suggestWeek({
       const base = sumMacros(picks.map(baseMacros));
       const factor = remainingKcal / (base.kcal || 1);
       const protein = fixedMacros.protein + base.protein * factor;
-      const proteinGap = Math.max(0, target.protein - protein) / target.protein;
+      const proteinGap = Math.max(0, target.protein - protein) / target.protein + belowProteinFloor(fixedMacros.protein + base.protein * roundServings(factor), target.protein, W);
       const repeatPenalty = picks.reduce((s, r) => s + (usage.get(r.id) ?? 0), 0) * W.recipeRepeat;
       const extremeServing = Math.abs(Math.log(factor)) * W.extremeServing;
-      const unseen = new Set(picks.flatMap((r) => r.ingredients.map((i) => i.foodId)).filter((f) => !weekFoods.has(f)));
-      const time = picks.reduce((sum, r) => sum + timeCost(effectivePrepMin(r, date, cooked), timeBudget, W), 0);
+      const unseen = new Set(picks.flatMap((r) => r.ingredients.map((i) => i.foodId)).filter((f) => !weekFoods.has(f) && !isStaple(f)));
+      const time = picks.reduce((sum, r) => sum + timeCost(effectivePrepMin(r, date, cooked, mealPrep), timeBudget, W), 0);
       const liked = affinity ? picks.reduce((sum, r) => sum - W.preference * affinity(r.id, timeBudget), 0) : 0;
       const postIndex = postWorkoutSlot ? emptySlots.indexOf(postWorkoutSlot) : -1;
       const post = postIndex >= 0 ? picks[postIndex] : undefined;

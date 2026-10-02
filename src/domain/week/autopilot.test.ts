@@ -117,7 +117,7 @@ describe('F1 · check-in → week plan', () => {
     const low = ok(applyWeekChange(s, plan(s, [1, 3, 5], { ...allNormal(MON), [THU]: ctx('low') }), NOW)).state;
     const cooked = new Map<string, string[]>();
     low.plannedMeals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
-    for (const m of meals(low, THU)) expect(effectivePrepMin(getRecipe(m.recipeId)!, THU, cooked)).toBeLessThanOrEqual(20);
+    for (const m of meals(low, THU)) expect(effectivePrepMin(getRecipe(m.recipeId)!, THU, cooked, false)).toBeLessThanOrEqual(20);
     const thuSession = activeWorkouts(low.training, low.workoutOverrides, [], MON, low.dayContexts).find((w) => w.date === THU)!;
     expect(estimateMinutes(thuSession.template)).toBeLessThanOrEqual(30);
   });
@@ -135,8 +135,11 @@ describe('F1 · exception days', () => {
     const out = ok(applyWeekChange(state(), plan(state(), [1, 3, 5], { ...allNormal(MON), [WED]: ctx('normal', 'eating_out') }), NOW)).state;
     expect(meals(out, WED).map((m) => m.slot).sort()).toEqual(['breakfast', 'lunch']);
     expect(dayTargetFor(out, WED)!.kcal).toBe(dayTargetFor(base, WED)!.kcal);
-    const needed = (st: AppState) => weekShopping(st, MON, MON).reduce((sum, i) => sum + i.neededG, 0);
-    expect(needed(out)).toBeLessThan(needed(base));
+    // Planning a different week re-rolls the other days, so the whole list is no measure –
+    // what Wednesday needs is: no dinner ingredients any more, less in total.
+    const fromWed = (st: AppState) => weekShopping(st, MON, MON).flatMap((i) => i.sources.filter((src) => src.date === WED));
+    expect(fromWed(out).some((src) => src.slot === 'dinner')).toBe(false);
+    expect(fromWed(out).reduce((sum, src) => sum + src.grams, 0)).toBeLessThan(fromWed(base).reduce((sum, src) => sum + src.grams, 0));
     // Training is not moved because of it.
     expect(activeWorkouts(out.training, out.workoutOverrides, [], MON).map((w) => w.date)).toEqual([TUE, THU, SAT]);
   });
@@ -152,7 +155,7 @@ describe('F1 · exception days', () => {
     const r = ok(applyWeekChange(state(), plan(state(), [1, 3, 5], { ...allNormal(MON), [SAT]: ctx('low') }), NOW)).state;
     const cooked = new Map<string, string[]>();
     r.plannedMeals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
-    expect(meals(r, SAT).filter((m) => effectivePrepMin(getRecipe(m.recipeId)!, SAT, cooked) > 15).length).toBeLessThanOrEqual(1);
+    expect(meals(r, SAT).filter((m) => effectivePrepMin(getRecipe(m.recipeId)!, SAT, cooked, false) > 15).length).toBeLessThanOrEqual(1);
     const session = activeWorkouts(r.training, r.workoutOverrides, [], MON, r.dayContexts).find((w) => w.date === SAT)!;
     expect(estimateMinutes(session.template)).toBeLessThanOrEqual(30);
   });

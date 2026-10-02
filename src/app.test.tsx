@@ -3192,5 +3192,23 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       expect(store.getState().onboarding!.health.pregnancy!.value).toBe('no');
       expect(text()).not.toContain('Gilt das noch?');
     });
+
+    it('meal prep (E18): existing users are asked once whether to keep the leftovers – only behind the v2 switch', async () => {
+      const ask = 'Möchtest du das beibehalten?';
+      sessionStorage.removeItem('lifefit:onboarding-v2');
+      localStorage.setItem(KEY, JSON.stringify(completeState()));
+      window.history.replaceState(null, '', '/#/today');
+      let store = await startApp();
+      expect(store.getState().onboarding!.food.mealPrep).toMatchObject({ value: true, source: 'migrated' });
+      expect(text()).not.toContain(ask);
+
+      await act(async () => root?.unmount());
+      window.history.replaceState(null, '', '/?onboarding=v2#/today');
+      store = await startApp();
+      expect(text()).toContain(ask);
+      await click('Nein, lieber frisch');
+      expect(store.getState().onboarding!.food.mealPrep).toMatchObject({ value: false, source: 'user' });
+      expect(text()).not.toContain(ask);
+    });
   });
 });

@@ -453,10 +453,12 @@ describe('F5 · time budget – cascade', () => {
   it('uses meal-prep leftovers on a low day', () => {
     // Chili cooked on Wednesday → Thursday lunch can be the leftover (5 min).
     const wed = meal('2026-09-23', 'dinner', 'chili', { source: 'user' });
-    const r = ok(applyWeekChange(state({ plannedMeals: [wed, ...thuMeals().slice(1)] }), { type: 'setDayContext', date: THU, context: { timeBudget: 'low' } }, NOW));
+    // Only for users who like to cook ahead (E18).
+    const cooksAhead = { version: 1 as const, progress: { completed: {}, skipped: [] }, body: {}, health: {}, goal: {}, food: { mealPrep: { value: true, source: 'user' as const, updatedAt: NOW.toISOString() } }, training: {} };
+    const r = ok(applyWeekChange(state({ plannedMeals: [wed, ...thuMeals().slice(1)], onboarding: cooksAhead }), { type: 'setDayContext', date: THU, context: { timeBudget: 'low' } }, NOW));
     const cooked = new Map<string, string[]>();
     r.state.plannedMeals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
-    for (const m of r.state.plannedMeals.filter((x) => x.date === THU)) expect(effectivePrepMin(getRecipe(m.recipeId)!, THU, cooked)).toBeLessThanOrEqual(15);
+    for (const m of r.state.plannedMeals.filter((x) => x.date === THU)) expect(effectivePrepMin(getRecipe(m.recipeId)!, THU, cooked, true)).toBeLessThanOrEqual(15);
   });
 
   it('past days are closed: the context of a lived day cannot be changed', () => {

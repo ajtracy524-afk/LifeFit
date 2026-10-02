@@ -1,6 +1,6 @@
 # Katalog-Tags – Review (Prompt 3b, Phase 1)
 
-Stand: 02.10.2026. **Vorschlag, noch nicht übernommen.** Übernahme in `src/data` erst nach „Freigabe“ (E6, E9). Korrekturen bitte direkt in diese Datei oder als Liste im Chat.
+Stand: 02.10.2026. **Freigegeben mit den Korrekturen E15–E23 und in Phase 2 übernommen** (siehe Abschnitt „Phase 2“ am Ende). Die Tabellen in Teil 1–4 zeigen den Vorschlag aus Phase 1; wo E15–E23 davon abweichen, gilt Phase 2. Maßgeblich ist `src/data`.
 
 So ist die Datei aufgebaut:
 - Teil 1: Lebensmittel, Teil 2: Rezepte, Teil 3: Übungen
@@ -122,9 +122,9 @@ Kriterien:
 
 Ergebnis: transportfähig 21 von 24 (heute 2), Meal-Prep 14 von 24 (heute 5).
 
-### Vorschau Machbarkeit (für die Schwelle in Prompt 4)
+### Machbarkeit (nach Phase 2)
 
-Anzahl erlaubter Rezepte pro Mahlzeit nach den vorgeschlagenen Tags. Das zeigt, wo die Machbarkeitsprüfung aus Prompt 4 anschlagen würde.
+Anzahl erlaubter Rezepte pro Mahlzeit, berechnet mit dem echten Filter (`recipeAllowedBy`) samt laktosefreiem Austausch (E20). Spuren sind standardmäßig ausgeschlossen (E15), Alkohol aus Fermentation ebenfalls (E17). Das zeigt, wo die Machbarkeitsprüfung aus Prompt 4 anschlagen wird.
 
 | Profil | Frühstück | Mittag | Abend | Snack |
 |---|---|---|---|---|
@@ -133,15 +133,20 @@ Anzahl erlaubter Rezepte pro Mahlzeit nach den vorgeschlagenen Tags. Das zeigt, 
 | vegetarisch | 9 | 5 | 6 | 6 |
 | vegan | **2** | 3 | 5 | **2** |
 | Milch-Allergie | **2** | 8 | 10 | **2** |
-| Laktoseintoleranz | **2** | 8 | 10 | **2** |
+| Laktoseintoleranz (mit Austausch) | 4 | 8 | 10 | 4 |
 | Zöliakie | **2** | 3 | 4 | 4 |
-| Soja-Allergie | 7 | 9 | 7 | 5 |
+| Soja-Allergie | 4 | 9 | 7 | 4 |
 | Eier-Allergie | 6 | 11 | 11 | 6 |
+| Schalenfrüchte-Allergie (Spuren ausgeschlossen) | 7 | 12 | 12 | 4 |
+| kein Alkohol (inkl. Fermentation) | 9 | 9 | 9 | 6 |
 | vegan + Soja-Allergie | **0** | **1** | **1** | **1** |
 | vegan + Zöliakie | **1** | **0** | **1** | **2** |
-| vegetarisch + Laktose + Eier | **2** | 3 | 5 | **2** |
+| vegetarisch + Laktose + Eier | 3 | 3 | 5 | 4 |
 
-Fett = höchstens 2 Rezepte. Bei veganen Profilen mit Soja-Allergie bleibt beim Frühstück fast nichts übrig. Das ist ein Katalog-Thema (zu wenige Rezepte), kein Tag-Fehler; Prompt 4 zeigt dafür den Hinweis.
+Fett = höchstens 2 Rezepte. Gegenüber dem Vorschlag:
+- **Laktoseintoleranz** gewinnt durch den Austausch (Milch, Quark, Skyr, griechischer Joghurt → laktosefrei) vor allem beim Frühstück und bei den Snacks.
+- **Soja-Allergie** verliert beim Frühstück drei Rezepte, weil Whey jetzt Soja trägt (E23).
+- **Vegan + Soja**, **vegan + Zöliakie** und **Zöliakie allgemein** bleiben zu knapp. Das ist ein Katalog-Thema und steht im Backlog (E23), kein Tag-Fehler.
 
 ## Teil 3 – Übungen
 
@@ -303,4 +308,69 @@ Die Stufen ändern erst etwas, wenn Prompt 7 `loadsArea` auf die Stufen umstellt
 
 ---
 
-**STOPP.** Phase 2 (Übernahme in `src/data`, abgeleitete Rezept-Tags als reine Funktion, Tests) beginnt erst nach „Freigabe“, inklusive deiner Korrekturen und Antworten auf Teil 5.
+## Phase 2 – übernommen (02.10.2026)
+
+Freigabe mit den Korrekturen E15–E23 (Wortlaut in `docs/ONBOARDING_PLAN.md`, Abschnitt „Entscheidungen“). Umgesetzt:
+
+**Datenmodell**
+- Lebensmittel tragen `tags` (`FoodTags`): Allergene, Spuren (E15), Laktose `yes`/`low`, `lactoseFree`, Fruktose, Zöliakie-Risiko, Tierarten, Alkohol `fermentation`/`added` (E17), Gruppen-Override (E16), Grundvorrat, `staple` (E19).
+- Die alten Felder (`vegan`, `vegetarian`, die vier alten Ausschlüsse) werden aus den Tags **abgeleitet**. Eine Quelle der Wahrheit; der heutige Filter läuft bis Prompt 4 unverändert weiter. Spuren zählen dabei mit (strengere Lesart).
+- Rezepte tragen `portable` (`yes`/`chilled`/`no`, E23), `mealPrep`, `keepDays`. Allergene, Spuren, Tierarten und Ernährungsform werden in `domain/catalogTags.recipeTags` abgeleitet, nie gepflegt. Die freien Tags „Meal Prep“ und „To go“ sind entfernt; die Chips kommen aus `recipeLabels`.
+- Übungen: Gelenkstufen in `JOINT_LOAD` (`data/exercises.ts`), gelesen über `jointLoad`. Die Beschwerden nutzen bis Prompt 7 weiter `AREA_LOAD` (E22).
+
+**Neue Lebensmittel**
+- Salz, Pfeffer (E19)
+- Currypulver (Senf, Sellerie im Zweifel) und Essig (Sulfite im Zweifel) aus der Suche nach versteckten Zutaten
+- Laktosefreie Varianten von Milch, Magerquark, Skyr und griechischem Joghurt (E20)
+
+**Verhalten**
+- **E18 Meal-Prep:**
+  - Die Reste-Logik nutzt alle 14 Meal-Prep-Rezepte, aber nur bei „Ich koche gern vor“.
+  - Neue Nutzer: nein. Bestandsnutzer: ja mit `source: 'migrated'`.
+  - Die einmalige Bestätigung erscheint auf Heute als Karte „Möchtest du das beibehalten?“, vorerst nur hinter `?onboarding=v2`.
+- **E19 Salz, Pfeffer & Co.:**
+  - Sie sind Zutaten, aber im Plan kein Einkauf, keine Kosten und kein „neues Lebensmittel“.
+  - Auf der Einkaufsliste erscheinen sie nur, wenn sie im Vorrat als leer markiert sind, dann als eine Packung.
+  - In Rezepten stehen kleine Mengen als „1 Prise“.
+  - In der Mikronährstoff-Summe eines Rezepts zählen sie nicht. Sonst würde eine Lücke (Pfeffer hat keine Daten) die ganze Rezeptsumme unbekannt machen.
+- **E20 Austausch statt Ausschluss:**
+  - Bei Laktoseintoleranz bleiben Rezepte mit Milch, Quark, Skyr oder griechischem Joghurt erlaubt.
+  - Die Einkaufsliste kauft die laktosefreie Variante (`buyFoodId`). Plan und Vorrat rechnen weiter mit der Original-Zutat, damit Vorrat und Verbrauch zusammenpassen.
+  - Bei Milcheiweißallergie greift kein Austausch.
+- **E21:** Verknüpfungen ergänzt. Mobility-Übungen sind nie Alternative einer Kraftübung.
+
+**Versteckte Zutaten (E23)**
+
+Gesucht in Titeln und Zubereitungstexten aller 24 Rezepte. Ergänzt, weil allergenrelevant oder ausdrücklich genannt:
+
+| Rezept | ergänzt | Fund im Text |
+|---|---|---|
+| Gemüse-Omelett | Salz, Pfeffer | „salzen, pfeffern“ |
+| Tofu-Scramble auf Toast | Olivenöl, Salz, Pfeffer | „in der Pfanne anbraten … Salz und Pfeffer“ (Text nennt jetzt „in etwas Öl“) |
+| Tofu-Scramble mit Ofenkartoffeln | Salz, Pfeffer | „Öl und Salz“, „Salz und Pfeffer“ |
+| Ofenlachs | Salz, Pfeffer | „mit Öl und Salz“, „würzen“ (Text nennt jetzt „Salz und Pfeffer“) |
+| Chili con Carne | Salz | „Chili, Kreuzkümmel und Salz“ |
+| Vollkorn-Pasta Bolognese | Salz, Pfeffer | „würzen“ (Text nennt jetzt „Salz und Pfeffer“) |
+| Hähnchen-Wraps | Olivenöl, Salz, Pfeffer | „würzen und braten“ (Text nennt jetzt „Salz und Pfeffer … in etwas Öl“) |
+| Thunfisch-Nudelsalat | Essig, Salz, Pfeffer | „Essig, Salz und Pfeffer“ |
+| Rote-Linsen-Dal | Currypulver | „Curry und Kreuzkümmel“ – **Senf/Sellerie** |
+| Reiswaffeln mit Hüttenkäse | Pfeffer | „pfeffern“ |
+| Edamame mit Meersalz | Salz | „Salzwasser“, „Meersalz“ |
+
+Nicht ergänzt, weil allergenfrei und nur in Gramm-Bruchteilen: Kurkuma, Kreuzkümmel, Chilipulver, Paprikapulver, Zitronensaft, Wasser. Ein Test stellt sicher, dass genannte Zutaten in der Zutatenliste stehen und „würzen“ immer sagt, womit.
+
+**Über die Korrekturen hinaus (bitte prüfen)**
+- **„Gekühlt“ auch für Overnight Oats und Reiswaffeln mit Hüttenkäse.** Gleiche Begründung wie bei Skyr-Bowl und Quark: frische Milchprodukte, roh. Genannt hattest du nur die beiden anderen.
+- **Currypulver und Essig sind wie Salz und Pfeffer „staple“.** Sie stehen also nur auf der Einkaufsliste, wenn sie im Vorrat als leer markiert sind. E19 nennt nur Salz und Pfeffer.
+- **Essig: Restalkohol nicht getaggt.** Branntwein- und Weinessig enthalten Spuren aus der Gärung. Halal-Regeln erlauben Essig in der Regel, deshalb keine Kennzeichnung als Alkohol.
+
+**Tests**
+- `src/data/catalog.test.ts`:
+  - Rezept-Allergene = Vereinigung der Zutaten-Allergene
+  - jede Stufe-2-Übung hat eine Alternative ≤ 1 für denselben Hauptmuskel
+  - vegetarisch/vegan filtern wie vorher
+  - alte Ausschlüsse ändern sich nur bei den freigegebenen Korrekturen (Gouda, Proteinriegel)
+  - keine versteckten Zutaten
+  - laktosefreie Varianten
+- `src/domain/catalogTags.test.ts`: Spuren, Zöliakie, Alkohol, Schwein, Ernährungsformen, Austausch, Einkaufsliste, Grundvorrat, Gruppen
+- Migration E18 in `migrate.test.ts`; Bestätigungskarte in `app.test.tsx`

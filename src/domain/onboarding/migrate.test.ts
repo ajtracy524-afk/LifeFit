@@ -152,3 +152,18 @@ describe('energy with "keine Angabe" (E2)', () => {
     expect(calorieFloor({ sex: 'female', age: 70, heightCm: 150 }, 45)).toBe(1200);
   });
 });
+
+describe('meal prep for existing users (E18)', () => {
+  it('existing users keep the leftover logic (migrated, confirmed once); new users default to no', () => {
+    const s = migrateOnboarding(finished(), NOW);
+    expect(s.onboarding!.food.mealPrep).toEqual({ value: true, source: 'migrated', updatedAt: AT });
+    expect(migrateOnboarding(s, NOW)).toBe(s); // idempotent
+    expect(migrateOnboarding(emptyState(), NOW).onboarding!.food.mealPrep).toBeUndefined();
+  });
+
+  it('never overwrites an answer', () => {
+    const s = migrateOnboarding(finished(), NOW);
+    const answered = { ...s, onboarding: { ...s.onboarding!, food: { ...s.onboarding!.food, mealPrep: { value: false, source: 'user' as const, updatedAt: AT } } } };
+    expect(migrateOnboarding(answered, NOW).onboarding!.food.mealPrep).toMatchObject({ value: false, source: 'user' });
+  });
+});

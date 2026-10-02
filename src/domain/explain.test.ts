@@ -49,8 +49,12 @@ describe('Warum dieses Gericht?', () => {
     const cooked = meal('a', MON, 'dinner', 'chili');
     const leftover = meal('b', TUE, 'lunch', 'chili');
     const quick = meal('c', TUE, 'dinner', 'veggie-omelette');
-    const s = state({ plannedMeals: [cooked, leftover, quick], dayContexts: { [TUE]: { timeBudget: 'low', mode: 'normal' } } });
+    // Leftovers only for users who like to cook ahead (E18).
+    const cooksAhead = { version: 1 as const, progress: { completed: {}, skipped: [] }, body: {}, health: {}, goal: {}, food: { mealPrep: { value: true, source: 'user' as const, updatedAt: `${MON}T07:00:00Z` } }, training: {} };
+    const s = state({ plannedMeals: [cooked, leftover, quick], dayContexts: { [TUE]: { timeBudget: 'low', mode: 'normal' } }, onboarding: cooksAhead });
     expect(explainMeal(s, leftover, MON)).toContain('Rest von Montag – nur aufwärmen');
+    // Without it the chili is cooked again – no leftover claim.
+    expect(explainMeal({ ...s, onboarding: undefined }, leftover, MON)).not.toContain('Rest von Montag – nur aufwärmen');
     expect(explainMeal(s, quick, MON)).toContain('15 Min. Zubereitung – passt zu „Wenig Zeit“');
   });
 

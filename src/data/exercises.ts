@@ -126,7 +126,7 @@ export const EXERCISES: Exercise[] = [
     description: 'Kurzhanteln über den Kopf drücken – sitzend oder stehend.',
     steps: ['Hanteln auf Schulterhöhe, Handflächen nach vorne.', 'Senkrecht nach oben drücken.', 'Kontrolliert zurück auf Schulterhöhe.'],
     tips: ['Rumpf fest, kein Hohlkreuz.'],
-    alternatives: ['machine-shoulder-press', 'push-up'],
+    alternatives: ['machine-shoulder-press', 'push-up', 'lateral-raise', 'face-pull', 'rear-delt-fly'],
   }),
   x({
     id: 'machine-shoulder-press',
@@ -140,7 +140,7 @@ export const EXERCISES: Exercise[] = [
     description: 'Geführtes Drücken über Kopf an der Maschine.',
     steps: ['Sitz so einstellen, dass die Griffe auf Schulterhöhe sind.', 'Nach oben drücken.', 'Langsam zurück.'],
     tips: ['Rücken an der Lehne lassen.'],
-    alternatives: ['overhead-press'],
+    alternatives: ['overhead-press', 'lateral-raise', 'face-pull', 'rear-delt-fly'],
   }),
   x({
     id: 'lateral-raise',
@@ -588,7 +588,7 @@ export const EXERCISES: Exercise[] = [
     description: 'Die Kettlebell mit einem kräftigen Hüftstoß nach vorne schwingen.',
     steps: ['Kettlebell zwischen den Beinen nach hinten schwingen.', 'Hüfte explosiv nach vorne strecken.', 'Die Kugel schwingt bis Brusthöhe – nicht mit den Armen heben.'],
     tips: ['Die Kraft kommt aus der Hüfte, nicht aus der Kniebeuge.'],
-    alternatives: ['hip-thrust', 'romanian-deadlift'],
+    alternatives: ['hip-thrust', 'romanian-deadlift', 'glute-bridge'],
   }),
   x({
     id: 'calf-raise',
@@ -1066,3 +1066,71 @@ const AREA_LOAD: Record<BodyArea, string[]> = {
 };
 
 export const loadsArea = (exerciseId: string, area: BodyArea): boolean => AREA_LOAD[area].includes(exerciseId);
+
+export type JointLevel = 0 | 1 | 2;
+
+/**
+ * Joint load per exercise: 0 = none, 1 = low, 2 = high (docs/CATALOG_TAGS_REVIEW.md,
+ * decisions E6, E9, E22). Missing = 0. An orientation for choosing an alternative –
+ * no statement that an exercise is safe, and no diagnosis. Complaints switch from
+ * AREA_LOAD to these levels in Prompt 7.
+ */
+export const JOINT_LOAD: Readonly<Record<string, Partial<Record<BodyArea, JointLevel>>>> = {
+  'bench-press': { shoulder: 2, elbow: 1, wrist: 1, lower_back: 1 },
+  'db-bench-press': { shoulder: 1, elbow: 1, wrist: 1 },
+  'incline-db-press': { shoulder: 2, elbow: 1, wrist: 1 },
+  'chest-press': { shoulder: 1, elbow: 1 },
+  'push-up': { shoulder: 1, elbow: 1, wrist: 2 },
+  'cable-fly': { shoulder: 1 },
+  dips: { shoulder: 2, elbow: 2, wrist: 1 },
+  'overhead-press': { shoulder: 2, elbow: 1, wrist: 1, lower_back: 1 },
+  'machine-shoulder-press': { shoulder: 2, elbow: 1 },
+  'lateral-raise': { shoulder: 1 },
+  'face-pull': { shoulder: 1, elbow: 1 },
+  'rear-delt-fly': { shoulder: 1, lower_back: 1 },
+  'triceps-pushdown': { elbow: 1 },
+  'overhead-triceps-extension': { shoulder: 1, elbow: 2 },
+  'close-grip-bench': { shoulder: 1, elbow: 2, wrist: 2, lower_back: 1 },
+  'barbell-row': { shoulder: 1, elbow: 1, wrist: 1, lower_back: 2 },
+  'db-row': { shoulder: 1, elbow: 1, lower_back: 1 },
+  'lat-pulldown': { shoulder: 1, elbow: 1 },
+  'pull-up': { shoulder: 2, elbow: 2, wrist: 1 },
+  'assisted-pull-up': { shoulder: 1, elbow: 1 },
+  'cable-row': { shoulder: 1, elbow: 1, lower_back: 1 },
+  'inverted-row': { shoulder: 1, elbow: 1, wrist: 1 },
+  'band-row': { shoulder: 1 },
+  'biceps-curl': { elbow: 2, wrist: 1 },
+  'hammer-curl': { elbow: 1 },
+  'cable-curl': { elbow: 2, wrist: 1 },
+  'band-curl': { elbow: 1 },
+  squat: { shoulder: 1, knee: 2, lower_back: 2, wrist: 1, hip: 2 },
+  'goblet-squat': { knee: 1, lower_back: 1, hip: 1 },
+  'bodyweight-squat': { knee: 1, hip: 1 },
+  'leg-press': { knee: 1, lower_back: 1, hip: 1 },
+  'leg-extension': { knee: 2 },
+  'split-squat': { knee: 2, hip: 1 },
+  lunges: { knee: 2, hip: 1 },
+  deadlift: { knee: 1, lower_back: 2, wrist: 1, hip: 2 },
+  'romanian-deadlift': { lower_back: 2, wrist: 1, hip: 2 },
+  'db-romanian-deadlift': { lower_back: 1, wrist: 1, hip: 1 },
+  'leg-curl': { knee: 1 },
+  'hip-thrust': { lower_back: 1, hip: 2 },
+  'glute-bridge': { hip: 1 },
+  'kb-swing': { shoulder: 1, lower_back: 2, wrist: 1, hip: 2 },
+  'calf-raise': { lower_back: 1 },
+  'standing-calf-raise': {},
+  'hanging-leg-raise': { shoulder: 2, elbow: 1, wrist: 1, lower_back: 2 },
+  plank: { shoulder: 1, elbow: 1, lower_back: 1 },
+  'dead-bug': {},
+  'cable-crunch': { lower_back: 1 },
+  'zone2-bike': { knee: 1, hip: 1 },
+  'zone2-run': { knee: 2, lower_back: 1, hip: 1 },
+  'brisk-walk': { knee: 1 },
+  rowing: { shoulder: 1, knee: 1, lower_back: 1 },
+  'hiit-bike': { knee: 1, hip: 1 },
+  'jump-rope': { knee: 2 },
+  'mobility-flow': { shoulder: 1, knee: 1, lower_back: 1, wrist: 1 },
+  'hip-mobility': { knee: 1, hip: 1 },
+};
+
+export const jointLoad = (exerciseId: string, area: BodyArea): JointLevel => JOINT_LOAD[exerciseId]?.[area] ?? 0;

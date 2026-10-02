@@ -12,7 +12,7 @@ import { postWorkoutSlot, preWorkoutSlot, sessionOn, trainingTimeFor } from './s
 import { effectiveTimeBudget, LEFTOVER_PREP_MIN, TIME_BUDGETS } from './timeBudget';
 import { estimateMinutes } from './training';
 import type { AppState, ISODate, PlanPriority, PlannedMeal } from './types';
-import { availablePantry, dayContextFor, dayTargetFor, weekMeals, weekShopping } from './week';
+import { availablePantry, dayContextFor, dayTargetFor, mealPrepEnabled, weekMeals, weekShopping } from './week';
 
 /**
  * "Warum?" – explanations built ONLY from factors the planner really uses
@@ -33,7 +33,7 @@ export function explainMeal(state: AppState, meal: PlannedMeal, today: ISODate):
   const week = weekMeals(state, meal.date);
   const cooked = new Map<string, ISODate[]>();
   for (const m of week) if (m.id !== meal.id) cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]);
-  const prep = effectivePrepMin(recipe, meal.date, cooked);
+  const prep = effectivePrepMin(recipe, meal.date, cooked, mealPrepEnabled(state));
   const budget = effectiveTimeBudget(dayContextFor(state, meal.date));
   if (prep === LEFTOVER_PREP_MIN && recipe.prepMin > LEFTOVER_PREP_MIN) {
     const from = (cooked.get(recipe.id) ?? []).filter((d) => d < meal.date).sort().pop();

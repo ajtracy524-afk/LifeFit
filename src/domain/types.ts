@@ -14,7 +14,24 @@ export type Sex = 'male' | 'female' | 'unspecified';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active';
 export type Experience = 'beginner' | 'intermediate' | 'advanced';
 export type DietType = 'omnivore' | 'vegetarian' | 'vegan';
+/** The four exclusions of the old profile (nutritionProfile.excluded) – derived from the catalog tags until Prompt 4 switches the filter. */
 export type Allergen = 'lactose' | 'gluten' | 'nuts' | 'fish';
+/** The 14 main allergens of the EU food information regulation (LMIV, Annex II). */
+export type LmivAllergen =
+  | 'gluten'
+  | 'crustaceans'
+  | 'eggs'
+  | 'fish'
+  | 'peanuts'
+  | 'soy'
+  | 'milk'
+  | 'tree_nuts'
+  | 'celery'
+  | 'mustard'
+  | 'sesame'
+  | 'sulphites'
+  | 'lupin'
+  | 'molluscs';
 export type MealSlot = 'breakfast' | 'snack' | 'lunch' | 'dinner';
 
 export interface Macros {
@@ -34,6 +51,39 @@ export type ShoppingCategory =
   | 'canned'
   | 'frozen'
   | 'pantry';
+
+/** Animal origin of a food – diets are derived from it (docs/CATALOG_TAGS_REVIEW.md). */
+export type AnimalKind = 'meat' | 'pork' | 'fish' | 'crustaceans' | 'molluscs' | 'egg' | 'milk' | 'honey';
+/** Groups of the food preferences (E16). Condiments belong to none. */
+export type FoodGroup = 'protein' | 'carbs' | 'fat' | 'veg';
+
+/**
+ * Hard facts about a catalog food (Prompt 3b, decisions E15–E23). Recipes get
+ * none of these – they are derived from the ingredients (domain/catalogTags).
+ */
+export interface FoodTags {
+  /** By composition; tagged in doubt, never left out. */
+  allergens: LmivAllergen[];
+  /** "Kann Spuren enthalten" (E15) – excluded by default, unless the user says traces are okay. */
+  traces?: LmivAllergen[];
+  /** Relevance for lactose intolerance: yes = excluded (or swapped for a lactose-free variant), low = allowed (E20). */
+  lactose?: 'yes' | 'low';
+  /** A lactose-free variant (same nutrients, milk allergen stays). */
+  lactoseFree?: true;
+  /** Relevant for fructose intolerance. */
+  fructose?: true;
+  /** Gluten-free, but contaminated often enough to matter for coeliac disease (stricter than "glutenarm"). */
+  celiacRisk?: true;
+  kinds: AnimalKind[];
+  /** Contains alcohol (E17): from fermentation (soy sauce) or added. */
+  alcohol?: 'fermentation' | 'added';
+  /** Override of the computed preference group (E16); [] = condiment, never shown in the preferences. */
+  groups?: FoodGroup[];
+  /** Grundvorrat – for the pantry checklist (Prompt 6). */
+  basic?: true;
+  /** Assumed to be at home: on the shopping list only when marked empty in the pantry (E19). */
+  staple?: true;
+}
 
 export interface Food {
   id: string;
@@ -55,6 +105,8 @@ export interface Food {
   micros?: Partial<Record<MicroNutrient, number>>;
   /** Own foods only: vegan / vegetarian is not known (the flags above are then not a statement). */
   dietUnknown?: { vegan?: true; vegetarian?: true };
+  /** Catalog foods only: the hard facts (own products keep the declared allergens above). */
+  tags?: FoodTags;
 }
 
 /**
@@ -104,6 +156,12 @@ export interface Recipe {
   tags: string[];
   ingredients: RecipeIngredient[];
   steps: string[];
+  /** Survives 4–5 h in a box (cold or microwave); chilled = only with cooling (E23). Missing = no. */
+  portable?: 'yes' | 'chilled' | 'no';
+  /** Can be cooked ahead for 2–3 days – the planner bundles leftovers, but only for "Ich koche gern vor" (E18). */
+  mealPrep?: boolean;
+  /** Days it keeps in the fridge after cooking (0 = eat fresh). */
+  keepDays?: number;
   /** An own dish offered to the planner (see domain/personal.ts) – not part of the curated catalog. */
   personal?: true;
 }

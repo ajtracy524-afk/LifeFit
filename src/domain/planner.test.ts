@@ -151,7 +151,7 @@ describe('F5 · time budget in the planner', () => {
   const effective = (meals: PlannedMeal[]) => {
     const cooked = new Map<string, string[]>();
     meals.forEach((m) => cooked.set(m.recipeId, [...(cooked.get(m.recipeId) ?? []), m.date]));
-    return (m: PlannedMeal) => effectivePrepMin(getRecipe(m.recipeId)!, m.date, cooked);
+    return (m: PlannedMeal) => effectivePrepMin(getRecipe(m.recipeId)!, m.date, cooked, false);
   };
   const lowThursday = (d: string): TimeBudget => (d === THU ? 'low' : 'normal');
 
@@ -192,13 +192,15 @@ describe('F5 · time budget in the planner', () => {
   it('meal-prep leftovers count as quick', () => {
     const chili = getRecipe('chili')!;
     const cooked = new Map([['chili', [dates[0]!]]]);
-    expect(effectivePrepMin(chili, dates[1]!, cooked)).toBe(5); // cooked yesterday
-    expect(effectivePrepMin(chili, dates[4]!, cooked)).toBe(chili.prepMin); // too old
-    expect(effectivePrepMin(getRecipe('oven-salmon')!, dates[1]!, new Map([['oven-salmon', [dates[0]!]]]))).toBe(35); // no meal-prep dish
+    expect(effectivePrepMin(chili, dates[1]!, cooked, true)).toBe(5); // cooked yesterday
+    expect(effectivePrepMin(chili, dates[4]!, cooked, true)).toBe(chili.prepMin); // too old
+    expect(effectivePrepMin(getRecipe('veggie-omelette')!, dates[1]!, new Map([['veggie-omelette', [dates[0]!]]]), true)).toBe(15); // no meal-prep dish
+    // E18: leftovers only for "Ich koche gern vor" – otherwise every meal is cooked fresh.
+    expect(effectivePrepMin(chili, dates[1]!, cooked, false)).toBe(chili.prepMin);
     // Day arithmetic across month and year ends (cached day numbers, no Date per call).
-    expect(effectivePrepMin(chili, '2026-10-01', new Map([['chili', ['2026-09-30']]]))).toBe(5);
-    expect(effectivePrepMin(chili, '2027-01-01', new Map([['chili', ['2026-12-31']]]))).toBe(5);
-    expect(effectivePrepMin(chili, '2026-09-30', new Map([['chili', ['2026-09-30']]]))).toBe(chili.prepMin); // same day: not a leftover
+    expect(effectivePrepMin(chili, '2026-10-01', new Map([['chili', ['2026-09-30']]]), true)).toBe(5);
+    expect(effectivePrepMin(chili, '2027-01-01', new Map([['chili', ['2026-12-31']]]), true)).toBe(5);
+    expect(effectivePrepMin(chili, '2026-09-30', new Map([['chili', ['2026-09-30']]]), true)).toBe(chili.prepMin); // same day: not a leftover
   });
 
   it('keeps calories and protein on low days', () => {

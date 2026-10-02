@@ -20,6 +20,12 @@ export interface ShoppingItem {
   quantity: string;
   hint?: string;
   sources: ShoppingSource[];
+  /**
+   * E20: what is actually bought (the lactose-free variant). Name, category and
+   * quantity describe it; `foodId` stays the recipe ingredient, so pantry and
+   * plan keep one identity.
+   */
+  buyFoodId?: string;
 }
 
 /**
@@ -27,7 +33,7 @@ export interface ShoppingItem {
  * meal contributes its scaled ingredients. Adding, swapping or removing a meal
  * therefore updates the list automatically – no sync code needed.
  */
-export function buildShoppingList(meals: PlannedMeal[], from: ISODate, to: ISODate): ShoppingItem[] {
+export function buildShoppingList(meals: PlannedMeal[], from: ISODate, to: ISODate, buyAs: (foodId: string) => string = (id) => id): ShoppingItem[] {
   const byFood = new Map<string, ShoppingItem>();
 
   for (const meal of meals) {
@@ -41,7 +47,11 @@ export function buildShoppingList(meals: PlannedMeal[], from: ISODate, to: ISODa
       const grams = ing.grams * meal.servings;
       let item = byFood.get(food.id);
       if (!item) {
-        item = { foodId: food.id, name: food.name, category: food.category, grams: 0, quantity: '', sources: [] };
+        const buyId = buyAs(food.id);
+        const bought = buyId !== food.id ? getFood(buyId) : undefined;
+        item = bought
+          ? { foodId: food.id, buyFoodId: bought.id, name: bought.name, category: bought.category, grams: 0, quantity: '', sources: [] }
+          : { foodId: food.id, name: food.name, category: food.category, grams: 0, quantity: '', sources: [] };
         byFood.set(food.id, item);
       }
       item.grams += grams;
@@ -51,7 +61,7 @@ export function buildShoppingList(meals: PlannedMeal[], from: ISODate, to: ISODa
 
   const items = [...byFood.values()];
   for (const item of items) {
-    const food = getFood(item.foodId)!;
+    const food = getFood(item.buyFoodId ?? item.foodId)!;
     const q = describeQuantity(food, item.grams);
     item.quantity = q.quantity;
     item.hint = q.hint;
@@ -108,6 +118,8 @@ export const PIECE_TOLERANCE = 0.15;
 
 /** "3 Stück", "900 g" and a package hint like "2 × 450 g". */
 export function describeQuantity(food: Food, grams: number): { quantity: string; hint?: string } {
+  // A few grams of salt, pepper or spice are a pinch, not a weight.
+  if (food.tags?.staple && grams > 0 && grams < 3) return { quantity: '1 Prise' };
   if (food.pieceG && food.pieceLabel) {
     const pieces = Math.max(1, Math.ceil(grams / food.pieceG - PIECE_TOLERANCE));
     const label = food.pieceLabel === 'Stück' || pieces === 1 ? food.pieceLabel : pluralize(food.pieceLabel);

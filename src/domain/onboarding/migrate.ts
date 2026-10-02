@@ -128,6 +128,9 @@ function fillMissing(p: OnboardingProfile, state: AppState, at: string, year: nu
     progress = { ...progress, finishedAt: done, legacy: true, completed: { A: done, B: done, C: done, ...progress.completed } };
     changed = true;
   }
+  // E18: existing users know the leftover logic – "Ich koche gern vor" stays on, confirmed once.
+  // New users answer it in the onboarding (default no).
+  if (progress.legacy) set(food, 'mealPrep', field(true, 'migrated', at));
   return changed ? { ...p, progress, body, goal: goalAnswers, food, training: train } : p;
 }
 
