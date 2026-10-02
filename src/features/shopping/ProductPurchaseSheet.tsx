@@ -4,6 +4,9 @@ import type { ISODate, Product } from '../../domain/types';
 import { formatGrams } from '../../lib/format';
 import { applyWithUndo } from '../../lib/undo';
 import { saveProduct } from '../../store/actions';
+import { getState } from '../../store/store';
+import { productViolates } from '../../domain/week/pantryOnboarding';
+import { showToast } from '../../lib/toast';
 import { Button } from '../../components/ui/Button';
 import { Sheet } from '../../components/ui/Sheet';
 import { BarcodeLookup } from '../nutrition/BarcodeLookup';
@@ -42,6 +45,11 @@ export function ProductPurchaseSheet({ week, open, onClose }: { week: ISODate; o
                   onClick={() => {
                     if (!choice?.foodId) return;
                     saveProduct({ ...product, foodId: choice.foodId, ...(choice.price ? { price: { ...choice.price, at: new Date().toISOString() } } : {}) });
+                    // Against a hard exclusion (Prompt 6): kept and marked, but never stock for the plan.
+                    if (productViolates({ ...product, foodId: choice.foodId }, getState().nutritionProfile)) {
+                      showToast('Gespeichert – passt nicht zu deinen Ausschlüssen und wird nie eingeplant.');
+                      return close();
+                    }
                     if (applyWithUndo({ type: 'purchase', week, foodId: choice.foodId, grams: Math.round(choice.amount) })) close();
                   }}
                 >

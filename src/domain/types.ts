@@ -501,8 +501,10 @@ export interface Product {
   /** openfoodfacts = found by barcode; manual = created by the user in "Meine Produkte". */
   source: 'openfoodfacts' | 'manual';
   fetchedAt: string;
-  /** Catalog food the user said this product is – enables pantry, shopping and learning. */
+  /** Catalog food the user said this product is – enables pantry, shopping and learning. Remembered per barcode. */
   foodId?: string;
+  /** Open Food Facts categories (`categories_tags`) – only to suggest the catalog food. */
+  categories?: string[];
   /** What the user really paid (CHF) for `amount` (in `unit`) – optional, always preferred over estimates. */
   price?: { chf: number; amount: number; at: string };
 }
@@ -694,6 +696,20 @@ export interface PantryItem {
   foodId: string;
   quantityG: number;
   updatedAt: string;
+  /** Fill level as the user saw it (Prompt 6) – the grams above are what the plan counts with. */
+  level?: PantryLevel;
+  /** Best before (MHD), if the user entered one – the planner uses stock that expires soon first. */
+  bestBefore?: ISODate;
+}
+
+/** "voll / halb / Rest" of the basics checklist (Prompt 6); "leer" is quantity 0. */
+export type PantryLevel = 'full' | 'half' | 'rest';
+
+/** A barcode scanned offline or without a hit – resolved later (Prompt 6). */
+export interface PendingScan {
+  barcode: string;
+  scannedAt: string;
+  bestBefore?: ISODate;
 }
 
 /** Adaptive-engine settings. Recommendation ids contain the date, so dismissals expire naturally. */
@@ -791,6 +807,8 @@ export interface AppState {
   plannerSettings: PlannerSettings;
   /** Products looked up by barcode, keyed by barcode – a local cache, never synced. */
   products: Record<string, Product>;
+  /** Barcodes waiting to be looked up (offline, no hit) – optional, absent in older data. */
+  pendingScans?: PendingScan[];
   /** Water drunk per day in ml. A new day simply has no entry yet. */
   water: Record<ISODate, number>;
   /** The user's own saved dishes ("Meine Gerichte"), keyed by id. */

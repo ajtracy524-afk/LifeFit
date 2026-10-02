@@ -1,6 +1,6 @@
 import { getRecipe } from '../../data/recipes';
 import { PIECE_TOLERANCE } from '../shopping';
-import type { AppState, Food, LogEntry } from '../types';
+import type { AppState, Food, ISODate, LogEntry, PantryLevel } from '../types';
 
 /**
  * Pantry = deliberately an ESTIMATE, never an inventory system.
@@ -56,19 +56,24 @@ export function pantryEstimate(state: Pick<AppState, 'pantry' | 'logEntries'>): 
  * at home any more); 0 means "aufgebraucht" – the food stays known, so a basic
  * can be restocked. Mutates the draft.
  */
-export function setPantryQuantity(draft: AppState, foodId: string, grams: number | null, nowIso: string): void {
+export function setPantryQuantity(draft: AppState, foodId: string, grams: number | null, nowIso: string, extra: { level?: PantryLevel; bestBefore?: ISODate } = {}): void {
   if (grams === null) {
     delete draft.pantry[foodId];
     return;
   }
-  draft.pantry[foodId] = { foodId, quantityG: Math.max(0, Math.round(grams)), updatedAt: nowIso };
+  // A known best-before date stays until the stock is used up (Prompt 6); the fill level only as entered.
+  const bestBefore = extra.bestBefore ?? (grams > 0 ? draft.pantry[foodId]?.bestBefore : undefined);
+  draft.pantry[foodId] = { foodId, quantityG: Math.max(0, Math.round(grams)), updatedAt: nowIso, ...(extra.level ? { level: extra.level } : {}), ...(bestBefore ? { bestBefore } : {}) };
 }
 
 /** Adds (or with negative grams removes) an amount on top of the current estimate. Mutates the draft. */
-export function addToPantry(draft: AppState, foodId: string, grams: number, nowIso: string): void {
+export function addToPantry(draft: AppState, foodId: string, grams: number, nowIso: string, bestBefore?: ISODate): void {
   const current = pantryEstimate(draft)[foodId] ?? 0;
+  // The earlier best-before date counts – that pack is used first.
+  const known = draft.pantry[foodId]?.bestBefore;
+  const earliest = bestBefore && known ? (bestBefore < known ? bestBefore : known) : (bestBefore ?? known);
   // Taking back a purchase down to nothing removes the entry again.
-  setPantryQuantity(draft, foodId, current + grams > 0 ? current + grams : null, nowIso);
+  setPantryQuantity(draft, foodId, current + grams > 0 ? current + grams : null, nowIso, earliest ? { bestBefore: earliest } : {});
 }
 
 /**

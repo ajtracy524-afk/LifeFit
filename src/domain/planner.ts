@@ -4,6 +4,7 @@ import { newId } from '../lib/id';
 import { LEFTOVER_DAYS, LEFTOVER_PREP_MIN, TIME_BUDGETS } from './timeBudget';
 import { recipeAllowed, recipeMacros, roundServings, plannedMealMacros, sumMacros } from './nutrition';
 import { purchaseCost } from './costs';
+import { PANTRY } from './constants';
 import { foodPreference } from './preferences';
 import type { ISODate, Macros, MealSlot, NutritionProfile, PlanPriority, PlannedMeal, Recipe, TimeBudget } from './types';
 
@@ -184,6 +185,8 @@ interface SuggestInput {
   postWorkoutSlotFor?: (date: ISODate) => MealSlot | undefined;
   /** Age of pantry stock in days – older stock is used up first. */
   pantryAgeDays?: Record<string, number>;
+  /** Days until the best-before date of pantry stock (Prompt 6). */
+  pantryExpiryDays?: Record<string, number>;
   random?: () => number;
   weights?: Partial<PlannerWeights>;
   /** "Ich koche gern vor" (E18) – default no. */
@@ -222,6 +225,8 @@ export interface ScoreExtras {
   mealPrep?: boolean;
   /** Foods 👍 / 👎 of the profile per recipe (Prompt 4) – on the same scale as `affinity`. */
   food?: (recipe: Recipe) => number;
+  /** Days until the best-before date of pantry stock (Prompt 6) – soon-expiring stock is used first. */
+  pantryExpiryDays?: Record<string, number>;
 }
 
 export interface WeekScore {
@@ -426,10 +431,14 @@ export function scoreWeek(
 
   let unused = 0;
   for (const [foodId, stock] of Object.entries(pantry)) {
-    if (stock <= 0 || !PERISHABLE.has(getFood(foodId)?.category ?? '')) continue;
-    // Older stock should be used first (no expiry data – only its age is known).
+    // A near best-before date counts for every category (Prompt 6); without one only perishables.
+    const days = extras.pantryExpiryDays?.[foodId];
+    const soon = days !== undefined && days <= PANTRY.soonDays;
+    if (stock <= 0 || (!soon && !PERISHABLE.has(getFood(foodId)?.category ?? ''))) continue;
+    // Older stock should be used first; expiring stock even more.
     const age = extras.pantryAgeDays?.[foodId] ?? 0;
-    unused += (Math.max(0, stock - (need.get(foodId) ?? 0)) / stock) * (1 + Math.min(1, age / 7));
+    const expiry = soon ? 1 + PANTRY.expiryWeight * (1 - Math.max(0, days!) / PANTRY.soonDays) : 1;
+    unused += (Math.max(0, stock - (need.get(foodId) ?? 0)) / stock) * (1 + Math.min(1, age / 7)) * expiry;
   }
   const pantryUnused = W.pantryUnused * unused;
   const cost = (W.cost * costChf) / 10 + (extras.budgetChf !== undefined ? (W.budgetOver * Math.max(0, costChf - extras.budgetChf)) / 10 : 0);
@@ -478,6 +487,7 @@ export function suggestWeek({
   priority = 'balanced',
   postWorkoutSlotFor = () => undefined,
   pantryAgeDays,
+  pantryExpiryDays,
   random = Math.random,
   weights: overrides = {},
   mealPrep = false,
@@ -487,7 +497,7 @@ export function suggestWeek({
   const W = weightsFor(priority, overrides);
   const weights = W;
   const food = foodScorer(profile);
-  const extras: ScoreExtras = { affinity, budgetChf, pantryAgeDays, mealPrep, ...(food ? { food } : {}) };
+  const extras: ScoreExtras = { affinity, budgetChf, pantryAgeDays, mealPrep, ...(food ? { food } : {}), ...(pantryExpiryDays ? { pantryExpiryDays } : {}) };
   const usage = new Map<string, number>();
   for (const m of existing) usage.set(m.recipeId, (usage.get(m.recipeId) ?? 0) + 1);
 

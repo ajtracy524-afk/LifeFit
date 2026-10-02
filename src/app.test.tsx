@@ -3380,4 +3380,53 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       expect(store.getState().plannedMeals.some((m) => m.date === '2026-10-02' && m.slot === 'lunch' && m.status === 'planned')).toBe(true);
     });
   });
+
+  describe('area B (Prompt 6): what is at home', () => {
+    it('checklist with fill level and "leer", then a scan: offline → later → looked up → into the pantry with MHD', async () => {
+      localStorage.setItem(KEY, JSON.stringify(completeState()));
+      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      const store = await startApp();
+      const lookup = await import('./services/productLookup');
+      // The lookup is asynchronous – let it settle before looking at the screen.
+      const settle = () => act(async () => new Promise((r) => setTimeout(r, 0)));
+      await click('Essen & Einkauf');
+      for (let i = 0; i < 5; i++) await click('Weiter');
+      expect(title()).toBe('Was hast du schon zu Hause?');
+
+      // 1. Checklist: tick = there (full), then a fill level; salt is a staple – "leer" puts it on the list.
+      await click('Couscous');
+      expect(store.getState().pantry.couscous).toMatchObject({ quantityG: 500, level: 'full' });
+      const level = (food: string, label: string) => [...container.querySelectorAll(`[aria-label="${food}: Füllstand"] button`)].find((b) => b.textContent === label) as HTMLButtonElement;
+      await act(async () => level('Couscous', 'halb').click());
+      expect(store.getState().pantry.couscous).toMatchObject({ quantityG: 250, level: 'half' });
+      await click('Salz');
+      expect(text()).toContain('Grundvorrat – auf der Einkaufsliste nur, wenn „leer“');
+      await act(async () => level('Salz', 'leer').click());
+      expect(store.getState().pantry.salt!.quantityG).toBe(0);
+
+      // 2. Scan offline → keep for later.
+      lookup.setProductSource({ name: 'Mock', lookup: async () => ({ status: 'error', message: 'offline' }) });
+      await type('Barcode-Nummer', '7610000000001');
+      await click('Nachschlagen');
+      await settle();
+      expect(text()).toContain('7610000000001 – gerade keine Verbindung.');
+      await click('Später auflösen');
+      expect(store.getState().pendingScans).toHaveLength(1);
+
+      // Back online: resolve, the category suggests the catalog food, MHD optional, into the pantry.
+      lookup.setProductSource({
+        name: 'Mock',
+        lookup: async () => ({ status: 'found', product: { barcode: '7610000000001', name: 'Penne Rigate', per100: { kcal: 350 }, micros100: {}, unit: 'g', packageSize: 500, categories: ['en:pastas'], source: 'openfoodfacts', fetchedAt: '2026-10-01T08:00:00Z' } }),
+      });
+      await click('Jetzt nachschlagen');
+      await settle();
+      expect(store.getState().pendingScans).toBeUndefined();
+      expect(text()).toContain('Penne Rigate · 500 g');
+      await type('Mindestens haltbar bis (optional)', '2027-03-01');
+      await click('In den Vorrat: Vollkornnudeln');
+      expect(store.getState().pantry.pasta).toMatchObject({ quantityG: 500, bestBefore: '2027-03-01' });
+      expect(store.getState().products['7610000000001']).toMatchObject({ foodId: 'pasta' });
+      expect(text()).toContain('Penne Rigate – im Vorrat als Vollkornnudeln');
+    });
+  });
 });

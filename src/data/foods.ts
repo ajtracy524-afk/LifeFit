@@ -97,7 +97,8 @@ const RAW: FoodInput[] = [
   // Vorrat & Sonstiges
   // Soy lecithin is common and must be declared (E23).
   ['whey', 'Whey Protein', 'pantry', 380, 78, 6, 5, { ...DAIRY, allergens: ['milk', 'soy'] }, { packageG: 1000 }],
-  ['olive-oil', 'Olivenöl', 'pantry', 884, 0, 0, 100, { basic: true }, { packageG: 500 }],
+  // A staple like salt and pepper (Prompt 6): on the list only when marked empty.
+  ['olive-oil', 'Olivenöl', 'pantry', 884, 0, 0, 100, { basic: true, staple: true }, { packageG: 500 }],
   ['peanut-butter', 'Erdnussbutter', 'pantry', 600, 25, 12, 48, { allergens: ['peanuts'], traces: ['tree_nuts'], groups: ['fat'], basic: true }, { packageG: 350 }],
   ['almonds', 'Mandeln', 'pantry', 600, 21, 5.7, 52, { allergens: ['tree_nuts'] }, { packageG: 200 }],
   ['honey', 'Honig', 'pantry', 320, 0.4, 80, 0, { kinds: ['honey'], fructose: true, basic: true }, { packageG: 500 }],

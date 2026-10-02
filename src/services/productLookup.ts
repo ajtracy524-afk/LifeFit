@@ -87,6 +87,8 @@ const OFF_FIELDS = [
   'traces_tags',
   'ingredients_analysis_tags',
   'labels_tags',
+  // Only to suggest the matching catalog food (Prompt 6).
+  'categories_tags',
 ].join(',');
 
 interface OffNutriments {
@@ -111,6 +113,7 @@ export interface OffProduct {
   traces_tags?: string[];
   ingredients_analysis_tags?: string[];
   labels_tags?: string[];
+  categories_tags?: string[];
 }
 
 /** "400.0 g", "1,5 l", "30 g" → value + unit. Anything less clear ("2 x 125 g") is not guessed. */
@@ -198,6 +201,7 @@ export function normalizeOffProduct(barcode: string, raw: OffProduct, now: Date 
     ...(lmiv(raw.allergens_tags).length ? { lmivAllergens: lmiv(raw.allergens_tags) } : {}),
     ...(lmiv(raw.traces_tags).length ? { lmivTraces: lmiv(raw.traces_tags) } : {}),
     ...(Object.keys(diet).length ? { diet } : {}),
+    ...(raw.categories_tags?.length ? { categories: raw.categories_tags.filter((t) => t.startsWith('en:')).slice(0, 20) } : {}),
     source: 'openfoodfacts',
     fetchedAt: now.toISOString(),
   };

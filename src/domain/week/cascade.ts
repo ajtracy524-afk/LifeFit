@@ -8,7 +8,7 @@ import { logFromMeal, plannedMealMacros, recipeAllowed, recipeMacros, roundServi
 import { effectivePrepMin, isPortable, SLOT_ORDER } from '../planner';
 import { DAY_MODE_LABEL, EATING_OUT_SLOTS, effectiveTimeBudget, excludedSlots, maxPrepFor, slotPlanOf, templateDay, TIME_BUDGETS, type TemplateDay } from '../timeBudget';
 import { activeWorkouts, estimateMinutes, resolveWorkouts, trainingWeekdays } from '../training';
-import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, Recipe, ShoppingWeekState, TimeBudget, WeekTemplate, SlotPlan } from '../types';
+import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, Recipe, ShoppingWeekState, TimeBudget, WeekTemplate, SlotPlan, PantryLevel } from '../types';
 import { closeCompletedDays, dayTargetFor } from './dayTargets';
 import { minutesOf } from '../schedule';
 import { recordEvent } from '../learning';
@@ -41,7 +41,9 @@ export type WeekChange =
   | { type: 'undoPurchase'; week: ISODate; foodId: string }
   | { type: 'haveAtHome'; week: ISODate; foodId: string }
   | { type: 'notAtHome'; week: ISODate; foodId: string }
-  | { type: 'setPantry'; foodId: string; quantityG: number | null }
+  | { type: 'setPantry'; foodId: string; quantityG: number | null; level?: PantryLevel; bestBefore?: ISODate }
+  /** A scanned product (Prompt 6): its package on top of the stock, with its best-before date. */
+  | { type: 'addPantry'; foodId: string; grams: number; bestBefore?: ISODate }
   /** F8: do not restock this basic this week ("Hab ich noch genug"). */
   | { type: 'skipRestock'; week: ISODate; foodId: string }
   /** Explicit "mag ich nicht" (hard filter) – future planner meals with it are re-planned. */
@@ -297,8 +299,15 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
     case 'setPantry': {
       const food = getFood(change.foodId);
       if (!food) return fail('Lebensmittel nicht gefunden.');
-      setPantryQuantity(s, food.id, change.quantityG, nowIso);
-      return { ok: true, title: change.quantityG ? `Vorrat: ${food.name} aktualisiert` : `Vorrat: ${food.name} aufgebraucht` };
+      setPantryQuantity(s, food.id, change.quantityG, nowIso, { ...(change.level ? { level: change.level } : {}), ...(change.bestBefore ? { bestBefore: change.bestBefore } : {}) });
+      return { ok: true, title: change.quantityG === null ? `Vorrat: ${food.name} entfernt` : change.quantityG ? `Vorrat: ${food.name} aktualisiert` : `Vorrat: ${food.name} aufgebraucht` };
+    }
+
+    case 'addPantry': {
+      const food = getFood(change.foodId);
+      if (!food || change.grams <= 0) return fail('Lebensmittel nicht gefunden.');
+      addToPantry(s, food.id, change.grams, nowIso, change.bestBefore);
+      return { ok: true, title: `${food.name} im Vorrat` };
     }
   }
 }
@@ -701,6 +710,7 @@ function weekOf(state: AppState, change: WeekChange, today: ISODate): ISODate {
     case 'skipRestock':
       return change.week;
     case 'setPantry':
+    case 'addPantry':
     case 'setDislike':
       return weekStart(today);
   }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isStaple } from '../../data/foods';
 import { findTemplate } from '../../data/exercises';
 import { getRecipe } from '../../data/recipes';
 import { emptyState } from '../../store/persistence';
@@ -201,7 +202,8 @@ describe('engine · shopping', () => {
   ];
 
   it('counts missing foods for planned meals and honours the pantry', () => {
-    const count = getRecipe('chicken-rice-bowl')!.ingredients.length;
+    // Staples (salt, pepper, oil) are at home – not missing (E19, Prompt 6).
+    const count = getRecipe('chicken-rice-bowl')!.ingredients.filter((i) => !isStaple(i.foodId)).length;
     let rec = byKind(runEngine(baseState({ plannedMeals: meals }), { date: SATURDAY, limit: 20 }), 'shopping_missing')!;
     expect(rec.title).toBe(`Für die geplanten Mahlzeiten fehlen noch ${count} Lebensmittel`);
     expect(rec.priority).toBe('high'); // needed tomorrow

@@ -2,6 +2,7 @@
  * All state changes live here. Screens call these functions; the cross-domain
  * rules (plan → log, workout → progress) are enforced in one place.
  */
+import { levelGrams, productViolates } from '../domain/week/pantryOnboarding';
 import { getFood } from '../data/foods';
 import { findTemplate } from '../data/exercises';
 import { addDays, today, weekStart } from '../domain/dates';
@@ -1161,4 +1162,38 @@ export function dismissRecommendation(id: string, topic?: string): void {
 
 export function exportData(): string {
   return JSON.stringify({ exportedAt: new Date().toISOString(), app: 'LifeFit', data: getState() }, null, 2);
+}
+
+// ---------- Pantry onboarding: serial scan (Prompt 6) ----------
+
+/**
+ * A scanned product goes into the pantry as its catalog food: the mapping is
+ * remembered for the barcode, the package size is taken over (never a price).
+ * A product that breaks a hard exclusion is kept – marked – but never counts as
+ * stock and never reaches the plan. Returns what happened.
+ */
+export function scanToPantry(product: Product, foodId: string, opts: { bestBefore?: ISODate } = {}): 'added' | 'flagged' | 'failed' {
+  const food = getFood(foodId);
+  if (!food) return 'failed';
+  const { price: _neverFromTheDatabase, ...rest } = product;
+  saveProduct({ ...rest, ...(product.price && product.source === 'manual' ? { price: product.price } : {}), foodId });
+  if (productViolates({ ...product, foodId }, getState().nutritionProfile)) return 'flagged';
+  const grams = product.packageSize && product.packageSize > 0 ? product.packageSize : levelGrams(food, 'full');
+  return applyChange({ type: 'addPantry', foodId, grams, ...(opts.bestBefore ? { bestBefore: opts.bestBefore } : {}) }).ok ? 'added' : 'failed';
+}
+
+/** Offline or no hit: the barcode is kept and looked up later (only on a user action). */
+export function addPendingScan(barcode: string, bestBefore?: ISODate): void {
+  update((s) => {
+    const list = s.pendingScans ?? [];
+    if (list.some((p) => p.barcode === barcode)) return;
+    s.pendingScans = [...list, { barcode, scannedAt: new Date().toISOString(), ...(bestBefore ? { bestBefore } : {}) }];
+  });
+}
+
+export function removePendingScan(barcode: string): void {
+  update((s) => {
+    s.pendingScans = (s.pendingScans ?? []).filter((p) => p.barcode !== barcode);
+    if (!s.pendingScans.length) delete s.pendingScans;
+  });
 }

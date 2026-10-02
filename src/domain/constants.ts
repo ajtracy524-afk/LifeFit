@@ -326,3 +326,16 @@ export const EATING_OUT = {
 
 /** Tolerance for the day with out meals: planned + reserved within ±10 % kcal, protein at least 90 % (same as the planner's day tests). */
 export const DAY_TOLERANCE = { kcal: 0.1, protein: 0.1 } as const;
+
+// ---------- Area B: pantry (Prompt 6) ----------
+
+/**
+ * Pantry: a fill level is a share of the catalog package (voll / halb / Rest).
+ * Stock whose best-before date is near is used first: within `soonDays` the
+ * planner's "unused stock" weight grows up to (1 + expiryWeight) – for every
+ * category, not only perishables. No source – product decisions.
+ */
+export const PANTRY = { level: { full: 1, half: 0.5, rest: 0.15 }, soonDays: 5, expiryWeight: 2 } as const;
+
+/** Serial scan: the same barcode again within this time is the same product (one detection, several frames). */
+export const SCAN_REPEAT_MS = 2500;

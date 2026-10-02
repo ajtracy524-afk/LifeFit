@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { SCAN_REPEAT_MS } from '../../domain/constants';
 import { cameraProblem, createDecoder, type CameraProblem } from '../../services/barcodeScanner';
 import { Button } from '../../components/ui/Button';
 import styles from './nutrition.module.css';
@@ -15,8 +16,15 @@ const SCAN_INTERVAL_MS = 250;
 export const SCAN_HELP_AFTER_MS = 8000;
 
 interface Props {
-  /** Called exactly once with the first valid barcode – the camera is already stopped then. */
+  /** Single mode: called exactly once with the first valid barcode – the camera is already stopped then. */
   onDetected: (code: string) => void;
+  /**
+   * Serial mode (Prompt 6): the camera stays open, every new code is reported –
+   * the same code again within SCAN_REPEAT_MS is the same product.
+   */
+  continuous?: boolean;
+  /** Serial mode: a short beep per hit (vibration happens anyway where the device allows it). */
+  sound?: boolean;
   onCancel: () => void;
   /** Camera not possible → type the number instead. */
   onManualEntry: () => void;
@@ -30,7 +38,7 @@ interface Props {
  * and on the first hit stops the camera BEFORE reporting – so a code seen in
  * several frames is taken once. Closing or leaving always stops the stream.
  */
-export function CameraScanner({ onDetected, onCancel, onManualEntry, onSearch }: Props) {
+export function CameraScanner({ onDetected, onCancel, onManualEntry, onSearch, continuous = false, sound = false }: Props) {
   const video = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<'starting' | 'scanning' | CameraProblem>('starting');
   const [help, setHelp] = useState(false);
@@ -40,12 +48,16 @@ export function CameraScanner({ onDetected, onCancel, onManualEntry, onSearch }:
   // The parent re-renders on every store change – the camera must not restart then.
   const report = useRef(onDetected);
   report.current = onDetected;
+  const beep = useRef(sound);
+  beep.current = sound;
+  const [hits, setHits] = useState(0);
 
   useEffect(() => {
     let stream: MediaStream | undefined;
     let timer: number | undefined;
     let helpTimer: number | undefined;
     let done = false;
+    let last = { code: '', at: 0 };
     const stop = () => {
       done = true;
       window.clearTimeout(timer);
@@ -77,7 +89,16 @@ export function CameraScanner({ onDetected, onCancel, onManualEntry, onSearch }:
             /* frame not ready – try the next one */
           }
           if (done) return;
-          if (code) {
+          if (code && continuous) {
+            // Serial mode: the same code in the next frames is the same product.
+            const now = Date.now();
+            if (code !== last.code || now - last.at > SCAN_REPEAT_MS) {
+              last = { code, at: now };
+              confirmHit(beep.current);
+              setHits((n) => n + 1);
+              report.current(code);
+            }
+          } else if (code) {
             // One detection = one lookup: stop first, then report.
             stop();
             report.current(code);
@@ -118,9 +139,11 @@ export function CameraScanner({ onDetected, onCancel, onManualEntry, onSearch }:
       <p className={styles.scanHint} role="status">
         {status === 'starting'
           ? 'Kamera wird gestartet …'
-          : help
-            ? 'Noch nichts erkannt: etwas näher ran, Strichcode gerade halten und Spiegelungen vermeiden.'
-            : 'Halte den Strichcode in den Rahmen – er wird automatisch erkannt.'}
+          : continuous && hits > 0
+            ? `${hits} erkannt – einfach das nächste Produkt in den Rahmen halten.`
+            : help
+              ? 'Noch nichts erkannt: etwas näher ran, Strichcode gerade halten und Spiegelungen vermeiden.'
+              : 'Halte den Strichcode in den Rahmen – er wird automatisch erkannt.'}
       </p>
       {torch !== undefined && (
         <Button
@@ -152,8 +175,36 @@ export function CameraScanner({ onDetected, onCancel, onManualEntry, onSearch }:
         </div>
       )}
       <Button variant="ghost" block onClick={onCancel}>
-        Abbrechen
+        {continuous ? 'Fertig' : 'Abbrechen'}
       </Button>
     </div>
   );
+}
+
+/**
+ * A short confirmation per hit: vibration where the device allows it, a soft
+ * beep only when switched on. Both fail silently (iOS Safari has no vibration).
+ */
+function confirmHit(sound: boolean): void {
+  try {
+    navigator.vibrate?.(60);
+  } catch {
+    /* not allowed – the counter on screen is the confirmation */
+  }
+  if (!sound) return;
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 880;
+    gain.gain.value = 0.05;
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.08);
+    osc.onended = () => void ctx.close();
+  } catch {
+    /* no audio – fine */
+  }
 }

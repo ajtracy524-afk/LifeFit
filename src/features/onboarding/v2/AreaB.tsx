@@ -11,11 +11,12 @@ import { confirmFoodAnswers, setFoodAnswer } from '../../../store/onboardingActi
 import { useAppState } from '../../../store/store';
 import { Button } from '../../../components/ui/Button';
 import { Chip, Field, OptionCard, Segmented, Stepper } from '../../../components/ui/Controls';
+import { PantryStep } from './AreaBPantry';
 import { WeekStep } from './AreaBWeek';
 import styles from './onboardingV2.module.css';
 
 /** Steps of section B with their content (Prompt 4). */
-export const AREA_B_STEPS: OnboardingStepId[] = ['diet', 'allergies', 'preferences', 'routine', 'week'];
+export const AREA_B_STEPS: OnboardingStepId[] = ['diet', 'allergies', 'preferences', 'routine', 'week', 'pantry'];
 
 type Food = OnboardingProfile['food'];
 
@@ -39,6 +40,8 @@ export function AreaBStep({ step }: { step: OnboardingStepId }) {
       return <RoutineStep food={food} np={np} />;
     case 'week':
       return <WeekStep food={food} np={np} />;
+    case 'pantry':
+      return <PantryStep />;
     default:
       return null;
   }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isStaple } from '../data/foods';
 import { getRecipe } from '../data/recipes';
 import { weekDays } from './dates';
 import { plannedMealMacros, recipeAllowed, recipeMacros, sumMacros } from './nutrition';
@@ -90,9 +91,10 @@ describe('F3 · ingredient overlap', () => {
   });
 
   it('scores the week as a whole: shared ingredients and fuller packages are cheaper', () => {
-    // Foods are counted once per WEEK: chicken and oil of the bowl (Mon) and the
+    // Foods are counted once per WEEK: chicken and zucchini/peppers of the bowl (Mon) and the
     // sweet potato dish (Tue) are one item each on the shopping list.
-    const ingredients = (id: string) => getRecipe(id)!.ingredients.map((i) => i.foodId);
+    // Staples (salt, pepper, oil) are at home – never a purchase (E19, Prompt 6).
+    const ingredients = (id: string) => getRecipe(id)!.ingredients.map((i) => i.foodId).filter((f) => !isStaple(f));
     const week = scoreWeek([day(dates[0]!, ['chicken-rice-bowl']), day(dates[1]!, ['chicken-sweet-potato'])]);
     const union = new Set([...ingredients('chicken-rice-bowl'), ...ingredients('chicken-sweet-potato')]);
     expect(week.foodsToBuy.sort()).toEqual([...union].sort());

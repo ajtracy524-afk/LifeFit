@@ -378,4 +378,4 @@ Alle sechs Vorschläge sind angenommen (01.10.2026) und als E9–E14 im Abschnit
 
 - **E13, Auslegung aus Prompt 4 (Rückfrage):** Im alten Code gibt es **keine gespeicherte Kochzeit-Einstellung**, nur Tages-Overrides (`dayContexts`: „Wenig Zeit“ = 15 min, „Viel Zeit“ = ohne Grenze). Diese behalten ihre Bedeutung (≤ 15 bzw. egal). „Normal“ ist jetzt die Kochzeit-Antwort (Werktag/Wochenende); **ohne Antwort bleiben 35 min wie bisher** – Bestandsnutzer werden nicht automatisch auf ≤ 30 gesetzt. Falls doch gewünscht: Migration `cookingTime = { weekday: '30', weekend: '30' }` mit `source: 'migrated'` und einmaliger Bestätigung.
 
-Nächster Schritt: **Prompt 6**.
+Nächster Schritt: **Prompt 7**.

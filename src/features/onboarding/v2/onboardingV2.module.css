@@ -568,3 +568,52 @@
   display: grid;
   gap: 6px;
 }
+
+/* ---------- Pantry (Prompt 6) ---------- */
+
+.pantryRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.scanList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scanItem {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.selectRow {
+  display: grid;
+  gap: 4px;
+}
+
+.selectRow select {
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  max-width: 100%;
+}
+
+/* Grid items may shrink below the input's intrinsic width – no horizontal scroll at 320 px. */
+.addRow > * {
+  min-width: 0;
+}
+
+.pantryRow > * {
+  max-width: 100%;
+}

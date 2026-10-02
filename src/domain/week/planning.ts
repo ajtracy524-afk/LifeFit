@@ -28,6 +28,7 @@ function plannerContext(state: AppState, dates: ISODate[], today: ISODate) {
     // The weekly budget, pro rata for the days being planned.
     budgetChf: state.plannerSettings?.weeklyBudgetChf !== undefined ? (state.plannerSettings.weeklyBudgetChf * dates.length) / 7 : undefined,
     pantryAgeDays: pantryAge(state, today),
+    pantryExpiryDays: pantryExpiry(state, today),
     mealPrep: mealPrepEnabled(state),
   };
 }
@@ -169,7 +170,7 @@ function rankForSlot(
       profile: state.nutritionProfile,
       context: p.week.filter((m) => m.date !== p.date),
       pantry: ctx.pantry,
-      extras: { affinity: ctx.affinity, budgetChf: ctx.budgetChf, pantryAgeDays: ctx.pantryAgeDays, mealPrep: ctx.mealPrep },
+      extras: { affinity: ctx.affinity, budgetChf: ctx.budgetChf, pantryAgeDays: ctx.pantryAgeDays, pantryExpiryDays: ctx.pantryExpiryDays, mealPrep: ctx.mealPrep },
       priority: ctx.priority,
       exclude: p.exclude,
       portableOnly: slotPlanOn(state, p.date, p.slot).kind === 'togo',
@@ -200,6 +201,11 @@ export function fillWeek(draft: AppState, week: ISODate, today: ISODate): Planne
 const maxDate = (a: ISODate, b: ISODate) => (a > b ? a : b);
 
 /** Days since each pantry amount was last set (its only known "age"). */
+/** Days until the best-before date of each pantry item that has one (Prompt 6). */
+function pantryExpiry(state: AppState, today: ISODate): Record<string, number> {
+  return Object.fromEntries(Object.values(state.pantry).flatMap((p) => (p.bestBefore ? [[p.foodId, daysBetween(today, p.bestBefore)]] : [])));
+}
+
 function pantryAge(state: AppState, today: ISODate): Record<string, number> {
   return Object.fromEntries(Object.values(state.pantry).map((p) => [p.foodId, Math.max(0, daysBetween(p.updatedAt.slice(0, 10), today))]));
 }

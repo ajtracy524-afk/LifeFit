@@ -25,7 +25,7 @@ export const dishRecipeId = (dishId: string) => `dish:${dishId}`;
 
 const macrosOrZero = (p: Partial<Food['per100']>): Food['per100'] => ({ kcal: p.kcal ?? 0, protein: p.protein ?? 0, carbs: p.carbs ?? 0, fat: p.fat ?? 0 });
 
-function productFood(p: Product): Food | undefined {
+export function productFood(p: Product): Food | undefined {
   if (p.per100.kcal === undefined) return undefined;
   const micros = consistentMicros(p.per100, p.micros100);
   return {
