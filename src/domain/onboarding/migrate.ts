@@ -1,4 +1,6 @@
 import { recommendGoal } from '../goal';
+import { estimateTrainingLevel, trainingSetupFrom } from './training';
+import { ffmi } from '../body';
 import { nutritionProfileFrom } from './food';
 import { calculateTargets } from '../nutrition';
 import { slotsFor } from '../planner';
@@ -149,8 +151,17 @@ export function migrateOnboarding(state: AppState, now: Date = new Date()): AppS
 }
 
 /** Training level from the experience answer until Prompt 7 estimates it (years, break, FFMI). */
-function levelFromBucket(bucket: OnboardingProfile['body']['trainingExperience'] extends { value: infer V } | undefined ? V | undefined : never): Profile['experience'] {
-  return bucket === 'gt5' ? 'advanced' : bucket === '1to2' || bucket === '3to5' ? 'intermediate' : 'beginner';
+/** The level estimate of area C (Prompt 7): years, a long pause and – with known body fat – the normalised FFMI. */
+export function levelOf(p: OnboardingProfile): Profile['experience'] {
+  const b = p.body;
+  const fat = b.bodyFat?.value;
+  const ffmiNormalized = fat && b.weightKg && b.heightCm ? ffmi(b.weightKg.value, b.heightCm.value, fat.percent).normalized : undefined;
+  return estimateTrainingLevel({
+    sex: b.sex?.value ?? 'unspecified',
+    ...(b.trainingExperience ? { years: b.trainingExperience.value } : {}),
+    ...(p.training.pausedLong?.value ? { pausedLong: true } : {}),
+    ...(ffmiNormalized !== undefined ? { ffmiNormalized } : {}),
+  }).level;
 }
 
 export interface CoreSetup {
@@ -181,7 +192,7 @@ export function defaultCoreSetup(p: OnboardingProfile, today: string, nowIso: st
     age: p.body.birthYear ? year - p.body.birthYear.value : D.age,
     heightCm: p.body.heightCm?.value ?? D.heightCm,
     activity: p.body.activity?.value ?? D.activity,
-    experience: p.training.level?.value ?? levelFromBucket(p.body.trainingExperience?.value),
+    experience: p.training.level?.value ?? levelOf(p),
     createdAt: nowIso,
   };
   // Pregnancy / breastfeeding: only "Halten & Gesundheit" (E4). Without a chosen goal: the recommendation, not a fixed default.
@@ -208,6 +219,7 @@ export function defaultCoreSetup(p: OnboardingProfile, today: string, nowIso: st
     ...(p.training.sessionMinutes ? { sessionMinutes: p.training.sessionMinutes.value } : {}),
     ...(p.goal.pace ? { pace: p.goal.pace.value } : {}),
     ...(targetWeightKg ? { targetWeightKg } : {}),
+    ...(p.training.cardio && p.training.cardio.value.kind !== 'none' ? { cardio: p.training.cardio.value } : {}),
     experience: profile.experience,
     pregnant,
   });
@@ -215,11 +227,12 @@ export function defaultCoreSetup(p: OnboardingProfile, today: string, nowIso: st
     profile,
     goal: { type: goalType, startWeightKg: weightKg, startedAt: today, ...(targetWeightKg && goalType !== 'maintain' && goalType !== 'recomp' ? { targetWeightKg } : {}) },
     nutritionProfile: nutritionProfileFrom(p.food, { diet, excluded: [], slots: p.food.meals?.value ?? slotsFor(4) }),
-    training: {
+    // Area C answers (Prompt 7): days, length, equipment, complaints, focus, working weights, cardio.
+    training: trainingSetupFrom(p.training, {
       programId: recommendProgram({ days: weekdays.length, experience: profile.experience, goal: goalType }),
       weekdays,
       startedAt: today,
-    },
+    }),
     target: { kcal: calc.kcal, protein: calc.protein, carbs: calc.carbs, fat: calc.fat },
     weightKg,
     ...(fat ? { bodyFat: { value: fat.percent, method: fat.method === 'measured' ? ('measured' as const) : ('estimate' as const) } } : {}),

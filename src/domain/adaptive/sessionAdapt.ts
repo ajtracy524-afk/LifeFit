@@ -1,17 +1,19 @@
-import { getExercise, loadsArea } from '../../data/exercises';
+import { getExercise } from '../../data/exercises';
+import { gentleAlternative, severityOf, stressedAreas } from '../onboarding/training';
 import { alternativesFor } from '../exerciseLibrary';
 import { effortText } from '../effort';
 import { isExcluded } from '../trainingProfile';
 import { estimateMinutes, fitTemplateToTime, isWorkSet } from '../training';
-import type { AppliedAdaptation, BodyArea, MuscleGroup, SessionCheckIn, TrainingEquipment, TrainingSetup, Workout, WorkoutTemplate } from '../types';
+import type { AppliedAdaptation, BodyArea, SessionCheckIn, TrainingEquipment, TrainingSetup, Workout, WorkoutTemplate } from '../types';
 
 /**
  * Before the session: what the user says today (time, discomfort, energy)
  * plus how the last session of this workout felt → PROPOSED changes, each
  * with its reason. Nothing is changed until the user accepts a proposal.
  *
- *   discomfort  → an alternative from the library that does not load that
- *                 area notably (or "auslassen" when there is none) – no diagnosis
+ *   discomfort  → a joint-friendly alternative by the joint load levels (E22):
+ *                 "leicht" (and discomfort reported only today) replaces load 2,
+ *                 "deutlich" load ≥ 1 – or "auslassen" with the reason when there is none
  *   tired / last time very hard → one set less on accessory exercises
  *   less time   → compact version (existing fitTemplateToTime: main lifts stay,
  *                 accessory rest and sets first, then accessories)
@@ -33,8 +35,6 @@ export const DISCOMFORT_NOTE =
 
 export const EXTRA_TIME_MIN = 15;
 
-/** Muscle groups whose exercises work right at the area – no alternative, only "auslassen". */
-const AREA_TARGET: Record<BodyArea, MuscleGroup[]> = { shoulder: ['shoulders'], elbow: ['biceps', 'triceps'], wrist: [], lower_back: [], hip: [], knee: [] };
 const HARD_RPE = 9;
 
 export interface AdaptationProposal extends AppliedAdaptation {
@@ -80,13 +80,16 @@ export function proposeAdaptations(template: WorkoutTemplate, input: SessionChec
   // 1. Discomfort: alternative or leave out – per exercise, the user decides.
   template.exercises.forEach((e, index) => {
     if (out.some((p) => p.index === index)) return;
-    const hit = areas.filter((a) => loadsArea(e.exerciseId, a));
+    // Lasting complaints keep their level (E22: "leicht" / "deutlich", older ones "deutlich");
+    // discomfort only reported today counts as "leicht" (load 2 is replaced).
+    const lasting = ctx.setup?.limitations;
+    const limitations = { areas, excludedExercises: lasting?.excludedExercises ?? [], severity: Object.fromEntries(areas.map((a) => [a, lasting?.areas.includes(a) ? severityOf(lasting, a) : 'mild'])) };
+    const hit = stressedAreas(e.exerciseId, areas, limitations);
     if (!hit.length) return;
     const where = hit.map((a) => AREA_LABEL[a]).join(' & ');
-    // Same main muscle, no notable load on the area – and no alternative when the exercise targets that area itself (shoulder press with shoulder discomfort).
-    const primary = getExercise(e.exerciseId)?.primary;
-    const targetsArea = hit.some((area) => primary !== undefined && AREA_TARGET[area].includes(primary));
-    const alt = targetsArea ? undefined : alternativesFor(e.exerciseId, ctx.setup ?? ctx.equipment).find((a) => a.primary === primary && !areas.some((area) => loadsArea(a.id, area)));
+    // Same main muscle, below the threshold at EVERY reported area (two areas at once included).
+    const alt = gentleAlternative(e.exerciseId, areas, { ...(ctx.setup ?? { equipment: ctx.equipment }), limitations });
+    const mild = hit.every((a) => severityOf(limitations, a) === 'mild');
     out.push(
       alt
         ? {
@@ -95,14 +98,14 @@ export function proposeAdaptations(template: WorkoutTemplate, input: SessionChec
             index,
             toExerciseId: alt.id,
             title: `${alt.name} statt ${nameOf(e.exerciseId)}`,
-            reason: `Du hast Beschwerden (${where}) angegeben. ${nameOf(e.exerciseId)} belastet diesen Bereich deutlich; ${alt.name} trainiert ähnliche Muskeln mit anderer Belastung.`,
+            reason: `Du hast Beschwerden (${where}) angegeben. ${nameOf(e.exerciseId)} belastet diesen Bereich ${mild ? 'stark' : 'spürbar'}; ${alt.name} trainiert ähnliche Muskeln gelenkschonender.`,
           }
         : {
             id: `drop:${index}`,
             kind: 'drop',
             index,
             title: `${nameOf(e.exerciseId)} heute auslassen`,
-            reason: targetsArea ? `Du hast Beschwerden (${where}) angegeben. ${nameOf(e.exerciseId)} trainiert genau diesen Bereich – heute besser auslassen.` : `Du hast Beschwerden (${where}) angegeben. In der Bibliothek gibt es keine Alternative für ${nameOf(e.exerciseId)}, die diesen Bereich weniger belastet.`,
+            reason: `Du hast Beschwerden (${where}) angegeben. Für ${nameOf(e.exerciseId)} gibt es in der Bibliothek keine Alternative für denselben Muskel, die diesen Bereich schont – deshalb der Vorschlag, sie auszulassen.`,
           },
     );
   });

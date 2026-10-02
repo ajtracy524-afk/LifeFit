@@ -1,6 +1,7 @@
 import { getExercise } from '../../data/exercises';
 import { daysBetween } from '../dates';
 import { effortText } from '../effort';
+import { startWeight } from '../onboarding/training';
 import { formatKg, isTimed, isWorkSet, weightStep } from '../training';
 import type { Prescription, TemplateExercise, Workout, WorkoutSet } from '../types';
 
@@ -79,7 +80,11 @@ export interface PrescriptionResult extends Prescription {
 }
 
 /** The suggestion for one exercise of the next session. `today` is the date of the new session. */
-export function prescribe(te: TemplateExercise, history: Workout[], today: string): PrescriptionResult {
+/**
+ * `startWeights` (Prompt 7): current working weights (kg × reps) from the onboarding – used
+ * only while an exercise has no history. Without them the first session is an entry set.
+ */
+export function prescribe(te: TemplateExercise, history: Workout[], today: string, startWeights?: Record<string, { kg: number; reps: number }>): PrescriptionResult {
   const R = PROGRESSION;
   const sessions = exerciseSessions(history, te.exerciseId);
   const last = sessions[0];
@@ -89,7 +94,25 @@ export function prescribe(te: TemplateExercise, history: Workout[], today: strin
 
   if (isTimed(te.exerciseId)) return prescribeTimed(te, sessions);
   if (!last) {
-    return { change: 'first', reason: `Erstes Mal – wähle ein Gewicht, mit dem du ${te.repMax} saubere Wiederholungen schaffst.`, weightKg: null, reps: null, sets: uniform(null, null) };
+    const given = startWeights?.[te.exerciseId];
+    const kg = given && !ex?.bodyweight ? startWeight(given, te.repMax, weightStep(te.exerciseId)) : undefined;
+    if (kg !== undefined) {
+      return {
+        change: 'first',
+        reason: `Startgewicht aus deinem Arbeitsgewicht (${formatKg(given!.kg)} kg × ${given!.reps}) – mit 2 Wiederholungen Reserve.`,
+        weightKg: kg,
+        reps: te.repMin,
+        sets: uniform(kg, te.repMin),
+      };
+    }
+    // Entry set: the first session tells the progression the start weight.
+    return {
+      change: 'first',
+      reason: `Einstiegs-Satz: Wähle ein Gewicht, mit dem du ${te.repMax} saubere Wiederholungen schaffst und noch 2–3 im Tank hast – daraus leiten wir dein Startgewicht ab.`,
+      weightKg: null,
+      reps: null,
+      sets: uniform(null, null),
+    };
   }
 
   const bodyweight = !!ex?.bodyweight;

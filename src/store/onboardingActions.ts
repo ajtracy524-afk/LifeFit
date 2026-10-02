@@ -1,10 +1,11 @@
 import { today, weekStart } from '../domain/dates';
 import { nutritionProfileFrom, plannerSettingsFrom } from '../domain/onboarding/food';
+import { trainingSetupFrom } from '../domain/onboarding/training';
 import { applyTemplateChange, fillWeek, replanForbidden } from '../domain/week';
 import { answersOf, flowStateOf, initialState, sectionState, type FlowState } from '../domain/onboarding/flow';
 import { defaultAnswers, defaultCoreSetup, emptyOnboarding, isSetupComplete } from '../domain/onboarding/migrate';
 import type { AnswerGroup, Field, OnboardingMode, OnboardingProfile, OnboardingSection } from '../domain/onboarding/types';
-import type { AppState, GoalType, Macros } from '../domain/types';
+import type { AppState, GoalType, Macros, Profile } from '../domain/types';
 import { completeOnboarding, setTargets } from './actions';
 import { getState, update } from './store';
 
@@ -193,4 +194,22 @@ function applyFoodAnswers(s: AppState, key: keyof FoodAnswers): void {
     s.plannedMeals = s.plannedMeals.filter((m) => m.date < t || m.status !== 'planned' || slots.includes(m.slot));
     fillWeek(s, weekStart(t), t);
   }
+}
+
+type TrainingAnswers = OnboardingProfile['training'];
+type TrainingValue<K extends keyof TrainingAnswers> = NonNullable<TrainingAnswers[K]> extends Field<infer T> ? T : never;
+
+/**
+ * An area-C answer (Prompt 7): stored with source "user" and written into the
+ * training setup (and the level into the profile). The training plan itself
+ * follows in Prompt 8; nothing is re-planned here.
+ */
+export function setTrainingAnswer<K extends keyof TrainingAnswers>(key: K, value: TrainingValue<K>): void {
+  update((s) => {
+    const p = profileOf(s);
+    const at = new Date().toISOString();
+    s.onboarding = { ...p, training: { ...p.training, [key]: { value, source: 'user', updatedAt: at } } };
+    if (s.training) s.training = trainingSetupFrom(s.onboarding.training, s.training);
+    if (key === 'level' && s.profile) s.profile = { ...s.profile, experience: value as Profile['experience'] };
+  });
 }

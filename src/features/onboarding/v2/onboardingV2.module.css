@@ -617,3 +617,46 @@
 .pantryRow > * {
   max-width: 100%;
 }
+
+/* ---------- Area C (Prompt 7) ---------- */
+
+.weightRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  align-items: end;
+}
+
+.weightRow > :first-child {
+  grid-column: 1 / -1;
+}
+
+.weightRow > * {
+  min-width: 0;
+}
+
+.focusMap {
+  width: 100%;
+  max-width: 320px;
+  justify-self: center;
+}
+
+.mapZone {
+  fill: var(--surface-2);
+  stroke: var(--border);
+  stroke-width: 0.6;
+}
+
+.mapZone[data-state='off'] {
+  cursor: pointer;
+}
+
+.mapZone[data-state='on'] {
+  fill: var(--accent);
+  cursor: pointer;
+}
+
+.mapCaption {
+  font-size: 8px;
+  fill: var(--text-2);
+}

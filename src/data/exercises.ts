@@ -1051,29 +1051,13 @@ export const personalPrograms = (): WorkoutProgram[] => [...programs.values()];
 
 // ---------- Body areas under notable load ----------
 
-/**
- * Exercises that put notable load on a body area – used ONLY to offer an
- * alternative when the user reports discomfort there. It is no statement that
- * any other exercise is safe, and no diagnosis.
- */
-const AREA_LOAD: Record<BodyArea, string[]> = {
-  shoulder: ['bench-press', 'close-grip-bench', 'dips', 'overhead-press', 'machine-shoulder-press', 'pull-up', 'incline-db-press'],
-  elbow: ['triceps-pushdown', 'overhead-triceps-extension', 'close-grip-bench', 'dips', 'biceps-curl', 'cable-curl', 'band-curl', 'pull-up'],
-  wrist: ['push-up', 'bench-press', 'close-grip-bench', 'dips', 'biceps-curl'],
-  lower_back: ['deadlift', 'romanian-deadlift', 'barbell-row', 'squat', 'kb-swing', 'hanging-leg-raise'],
-  hip: ['hip-thrust', 'deadlift', 'romanian-deadlift', 'split-squat', 'lunges', 'kb-swing', 'squat'],
-  knee: ['squat', 'goblet-squat', 'bodyweight-squat', 'split-squat', 'lunges', 'leg-extension', 'leg-press', 'jump-rope', 'zone2-run'],
-};
-
-export const loadsArea = (exerciseId: string, area: BodyArea): boolean => AREA_LOAD[area].includes(exerciseId);
-
 export type JointLevel = 0 | 1 | 2;
 
 /**
  * Joint load per exercise: 0 = none, 1 = low, 2 = high (docs/CATALOG_TAGS_REVIEW.md,
  * decisions E6, E9, E22). Missing = 0. An orientation for choosing an alternative –
- * no statement that an exercise is safe, and no diagnosis. Complaints switch from
- * AREA_LOAD to these levels in Prompt 7.
+ * no statement that an exercise is safe, and no diagnosis. Complaints use these levels
+ * ("leicht" ≥ 2, "deutlich" ≥ 1 – domain/onboarding/training.ts).
  */
 export const JOINT_LOAD: Readonly<Record<string, Partial<Record<BodyArea, JointLevel>>>> = {
   'bench-press': { shoulder: 2, elbow: 1, wrist: 1, lower_back: 1 },

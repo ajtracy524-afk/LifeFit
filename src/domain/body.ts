@@ -2,6 +2,7 @@ import {
   ACTIVITY_FACTOR,
   BMI_CLASSES,
   ENERGY_ROUND_KCAL,
+  CARDIO,
   FFMI,
   KATCH_MCARDLE,
   MEASURED_ACCURACY,
@@ -13,7 +14,7 @@ import {
   VISUAL_STAGES,
   WHTR,
 } from './constants';
-import type { ActivityLevel, Sex } from './types';
+import type { ActivityLevel, Sex, CardioPlan } from './types';
 
 /**
  * Body analysis and energy – pure functions, every number from
@@ -177,6 +178,8 @@ export interface EnergyInput {
   /** Planned strength sessions per week and their length. */
   sessionsPerWeek: number;
   sessionMinutes?: number;
+  /** Additional cardio (Prompt 7) – Zone 2 / HIIT sessions add to the training surcharge, steps do not. */
+  cardio?: CardioPlan;
 }
 
 const mifflin = (sex: Sex, age: number, heightCm: number, weightKg: number) =>
@@ -204,6 +207,24 @@ export function trainingSurcharge(weightKg: number, sessionsPerWeek: number, ses
   return ((TRAINING_SURCHARGE.strengthMet - 1) * weightKg * (sessionMinutes / 60) * sessionsPerWeek) / 7;
 }
 
+/** Cardio sessions per week with their minutes and MET (steps: none – they are in the everyday factor). */
+export function cardioSessions(plan: CardioPlan | undefined): { perWeek: number; minutes: number; met: number }[] {
+  switch (plan?.kind) {
+    case 'zone2':
+    case 'mix':
+      return [{ perWeek: CARDIO.zone2.perWeek, minutes: CARDIO.zone2.minutes, met: CARDIO.zone2.met }];
+    case 'hiit':
+      return [{ perWeek: CARDIO.hiit.perWeek, minutes: CARDIO.hiit.minutes, met: CARDIO.hiit.met }];
+    default:
+      return [];
+  }
+}
+
+/** Daily average of the cardio sessions: (MET − 1) · kg · hours · sessions / 7 – the same rule as strength. */
+export function cardioSurcharge(weightKg: number, plan: CardioPlan | undefined): number {
+  return cardioSessions(plan).reduce((sum, s) => sum + ((s.met - 1) * weightKg * (s.minutes / 60) * s.perWeek) / 7, 0);
+}
+
 export interface EnergyEstimate {
   formula: BmrFormula;
   /** Unrounded values for further calculation. */
@@ -226,7 +247,7 @@ export interface EnergyEstimate {
 export function energyEstimate(i: EnergyInput): EnergyEstimate {
   const { kcal: bmr, formula } = bmrFor(i);
   const factor = ACTIVITY_FACTOR[i.activity];
-  const training = trainingSurcharge(i.weightKg, i.sessionsPerWeek, i.sessionMinutes);
+  const training = trainingSurcharge(i.weightKg, i.sessionsPerWeek, i.sessionMinutes) + cardioSurcharge(i.weightKg, i.cardio);
   // Range: both sex constants for "keine Angabe", both ends of the body fat range.
   const sexes: Sex[] = i.sex === 'unspecified' ? ['male', 'female'] : [i.sex];
   const pcts = i.bodyFat ? (i.bodyFat.range ?? [i.bodyFat.percent, i.bodyFat.percent]) : [undefined];
@@ -259,13 +280,14 @@ export function ageFromBirthYear(birthYear: number, today: string): number {
  */
 export function targetOptionsFor(state: {
   measurements?: Array<{ kind: string; date: string; value: number; method: 'measured' | 'estimate' }>;
-  training?: { sessionMinutes?: number } | null;
+  training?: { sessionMinutes?: number; cardio?: CardioPlan } | null;
   profile?: { experience?: 'beginner' | 'intermediate' | 'advanced' } | null;
   goal?: { targetWeightKg?: number } | null;
   onboarding?: { goal: { pace?: { value: 'gentle' | 'normal' | 'brisk' } }; health: { pregnancy?: { value: 'no' | 'pregnant' | 'breastfeeding' } } };
 }): {
   bodyFat?: EnergyInput['bodyFat'];
   sessionMinutes?: number;
+  cardio?: CardioPlan;
   pace?: 'gentle' | 'normal' | 'brisk';
   experience?: 'beginner' | 'intermediate' | 'advanced';
   targetWeightKg?: number;
@@ -276,6 +298,7 @@ export function targetOptionsFor(state: {
   return {
     ...(fat ? { bodyFat: { method: fat.method === 'measured' ? 'measured' : 'visual', percent: fat.value } } : {}),
     ...(state.training?.sessionMinutes ? { sessionMinutes: state.training.sessionMinutes } : {}),
+    ...(state.training?.cardio && state.training.cardio.kind !== 'none' ? { cardio: state.training.cardio } : {}),
     ...(state.onboarding?.goal.pace ? { pace: state.onboarding.goal.pace.value } : {}),
     ...(state.profile?.experience ? { experience: state.profile.experience } : {}),
     ...(state.goal?.targetWeightKg ? { targetWeightKg: state.goal.targetWeightKg } : {}),

@@ -3429,4 +3429,83 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       expect(text()).toContain('Penne Rigate – im Vorrat als Vollkornnudeln');
     });
   });
+
+  describe('area C (Prompt 7): experience, frame, cardio, focus', () => {
+    const openTraining = async () => {
+      localStorage.setItem(KEY, JSON.stringify(completeState()));
+      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      const store = await startApp();
+      await click('Training');
+      return store;
+    };
+    const pressed = (label: string) => [...container.querySelectorAll('main button[aria-pressed="true"]')].some((b) => b.textContent!.includes(label));
+    const segment = (group: string, label: string) => [...container.querySelectorAll(`[aria-label="${group}"] button`)].find((b) => b.textContent === label) as HTMLButtonElement;
+
+    it('experience: the estimate is pre-selected, one tap overrides it; working weights become start weights', async () => {
+      const store = await openTraining();
+      expect(title()).toBe('Deine Erfahrung');
+      expect(container.querySelector('[aria-label="Empfehlung"]')!.textContent).toMatch(/Unsere Einschätzung\s*Anfänger/);
+      expect(pressed('Anfänger (empfohlen)')).toBe(true);
+      expect(text()).not.toContain('Aktuelle Arbeitsgewichte'); // only for advanced levels
+      await click('Fortgeschritten');
+      expect(store.getState().profile!.experience).toBe('intermediate');
+      expect(store.getState().onboarding!.training.level).toMatchObject({ value: 'intermediate', source: 'user' });
+      expect(text()).toContain('Aktuelle Arbeitsgewichte (optional)');
+      await type('Bankdrücken: kg', '100');
+      await type('Bankdrücken: Wdh.', '5');
+      expect(store.getState().training!.workingWeights).toEqual({ 'bench-press': { kg: 100, reps: 5 } });
+    });
+
+    it('frame: days, length, places → equipment, complaints with level, the gap hint and the medical note', async () => {
+      const store = await openTraining();
+      await click('Weiter');
+      expect(title()).toBe('Dein Rahmen');
+      await act(async () => segment('Dauer pro Einheit', '45 min').click());
+      expect(store.getState().training!.sessionMinutes).toBe(45);
+      await click('Zuhause mit Kurzhanteln');
+      expect(store.getState().training!.equipmentItems).toEqual(['dumbbells', 'bench']);
+      await click('Knie');
+      expect(store.getState().training!.limitations).toMatchObject({ areas: ['knee'], severity: { knee: 'mild' } });
+      expect(text()).toContain('Bei akuten Schmerzen lass das bitte ärztlich abklären.');
+      await act(async () => segment('Knie: Stärke', 'deutlich').click());
+      expect(store.getState().training!.limitations!.severity).toEqual({ knee: 'clear' });
+      expect(text()).toMatch(/keine schonende Alternative für denselben Muskel/); // a gap is shown, not hidden
+    });
+
+    it('cardio: the recommendation for the goal with "Warum?", the choice changes the surcharge', async () => {
+      const store = await openTraining();
+      await click('Weiter');
+      await click('Weiter');
+      expect(title()).toBe('Ausdauer');
+      // completeState: muscle gain → light cardio
+      expect(container.querySelector('[aria-label="Cardio-Empfehlung"]')!.textContent).toContain('Schrittziel');
+      HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+        this.setAttribute('open', '');
+      };
+      HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+        this.removeAttribute('open');
+      };
+      await click('Warum?');
+      expect(document.body.textContent).toMatch(/nicht direkt vor dem Beintraining/i);
+      await click('Zone 2');
+      expect(store.getState().training!.cardio).toEqual({ kind: 'zone2', types: ['walking'] });
+      expect(text()).toMatch(/erhöhen deinen Gesamtumsatz um ca\. \d+ kcal pro Tag/);
+      expect(text()).toMatch(/Tagesziel anpassen \([\d']+ kcal\)/); // a new target only on confirmation (E10)
+      expect(store.getState().targets).toHaveLength(1);
+    });
+
+    it('focus: at most two muscle groups, by body map or list', async () => {
+      const store = await openTraining();
+      for (let i = 0; i < 3; i++) await click('Weiter');
+      expect(title()).toBe('Fokus');
+      expect(text()).toContain('Fokus heißt etwas mehr Volumen für diese Muskeln, der Rest wird weiter trainiert.');
+      await act(async () => (container.querySelector('rect[data-group="glutes"]') as SVGRectElement).dispatchEvent(new MouseEvent('click', { bubbles: true })));
+      const chips = '[aria-label="Fokus-Muskelgruppen"] button';
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>(chips)].find((b) => b.textContent!.includes('Schultern'))!.click());
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>(chips)].find((b) => b.textContent!.includes('Brust'))!.click()); // a third is not taken
+      expect(store.getState().training!.musclePriorities).toEqual(['glutes', 'shoulders']);
+      expect(container.querySelector('rect[data-group="glutes"]')!.getAttribute('data-state')).toBe('on');
+      expect(text()).toContain('Zwei sind gewählt');
+    });
+  });
 });

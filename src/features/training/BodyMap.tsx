@@ -8,14 +8,14 @@ interface Props {
   size?: 'sm' | 'md';
 }
 
-type Zone = { group: MuscleGroup | null; x: number; y: number; w: number; h: number; r?: number };
+export type Zone = { group: MuscleGroup | null; x: number; y: number; w: number; h: number; r?: number };
 
 /**
  * A stylized figure, front and back, built from rounded zones: the primary
  * muscle in the accent colour, secondary ones lighter, the rest neutral. It
  * shows WHERE an exercise works – an orientation, not an anatomical chart.
  */
-const FRONT: Zone[] = [
+export const FRONT: Zone[] = [
   { group: 'shoulders', x: 17, y: 34, w: 16, h: 13, r: 7 },
   { group: 'shoulders', x: 57, y: 34, w: 16, h: 13, r: 7 },
   { group: 'chest', x: 32, y: 36, w: 13, h: 19, r: 5 },
@@ -31,7 +31,7 @@ const FRONT: Zone[] = [
   { group: null, x: 32, y: 146, w: 11, h: 36, r: 5 },
   { group: null, x: 47, y: 146, w: 11, h: 36, r: 5 },
 ];
-const BACK: Zone[] = [
+export const BACK: Zone[] = [
   { group: 'shoulders', x: 17, y: 34, w: 16, h: 13, r: 7 },
   { group: 'shoulders', x: 57, y: 34, w: 16, h: 13, r: 7 },
   { group: 'back', x: 32, y: 36, w: 26, h: 48, r: 7 },

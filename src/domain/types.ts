@@ -294,7 +294,25 @@ export interface TrainingLimitations {
   areas: BodyArea[];
   excludedExercises: string[];
   note?: string;
+  /**
+   * E22: "leicht" replaces exercises with joint load 2 at the area, "deutlich" those
+   * with ≥ 1. Missing = "deutlich" – existing complaints keep every replacement.
+   */
+  severity?: Partial<Record<BodyArea, ComplaintSeverity>>;
 }
+
+export type ComplaintSeverity = 'mild' | 'clear';
+
+/** Cardio of the plan (Prompt 7). Steps are part of the everyday factor – only sessions add energy. */
+export interface CardioPlan {
+  kind: CardioKind;
+  types: CardioType[];
+}
+export type CardioKind = 'none' | 'steps' | 'zone2' | 'hiit' | 'mix';
+export type CardioType = 'walking' | 'cycling' | 'running' | 'rowing' | 'swimming' | 'crosstrainer';
+
+/** Where the user trains (Prompt 7) – several at once; each stands for pieces of equipment. */
+export type TrainingPlace = 'gym' | 'home_dumbbells' | 'home_barbell' | 'bodyweight' | 'bands';
 
 // ---------- User data ----------
 
@@ -396,6 +414,10 @@ export interface TrainingSetup {
   focus?: TrainingFocus[];
   /** Muscle groups to develop especially (library groups, e.g. 'shoulders'). */
   musclePriorities?: MuscleGroup[];
+  /** Current working weights (Prompt 7): start weights for the progression – without history only. */
+  workingWeights?: Record<string, { kg: number; reps: number }>;
+  /** Additional cardio (Prompt 7) – adds to the training surcharge of the energy estimate. */
+  cardio?: CardioPlan;
 }
 
 /** A body measurement over time – body fat now, circumferences later, one log for all. */

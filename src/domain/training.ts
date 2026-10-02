@@ -251,8 +251,8 @@ export function progressionSuggestion(last: WorkoutSet[] | undefined, repMax: nu
  * tap confirms. The suggestion and its reason are stored with the exercise, so
  * the user sees why and can accept, change or decline it.
  */
-export function workoutExercise(te: TemplateExercise, history: Workout[], opts: { extra?: boolean; date?: ISODate } = {}): WorkoutExercise {
-  const rx = prescribe(te, history, opts.date ?? new Date().toISOString().slice(0, 10));
+export function workoutExercise(te: TemplateExercise, history: Workout[], opts: { extra?: boolean; date?: ISODate; startWeights?: Record<string, { kg: number; reps: number }> } = {}): WorkoutExercise {
+  const rx = prescribe(te, history, opts.date ?? new Date().toISOString().slice(0, 10), opts.startWeights);
   const timed = isTimed(te.exerciseId);
   const { sets: targets, ...prescription } = rx;
   return {
@@ -283,7 +283,8 @@ export function workoutExercise(te: TemplateExercise, history: Workout[], opts: 
   };
 }
 
-export function createWorkout(template: WorkoutTemplate, history: Workout[], date: ISODate): Workout {
+/** `startWeights`: working weights from the onboarding (Prompt 7) – for exercises without history. */
+export function createWorkout(template: WorkoutTemplate, history: Workout[], date: ISODate, startWeights?: Record<string, { kg: number; reps: number }>): Workout {
   return {
     id: newId(),
     date,
@@ -291,7 +292,7 @@ export function createWorkout(template: WorkoutTemplate, history: Workout[], dat
     name: template.name,
     startedAt: new Date().toISOString(),
     status: 'in_progress',
-    exercises: template.exercises.map((te) => workoutExercise(te, history, { date })),
+    exercises: template.exercises.map((te) => workoutExercise(te, history, { date, ...(startWeights ? { startWeights } : {}) })),
   };
 }
 

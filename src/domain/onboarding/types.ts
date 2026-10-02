@@ -1,4 +1,4 @@
-import type { CookingTime, Intolerance, LmivAllergen, SlotPlan, Weekday } from '../types';
+import type { CardioPlan, ComplaintSeverity, CookingTime, Intolerance, LmivAllergen, SlotPlan, TrainingPlace, Weekday } from '../types';
 import type { ActivityLevel, BodyArea, EquipmentItem, Experience, Macros, MealSlot, MuscleGroup } from '../types';
 
 /**
@@ -55,7 +55,7 @@ export type OnboardingStepId =
 export type { LmivAllergen } from '../types';
 
 export type { CookingTime, Intolerance } from '../types';
-export type CardioType = 'walking' | 'cycling' | 'running' | 'rowing' | 'swimming' | 'crosstrainer';
+export type { CardioKind, CardioType, ComplaintSeverity, TrainingPlace } from '../types';
 export type { SlotPlan, Weekday, WeekTemplate } from '../types';
 
 export interface OnboardingProgress {
@@ -127,8 +127,12 @@ export interface OnboardingProfile {
     weekdays?: Field<number[]>;
     sessionMinutes?: Field<number>;
     equipment?: Field<EquipmentItem[]>;
-    complaints?: Field<{ areas: BodyArea[]; note?: string }>;
-    cardio?: Field<{ kind: 'none' | 'steps' | 'zone2' | 'hiit' | 'mix'; types: CardioType[] }>;
+    /** Where the user trains (Prompt 7) – the equipment above follows from it. */
+    places?: Field<TrainingPlace[]>;
+    /** Pause longer than 6 months (asked when area A says "pausiert") – one level lower (Prompt 7). */
+    pausedLong?: Field<boolean>;
+    complaints?: Field<{ areas: BodyArea[]; note?: string; severity?: Partial<Record<BodyArea, ComplaintSeverity>> }>;
+    cardio?: Field<CardioPlan>;
     focusMuscles?: Field<MuscleGroup[]>;
     plan?: Field<{ programId: string; weekdays: number[] }>;
   };

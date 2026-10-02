@@ -150,13 +150,20 @@ describe('check-in before the session (time, discomfort, energy) – proposals o
     expect(bench).toMatchObject({ kind: 'swap', toExerciseId: 'db-bench-press', title: 'Kurzhantel-Bankdrücken statt Bankdrücken' });
     expect(bench.reason).toMatch(/Beschwerden \(Schulter\)/);
     expect(bench.reason).not.toMatch(/sicher|unbedenklich|heilt|Verletzung/);
-    // The shoulder press itself targets the shoulder → no replacement (push-ups would be another muscle and load it too), only "auslassen".
-    expect(shoulder.find((p) => p.index === 1)).toMatchObject({ kind: 'drop', title: 'Schulterdrücken (KH) heute auslassen' });
+    // Joint levels (E22) + the released link overhead press → lateral raise (E21): today's discomfort
+    // counts as "leicht" (load 2 is replaced) – the shoulder press becomes lateral raises (shoulder load 1).
+    expect(shoulder.find((p) => p.index === 1)).toMatchObject({ kind: 'swap', toExerciseId: 'lateral-raise' });
     expect(shoulder.find((p) => p.index === 2)).toMatchObject({ kind: 'swap', toExerciseId: 'db-bench-press' }); // incline: same main muscle (chest)
     expect(DISCOMFORT_NOTE).toMatch(/keine Diagnose/);
     expect(DISCOMFORT_NOTE).toMatch(/ärztlich oder physiotherapeutisch/);
+    // Knee "leicht" (only today): squats (knee 2) → goblet squats (knee 1).
     const knee = proposeAdaptations(legs, { discomfort: ['knee'] }, { history: [] });
-    expect(knee.find((p) => p.index === 0)).toMatchObject({ kind: 'drop', title: 'Kniebeugen heute auslassen' });
+    expect(knee.find((p) => p.index === 0)).toMatchObject({ kind: 'swap', toExerciseId: 'goblet-squat' });
+    // A lasting knee complaint without a level counts as "deutlich" (E22): no quad exercise without knee load → "auslassen", with the reason.
+    const lasting = { programId: 'ppl', weekdays: [0], limitations: { areas: ['knee' as const], excludedExercises: [] } };
+    const clear = proposeAdaptations(legs, { discomfort: ['knee'] }, { history: [], setup: lasting });
+    expect(clear.find((p) => p.index === 0)).toMatchObject({ kind: 'drop', title: 'Kniebeugen heute auslassen' });
+    expect(clear.find((p) => p.index === 0)!.reason).toMatch(/keine Alternative für denselben Muskel/);
     const applied = applyAdaptations(push, [bench]);
     expect(applied.exercises[0]!.exerciseId).toBe('db-bench-press');
   });

@@ -514,7 +514,7 @@ export function startWorkoutFrom(template: WorkoutTemplate, date: ISODate = toda
   if (running) return running.id;
   const checkIn = opts.checkIn && (opts.checkIn.minutes || opts.checkIn.energy || opts.checkIn.discomfort?.length) ? { checkIn: opts.checkIn } : {};
   const adaptations = opts.adaptations?.length ? { adaptations: opts.adaptations.map(({ kind, title, reason }) => ({ kind, title, reason })) } : {};
-  const workout = { ...createWorkout(template, s.workouts, date), plannedId: plannedSessionFor(s, template.id, date), ...checkIn, ...adaptations };
+  const workout = { ...createWorkout(template, s.workouts, date, s.training?.workingWeights), plannedId: plannedSessionFor(s, template.id, date), ...checkIn, ...adaptations };
   update((d) => {
     d.workouts.push(workout);
   });
@@ -641,7 +641,7 @@ export function replaceExercise(workoutId: string, exerciseEntryId: string, newE
       restSec: old.restSec,
       ...(old.planned?.durationMin ? { durationMin: old.planned.durationMin } : {}),
     };
-    const fresh = workoutExercise(te, s.workouts, { date: w.date });
+    const fresh = workoutExercise(te, s.workouts, { date: w.date, ...(s.training?.workingWeights ? { startWeights: s.training.workingWeights } : {}) });
     const next: WorkoutExercise = {
       ...fresh,
       ...(old.planned ? { planned: old.planned } : { extra: true }),
@@ -661,7 +661,7 @@ export function addExerciseToWorkout(workoutId: string, exerciseId: string, temp
     const w = s.workouts.find((x) => x.id === workoutId && x.status === 'in_progress');
     if (!w) return;
     const te: TemplateExercise = { exerciseId, sets: 3, repMin: 8, repMax: 12, restSec: 90, ...template };
-    w.exercises.push(workoutExercise(te, s.workouts, { extra: true, date: w.date }));
+    w.exercises.push(workoutExercise(te, s.workouts, { extra: true, date: w.date, ...(s.training?.workingWeights ? { startWeights: s.training.workingWeights } : {}) }));
   });
 }
 

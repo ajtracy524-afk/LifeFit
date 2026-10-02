@@ -339,3 +339,38 @@ export const PANTRY = { level: { full: 1, half: 0.5, rest: 0.15 }, soonDays: 5, 
 
 /** Serial scan: the same barcode again within this time is the same product (one detection, several frames). */
 export const SCAN_REPEAT_MS = 2500;
+
+// ---------- Area C: training (Prompt 7) ----------
+
+/**
+ * Training level from training years, pause and the normalised FFMI. The
+ * FFMI shifts one level: clearly above the typical untrained range → up,
+ * below it → down. Men: ~19–20 is untrained average, ≥ 22 well trained
+ * (Kouri et al. 1995; Schutz et al. 2002); women about 3 points lower.
+ * "keine Angabe": the mean. A pause longer than 6 months → one level lower
+ * (muscle memory: regaining is faster, Bruusgaard et al., PNAS 2010).
+ */
+export const TRAINING_LEVEL = {
+  ffmi: { male: { low: 19, high: 22 }, female: { low: 16, high: 19 } },
+  pauseMonths: 6,
+} as const;
+
+/**
+ * Start weight from a working set (weight × reps): estimated 1RM by Epley
+ * (1RM = kg · (1 + reps / 30)), then the weight for the top of the rep range
+ * with `reserve` reps in the tank – a conservative first session.
+ */
+export const START_WEIGHT = { epleyDivisor: 30, reserve: 2 } as const;
+
+/**
+ * Cardio (Prompt 7). WHO 2020 (Bull et al., Br J Sports Med 2020;54:1451–62):
+ * 150–300 min moderate activity per week. Zone 2 = moderate (talking possible),
+ * ~5 MET on average (bike / brisk walk / easy run, Ainsworth et al. Compendium
+ * 2011); HIIT ~8 MET over the session. Steps are part of the everyday factor.
+ */
+export const CARDIO = {
+  steps: 8000,
+  zone2: { perWeek: 2, minutes: 30, met: 5 },
+  hiit: { perWeek: 1, minutes: 20, met: 8 },
+  whoMinutes: [150, 300],
+} as const;

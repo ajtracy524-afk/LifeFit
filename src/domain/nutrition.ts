@@ -23,6 +23,7 @@ import type {
   PlannedMeal,
   Profile,
   Recipe,
+  CardioPlan,
 } from './types';
 
 /** All optional nutrients (order = display order). */
@@ -156,6 +157,8 @@ export interface TargetOptions {
   targetWeightKg?: number;
   /** Pregnancy / breastfeeding: never a deficit. */
   pregnant?: boolean;
+  /** Additional cardio (Prompt 7) – Zone 2 / HIIT add to the training surcharge. */
+  cardio?: CardioPlan;
 }
 
 /**
@@ -171,7 +174,7 @@ export function calculateTargets(
   trainingDaysPerWeek: number,
   options: TargetOptions = {},
 ): TargetCalculation {
-  const energy = energyEstimate({ ...profile, weightKg, sessionsPerWeek: trainingDaysPerWeek, ...(options.bodyFat ? { bodyFat: options.bodyFat } : {}), ...(options.sessionMinutes ? { sessionMinutes: options.sessionMinutes } : {}) });
+  const energy = energyEstimate({ ...profile, weightKg, sessionsPerWeek: trainingDaysPerWeek, ...(options.bodyFat ? { bodyFat: options.bodyFat } : {}), ...(options.sessionMinutes ? { sessionMinutes: options.sessionMinutes } : {}), ...(options.cardio ? { cardio: options.cardio } : {}) });
   const { bmr, tdee } = energy;
   // Calories from the pace with all safety limits, macros by the same rules as the onboarding (goal.ts, E11).
   const { kcal } = goalCalories({
