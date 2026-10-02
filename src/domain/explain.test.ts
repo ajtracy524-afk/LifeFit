@@ -92,7 +92,7 @@ describe('Dein Plan (timeline) and meal times', () => {
   it('orders meals and training by time and marks before/after training', () => {
     const s = state({
       plannedMeals: [meal('b', MON, 'breakfast', 'overnight-oats'), meal('s', MON, 'snack', 'protein-shake'), meal('l', MON, 'lunch', 'chicken-wraps'), meal('d', MON, 'dinner', 'bolognese')],
-      plannerSettings: { priority: 'balanced', mealTimes: { breakfast: '07:30', lunch: '12:30', snack: '16:30', dinner: '20:00' }, trainingTime: '18:00' },
+      plannerSettings: { priority: 'balanced', mealTimes: { breakfast: '07:30', lunch: '12:30', snack: '16:30', snack2: '16:00', dinner: '20:00' }, trainingTime: '18:00' },
     });
     const items = dayTimeline(s, MON).map((i) => (i.kind === 'training' ? `${i.time} training` : i.kind === 'closed' ? `${i.time} closed` : `${i.time} ${i.meal.slot}${i.kind === 'meal' && i.role ? `:${i.role}` : ''}`));
     expect(items).toEqual(['07:30 breakfast', '12:30 lunch', '16:30 snack:pre', '18:00 training', '20:00 dinner:post']);
@@ -111,7 +111,7 @@ describe('Dein Plan (timeline) and meal times', () => {
   it('a meal is due 30 min before its time (not by fixed hours)', () => {
     const s = state({
       plannedMeals: [meal('b', MON, 'breakfast', 'overnight-oats')],
-      plannerSettings: { priority: 'balanced', mealTimes: { breakfast: '09:30', snack: '11:00', lunch: '13:00', dinner: '19:00' } },
+      plannerSettings: { priority: 'balanced', mealTimes: { breakfast: '09:30', snack: '11:00', lunch: '13:00', snack2: '16:00', dinner: '19:00' } },
       training: null,
     });
     const dueAt = (hour: number) => {

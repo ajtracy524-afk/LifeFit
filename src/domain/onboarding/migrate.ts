@@ -1,4 +1,5 @@
 import { recommendGoal } from '../goal';
+import { nutritionProfileFrom } from './food';
 import { calculateTargets } from '../nutrition';
 import { slotsFor } from '../planner';
 import { recommendProgram } from '../programs';
@@ -201,7 +202,7 @@ export function defaultCoreSetup(p: OnboardingProfile, today: string, nowIso: st
   const goalType = rec.locked ? 'maintain' : chosen && !rec.blocked.some((b) => b.goal === chosen) ? chosen : rec.recommended;
   const targetWeightKg = p.goal.targetWeightKg?.value;
   const weekdays = [...(p.training.weekdays?.value ?? D.weekdays)].sort((a, b) => a - b);
-  const diet = p.food.diet?.value === 'pescatarian' ? 'omnivore' : (p.food.diet?.value ?? 'omnivore'); // pescetarian filter comes with Prompt 4
+  const diet = p.food.diet?.value ?? 'omnivore';
   const calc = calculateTargets(profile, goalType, weightKg, weekdays.length, {
     ...(fat ? { bodyFat: { method: fat.method, percent: fat.percent, range: fat.range } } : {}),
     ...(p.training.sessionMinutes ? { sessionMinutes: p.training.sessionMinutes.value } : {}),
@@ -213,7 +214,7 @@ export function defaultCoreSetup(p: OnboardingProfile, today: string, nowIso: st
   return {
     profile,
     goal: { type: goalType, startWeightKg: weightKg, startedAt: today, ...(targetWeightKg && goalType !== 'maintain' && goalType !== 'recomp' ? { targetWeightKg } : {}) },
-    nutritionProfile: { diet, excluded: [], slots: p.food.meals?.value ?? slotsFor(4) },
+    nutritionProfile: nutritionProfileFrom(p.food, { diet, excluded: [], slots: p.food.meals?.value ?? slotsFor(4) }),
     training: {
       programId: recommendProgram({ days: weekdays.length, experience: profile.experience, goal: goalType }),
       weekdays,

@@ -1,7 +1,7 @@
 import { addDays, weekDays } from '../dates';
 import { ZERO_MACROS, dayTotals, plannedMealMacros, sumMacros } from '../nutrition';
 import { applyStock, buildShoppingList, shoppingRange, type ShoppingListItem } from '../shopping';
-import { legacySwapContext, substituteFood } from '../catalogTags';
+import { hardExclusionsOf, substituteFood, swapContextOf } from '../catalogTags';
 import { resolveWorkouts, type PlannedWorkout } from '../training';
 import { EATING_OUT_SLOTS, excludedSlots } from '../timeBudget';
 import type { AppState, DayContext, ISODate, Macros, MealSlot, NutritionTarget, PlannedMeal } from '../types';
@@ -81,11 +81,16 @@ export interface WeekPlan {
 export function availablePantry(state: AppState, from: ISODate, today: ISODate, estimate = pantryEstimate(state)): Record<string, number> {
   const available = { ...estimate };
   if (from > today) {
-    for (const earlier of buildShoppingList(state.plannedMeals, today, addDays(from, -1))) {
+    for (const earlier of buildShoppingList(state.plannedMeals, today, addDays(from, -1), undefined, householdOf(state))) {
       if (available[earlier.foodId] !== undefined) available[earlier.foodId] = Math.max(0, available[earlier.foodId]! - earlier.grams);
     }
   }
   return available;
+}
+
+/** People who eat along – only the shopping amounts scale (Prompt 4). */
+export function householdOf(state: Pick<AppState, 'plannerSettings'>): number {
+  return Math.max(1, state.plannerSettings?.householdSize ?? 1);
 }
 
 /** Shopping list of a week: gross need from the plan minus free pantry and purchases. */
@@ -95,8 +100,9 @@ export function weekShopping(state: AppState, week: ISODate, today: ISODate, est
   const available = availablePantry(state, from, today, estimate);
   const purchased = state.shopping[week]?.purchased ?? {};
   // E20: with lactose intolerance the list buys the lactose-free variant (stock stays on the original).
-  const buyAs = (foodId: string) => substituteFood(foodId, legacySwapContext(state.nutritionProfile));
-  const items = applyStock(buildShoppingList(state.plannedMeals, from, to, buyAs), available, purchased);
+  const swap = swapContextOf(hardExclusionsOf(state.nutritionProfile));
+  const buyAs = (foodId: string) => substituteFood(foodId, swap);
+  const items = applyStock(buildShoppingList(state.plannedMeals, from, to, buyAs, householdOf(state)), available, purchased);
   // F8: basics are topped up to their minimum stock – on the same list, one position per food.
   const restocked = applyRestock(items, restockRules(state, week, today), available, purchased);
   // E19: staples only when marked empty.

@@ -41,7 +41,7 @@ export function emptyState(): AppState {
 export function defaultPlannerSettings(): AppState['plannerSettings'] {
   return {
     priority: 'balanced',
-    mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:00' },
+    mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', snack2: '16:00', dinner: '19:00' },
   };
 }
 
@@ -124,7 +124,17 @@ export function loadState(): LoadResult {
 
 /** All one-time clean-ups of older stored data, applied on load. */
 function migrateLegacy(state: AppState): AppState {
-  return migrateOnboarding(markEatingOutSkips(renameLegacyWorkouts(normalizeLegacyDayModes(dropLegacyEurBudget(state)))));
+  return migrateOnboarding(markEatingOutSkips(renameLegacyWorkouts(normalizeLegacyDayModes(addMissingMealTimes(dropLegacyEurBudget(state))))));
+}
+
+/** Slots added later ("Snack 2", E13) get their default time – stored times stay. */
+export function addMissingMealTimes(state: AppState): AppState {
+  const times = state.plannerSettings?.mealTimes;
+  if (!times) return state;
+  const defaults = defaultPlannerSettings().mealTimes;
+  const missing = (Object.keys(defaults) as (keyof typeof defaults)[]).filter((slot) => !times[slot]);
+  if (!missing.length) return state;
+  return { ...state, plannerSettings: { ...state.plannerSettings, mealTimes: { ...defaults, ...times } } };
 }
 
 /**

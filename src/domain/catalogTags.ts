@@ -1,6 +1,5 @@
 import { getFood, LACTOSE_FREE_VARIANT } from '../data/foods';
-import type { Intolerance } from './onboarding/types';
-import type { AnimalKind, DietType, Food, FoodGroup, FoodTags, LmivAllergen, Macros, NutritionProfile, Recipe } from './types';
+import type { Allergen, AnimalKind, DietType, Food, FoodGroup, FoodTags, Intolerance, LmivAllergen, Macros, MealSlot, NutritionProfile, Recipe } from './types';
 
 /**
  * Derived catalog facts (Prompt 3b, decisions E15–E23 in docs/ONBOARDING_PLAN.md).
@@ -9,7 +8,8 @@ import type { AnimalKind, DietType, Food, FoodGroup, FoodTags, LmivAllergen, Mac
  * recipe cannot contradict what it is made of.
  */
 
-export type Diet = DietType | 'pescatarian';
+/** The four diets (DietType includes pescatarian since Prompt 4). */
+export type Diet = DietType;
 
 const MEAT: AnimalKind[] = ['meat', 'pork'];
 const SEAFOOD: AnimalKind[] = ['fish', 'crustaceans', 'molluscs'];
@@ -100,7 +100,7 @@ export function foodGroups(food: Food): FoodGroup[] {
   return g ? [g] : [];
 }
 
-// ---------- Hard exclusions (used by the filter from Prompt 4 on) ----------
+// ---------- Hard exclusions (Prompt 4: the one filter for plan, suggestions and shopping) ----------
 
 export interface HardExclusions {
   diet?: Diet;
@@ -112,12 +112,17 @@ export interface HardExclusions {
   /** Excludes added alcohol AND alcohol from fermentation by default (E17). */
   alcohol?: boolean;
   fermentationAlcoholOk?: boolean;
+  /** Catalog foods excluded via the free text. */
+  foods?: string[];
+  /** Free text without a catalog match – checked against the names of own products. */
+  texts?: string[];
 }
 
-/** Is the food itself excluded? Foods without tags (own products) are judged elsewhere. */
+/** Is the food excluded? Catalog foods by their tags, own products by what is known about them. */
 export function isExcluded(food: Food, ex: HardExclusions): boolean {
+  if (ex.foods?.includes(food.id)) return true;
   const t = food.tags;
-  if (!t) return false;
+  if (!t) return ownFoodExcluded(food, ex);
   if (ex.diet && !fitsDiet(t.kinds, ex.diet)) return true;
   if (ex.pork && t.kinds.includes('pork')) return true;
   const allergens = ex.allergens ?? [];
@@ -129,6 +134,64 @@ export function isExcluded(food: Food, ex: HardExclusions): boolean {
   if (intol.includes('celiac') && celiacRelevant(t)) return true;
   if (ex.alcohol && (t.alcohol === 'added' || (t.alcohol === 'fermentation' && !ex.fermentationAlcoholOk))) return true;
   return false;
+}
+
+/** The four old product flags read as LMIV allergens – the stricter reading (milk for "lactose"). */
+const LEGACY_AS_LMIV: Record<Allergen, LmivAllergen[]> = { lactose: ['milk'], gluten: ['gluten'], nuts: ['peanuts', 'tree_nuts'], fish: ['fish'] };
+
+/**
+ * Own products and dish ingredients: only KNOWN facts exclude – declared
+ * allergens and traces, a stated diet, the name against the free text.
+ * What is unknown stays the user's own choice; nothing is guessed.
+ */
+function ownFoodExcluded(food: Food, ex: HardExclusions): boolean {
+  const name = normalize(food.name);
+  if (ex.texts?.some((text) => name.includes(normalize(text)))) return true;
+  const declared = new Set([...(food.declared?.allergens ?? []), ...food.allergens.flatMap((a) => LEGACY_AS_LMIV[a])]);
+  const traces = new Set(food.declared?.traces ?? []);
+  const allergens = ex.allergens ?? [];
+  if (allergens.some((a) => declared.has(a) || (traces.has(a) && !ex.tracesOk?.includes(a)))) return true;
+  const intol = ex.intolerances ?? [];
+  if (intol.includes('lactose') && declared.has('milk')) return true; // lactose-free is not known for an own product
+  if (intol.includes('celiac') && (declared.has('gluten') || traces.has('gluten'))) return true;
+  const knownNotVegan = !food.vegan && !food.dietUnknown?.vegan;
+  const knownNotVegetarian = !food.vegetarian && !food.dietUnknown?.vegetarian;
+  if (ex.diet === 'vegan' && knownNotVegan) return true;
+  // "Not vegetarian" may be meat or fish – for pescatarians the stricter reading wins.
+  if ((ex.diet === 'vegetarian' || ex.diet === 'pescatarian') && knownNotVegetarian) return true;
+  return false;
+}
+
+const exclusionsCache = new WeakMap<NutritionProfile, HardExclusions>();
+
+/**
+ * The hard exclusions of a profile: the new fields (Prompt 4) merged with
+ * the old `excluded` – "Nüsse" counts as peanuts AND tree nuts, "Laktose" as
+ * the intolerance (E5). Cached per profile object (the planner asks often).
+ */
+export function hardExclusionsOf(profile: NutritionProfile | null): HardExclusions {
+  if (!profile) return {};
+  const cached = exclusionsCache.get(profile);
+  if (cached) return cached;
+  const allergens = new Set<LmivAllergen>(profile.allergens ?? []);
+  const intolerances = new Set<Intolerance>(profile.intolerances ?? []);
+  for (const a of profile.excluded ?? []) {
+    if (a === 'lactose') intolerances.add('lactose');
+    else LEGACY_AS_LMIV[a].forEach((x) => allergens.add(x));
+  }
+  const ex: HardExclusions = {
+    diet: profile.diet,
+    allergens: [...allergens],
+    ...(profile.tracesOk?.length ? { tracesOk: [...profile.tracesOk] } : {}),
+    intolerances: [...intolerances],
+    ...(profile.noPork ? { pork: true } : {}),
+    ...(profile.noAlcohol ? { alcohol: true } : {}),
+    ...(profile.fermentationAlcoholOk ? { fermentationAlcoholOk: true } : {}),
+    ...(profile.excludedFoods?.length ? { foods: [...profile.excludedFoods] } : {}),
+    ...(profile.excludedText?.length ? { texts: [...profile.excludedText] } : {}),
+  };
+  exclusionsCache.set(profile, ex);
+  return ex;
 }
 
 /**
@@ -146,7 +209,7 @@ export function usableFood(foodId: string, ex: HardExclusions): string | undefin
   const food = getFood(foodId);
   if (!food) return undefined;
   if (!isExcluded(food, ex)) return foodId;
-  const swapped = substituteFood(foodId, swapContext(ex));
+  const swapped = substituteFood(foodId, swapContextOf(ex));
   const variant = swapped !== foodId ? getFood(swapped) : undefined;
   return variant && !isExcluded(variant, ex) ? swapped : undefined;
 }
@@ -156,17 +219,116 @@ export function recipeAllowedBy(recipe: Recipe, ex: HardExclusions): boolean {
   return recipe.ingredients.every((ing) => usableFood(ing.foodId, ex) !== undefined);
 }
 
-function swapContext(ex: HardExclusions) {
+export function swapContextOf(ex: HardExclusions) {
   return { lactoseIntolerant: !!ex.intolerances?.includes('lactose'), milkAllergy: !!ex.allergens?.includes('milk') };
 }
 
-/**
- * The swap for the old profile (until Prompt 4): its "Laktose" exclusion is
- * an intolerance; a milk allergy cannot be expressed there yet.
- */
-export function legacySwapContext(profile: Pick<NutritionProfile, 'excluded'> | null) {
-  return { lactoseIntolerant: !!profile?.excluded.includes('lactose'), milkAllergy: false };
+// ---------- Free text against the catalog ----------
+
+/** Lower case, umlauts folded, no punctuation – "Süßkartoffeln" ~ "suesskartoffeln". */
+export function normalize(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
+
+/**
+ * "Was isst du sonst nicht?" – each entry is matched against the catalog
+ * names (at least 3 letters). Matches become hard exclusions, the rest stays
+ * as text and is checked against the names of own products.
+ */
+export function matchCatalog(entries: string[], foods: Food[]): { foods: string[]; unmatched: string[] } {
+  const ids = new Set<string>();
+  const unmatched: string[] = [];
+  for (const raw of entries) {
+    const term = normalize(raw);
+    const hits = term.length >= 3 ? foods.filter((f) => normalize(f.name).includes(term)) : [];
+    if (hits.length) hits.forEach((f) => ids.add(f.id));
+    else if (raw.trim()) unmatched.push(raw.trim());
+  }
+  return { foods: [...ids], unmatched };
+}
+
+// ---------- Feasibility (Prompt 4, threshold in constants) ----------
+
+export interface Feasibility {
+  /** Allowed recipes per selected slot. */
+  counts: Partial<Record<MealSlot, number>>;
+  ok: boolean;
+  /** The slot with the fewest recipes. */
+  weakest?: MealSlot;
+  /** The single change that helps most – a suggestion, never applied silently. */
+  suggestion?: FeasibilitySuggestion;
+}
+
+export type FeasibilityChange = { kind: 'traces'; allergen: LmivAllergen } | { kind: 'fermentation' } | { kind: 'food'; foodId: string } | { kind: 'diet'; diet: Diet };
+export interface FeasibilitySuggestion {
+  label: string;
+  change: FeasibilityChange;
+  ex: HardExclusions;
+  /** Allowed recipes per slot after the change. */
+  counts: Partial<Record<MealSlot, number>>;
+}
+
+const LOOSER_DIET: Partial<Record<Diet, Diet>> = { vegan: 'vegetarian', vegetarian: 'pescatarian', pescatarian: 'omnivore' };
+const DIET_NAME: Record<Diet, string> = { omnivore: 'alles', pescatarian: 'pescetarisch', vegetarian: 'vegetarisch', vegan: 'vegan' };
+
+function countBySlot(ex: HardExclusions, slots: MealSlot[], recipes: Recipe[]): Partial<Record<MealSlot, number>> {
+  // "Snack 2" uses the snack recipes (planner.recipeSlot).
+  return Object.fromEntries(slots.map((slot) => [slot, recipes.filter((r) => r.slots.includes(slot === 'snack2' ? 'snack' : slot) && recipeAllowedBy(r, ex)).length]));
+}
+
+/**
+ * Are there enough recipes per meal after the exclusions? If not, the
+ * onboarding shows a hint with ONE suggestion (the relaxation that raises the
+ * weakest meal the most) instead of producing an empty plan later.
+ */
+export function feasibility(ex: HardExclusions, slots: MealSlot[], recipes: Recipe[], minPerSlot: number): Feasibility {
+  const counts = countBySlot(ex, slots, recipes);
+  const min = (c: Partial<Record<MealSlot, number>>) => Math.min(...slots.map((s) => c[s] ?? 0));
+  const weakest = slots.reduce<MealSlot | undefined>((w, s) => (w === undefined || (counts[s] ?? 0) < (counts[w] ?? 0) ? s : w), undefined);
+  if (!slots.length || min(counts) >= minPerSlot) return { counts, ok: true, ...(weakest ? { weakest } : {}) };
+
+  const options: Omit<FeasibilitySuggestion, 'counts'>[] = [];
+  for (const a of ex.allergens ?? []) {
+    if (!ex.tracesOk?.includes(a)) options.push({ label: `Spuren von ${ALLERGEN_LABEL[a]} erlauben`, change: { kind: 'traces', allergen: a }, ex: { ...ex, tracesOk: [...(ex.tracesOk ?? []), a] } });
+  }
+  if (ex.alcohol && !ex.fermentationAlcoholOk) options.push({ label: 'Alkohol aus Fermentation (z. B. Sojasauce) erlauben', change: { kind: 'fermentation' }, ex: { ...ex, fermentationAlcoholOk: true } });
+  for (const id of ex.foods ?? []) options.push({ label: `${getFood(id)?.name ?? id} wieder erlauben`, change: { kind: 'food', foodId: id }, ex: { ...ex, foods: ex.foods!.filter((f) => f !== id) } });
+  const looser = ex.diet ? LOOSER_DIET[ex.diet] : undefined;
+  if (looser) options.push({ label: `Ernährungsform „${DIET_NAME[looser]}“ statt „${DIET_NAME[ex.diet!]}“`, change: { kind: 'diet', diet: looser }, ex: { ...ex, diet: looser } });
+
+  let best: (FeasibilitySuggestion & { score: number }) | undefined;
+  for (const o of options) {
+    const c = countBySlot(o.ex, slots, recipes);
+    const score = min(c) * 1000 + slots.reduce((sum, s) => sum + (c[s] ?? 0), 0);
+    if (min(c) > min(counts) && (!best || score > best.score)) best = { ...o, counts: c, score };
+  }
+  return { counts, ok: false, ...(weakest ? { weakest } : {}), ...(best ? { suggestion: { label: best.label, change: best.change, ex: best.ex, counts: best.counts } } : {}) };
+}
+
+/** German names of the 14 LMIV allergens, as the chips show them. */
+export const ALLERGEN_LABEL: Record<LmivAllergen, string> = {
+  gluten: 'glutenhaltigem Getreide',
+  crustaceans: 'Krebstieren',
+  eggs: 'Eiern',
+  fish: 'Fisch',
+  peanuts: 'Erdnüssen',
+  soy: 'Soja',
+  milk: 'Milch',
+  tree_nuts: 'Schalenfrüchten',
+  celery: 'Sellerie',
+  mustard: 'Senf',
+  sesame: 'Sesam',
+  sulphites: 'Sulfiten',
+  lupin: 'Lupinen',
+  molluscs: 'Weichtieren',
+};
 
 // ---------- Display ----------
 

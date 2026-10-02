@@ -59,7 +59,7 @@ const PRIORITY_HINT: Record<PlanPriority, string> = {
 };
 
 const GOAL_LABEL: Record<GoalType, string> = { muscle_gain: 'Muskelaufbau', fat_loss: 'Fett verlieren', maintain: 'Fit bleiben', recomp: 'Recomposition' };
-const DIET_LABEL: Record<DietType, string> = { omnivore: 'Alles', vegetarian: 'Vegetarisch', vegan: 'Vegan' };
+const DIET_LABEL: Record<DietType, string> = { omnivore: 'Alles', pescatarian: 'Pescetarisch', vegetarian: 'Vegetarisch', vegan: 'Vegan' };
 const ALLERGENS: [Allergen, string][] = [
   ['lactose', 'Laktose'],
   ['gluten', 'Gluten'],

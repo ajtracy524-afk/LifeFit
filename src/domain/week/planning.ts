@@ -6,7 +6,7 @@ import { plannedMealMacros, sumMacros } from '../nutrition';
 import type { AppState, ISODate, Macros, MealSlot, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { availablePantry, dayContextFor } from './weekPlan';
-import { effectiveTimeBudget, excludedSlots } from '../timeBudget';
+import { effectiveTimeBudget, excludedSlots, maxPrepFor } from '../timeBudget';
 import { syncPersonal } from '../personal';
 
 /**
@@ -71,6 +71,8 @@ export function planMeals(
     existing: opts.existing ?? weekMeals(state, first),
     ...plannerContext(state, dates, today),
     timeBudgetFor: (d) => effectiveTimeBudget(dayContextFor(state, d)),
+    // Only with an answer: the user's cooking time is held (Prompt 4); without it the soft time cost as before.
+    ...(state.plannerSettings?.cookingTime ? { maxPrepFor: (d: ISODate) => maxPrepFor(state.plannerSettings, dayContextFor(state, d), d) } : {}),
     excludedSlotsFor: notPlannable,
     postWorkoutSlotFor: (d) => postWorkoutSlot(state, d),
     random: seededRandom(opts.seed),

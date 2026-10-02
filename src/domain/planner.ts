@@ -4,12 +4,21 @@ import { newId } from '../lib/id';
 import { LEFTOVER_DAYS, LEFTOVER_PREP_MIN, TIME_BUDGETS } from './timeBudget';
 import { recipeAllowed, recipeMacros, roundServings, plannedMealMacros, sumMacros } from './nutrition';
 import { purchaseCost } from './costs';
+import { foodPreference } from './preferences';
 import type { ISODate, Macros, MealSlot, NutritionProfile, PlanPriority, PlannedMeal, Recipe, TimeBudget } from './types';
 
-export const SLOT_ORDER: MealSlot[] = ['breakfast', 'snack', 'lunch', 'dinner'];
+/** Order of all slots through the day ("Snack 2" in the afternoon, E13). */
+export const SLOT_ORDER: MealSlot[] = ['breakfast', 'snack', 'lunch', 'snack2', 'dinner'];
+/** The meals without a choice – as before "Snack 2" existed. */
+export const DEFAULT_SLOTS: MealSlot[] = ['breakfast', 'snack', 'lunch', 'dinner'];
+
+/** Recipes are written for four slots – "Snack 2" uses the snack recipes. */
+export function recipeSlot(slot: MealSlot): Exclude<MealSlot, 'snack2'> {
+  return slot === 'snack2' ? 'snack' : slot;
+}
 
 /** Share of the day's calories per slot – used to size a single added meal. */
-const SLOT_SHARE: Record<MealSlot, number> = { breakfast: 0.25, snack: 0.15, lunch: 0.32, dinner: 0.28 };
+const SLOT_SHARE: Record<MealSlot, number> = { breakfast: 0.25, snack: 0.15, lunch: 0.32, dinner: 0.28, snack2: 0.12 };
 
 /** Share of the day's calories that `part` of the day's `slots` stands for. */
 export function slotShare(part: MealSlot[], slots: MealSlot[]): number {
@@ -18,11 +27,11 @@ export function slotShare(part: MealSlot[], slots: MealSlot[]): number {
 }
 
 export function slotsFor(mealsPerDay: 3 | 4): MealSlot[] {
-  return mealsPerDay === 3 ? ['breakfast', 'lunch', 'dinner'] : SLOT_ORDER;
+  return mealsPerDay === 3 ? ['breakfast', 'lunch', 'dinner'] : DEFAULT_SLOTS;
 }
 
 export function recipesForSlot(slot: MealSlot, profile: NutritionProfile | null): Recipe[] {
-  return allRecipes().filter((r) => r.slots.includes(slot) && recipeAllowed(r, profile));
+  return allRecipes().filter((r) => r.slots.includes(recipeSlot(slot)) && recipeAllowed(r, profile));
 }
 
 /** Servings so that one meal fills its usual share of the daily target. */
@@ -61,6 +70,11 @@ export const PLANNER_WEIGHTS = {
   consecutive: 0.15,
   /** Per food that has to be bought (not already needed this week / in the pantry). */
   newFood: 0.04,
+  /**
+   * "Ich koche gern vor" (E18, Prompt 4): bonus per meal that is a leftover of a
+   * meal-prep dish – above the repeat penalty, so cooking once for 2–3 days wins.
+   */
+  mealPrepBundle: 0.1,
   /** Per opened perishable package left unused (as a fraction of the package). */
   packageWaste: 0.12,
   /** F5: per 10 min of preparation beyond the day's time budget. */
@@ -115,6 +129,23 @@ export function weightsFor(priority: PlanPriority = 'balanced', overrides: Parti
   return { ...PLANNER_WEIGHTS, ...PRIORITY_WEIGHTS[priority], ...overrides };
 }
 
+/**
+ * Foods 👍 / 👎 of the profile as a per-recipe score (cached). Undefined without
+ * any – nothing changes then. "Mag ich nicht" is a soft rule since Prompt 4: the
+ * recipe is planned only when nothing else fits (E23).
+ */
+export function foodScorer(profile: Pick<NutritionProfile, 'likedFoods' | 'dislikedFoods'> | null): ((recipe: Recipe) => number) | undefined {
+  const liked = new Set(profile?.likedFoods ?? []);
+  const disliked = new Set(profile?.dislikedFoods ?? []);
+  if (!liked.size && !disliked.size) return undefined;
+  const cache = new Map<string, number>();
+  return (recipe) => {
+    let v = cache.get(recipe.id);
+    if (v === undefined) cache.set(recipe.id, (v = foodPreference(recipe, liked, disliked)));
+    return v;
+  };
+}
+
 /** Share of the day's protein target below which the steep penalty applies. */
 export const PROTEIN_FLOOR = 0.9;
 
@@ -154,6 +185,11 @@ interface SuggestInput {
   weights?: Partial<PlannerWeights>;
   /** "Ich koche gern vor" (E18) – default no. */
   mealPrep?: boolean;
+  /**
+   * The user's cooking time per day (Prompt 4): recipes longer than this are
+   * planned only when nothing else fits. Without it the time budget is a soft cost.
+   */
+  maxPrepFor?: (date: ISODate) => number;
 }
 
 /** One day of the week being planned: fixed (user) meals + the suggested picks. */
@@ -168,6 +204,8 @@ export interface PlanningDay {
   picks: Recipe[];
   timeBudget: TimeBudget;
   postWorkoutSlot?: MealSlot;
+  /** The user's cooking time for the day (Prompt 4) – replaces the time budget's limit. */
+  maxPrepMin?: number;
 }
 
 /** Everything besides the days that the week score needs (all optional). */
@@ -177,6 +215,8 @@ export interface ScoreExtras {
   pantryAgeDays?: Record<string, number>;
   /** "Ich koche gern vor" (E18): meal-prep dishes are bundled into leftovers. */
   mealPrep?: boolean;
+  /** Foods 👍 / 👎 of the profile per recipe (Prompt 4) – on the same scale as `affinity`. */
+  food?: (recipe: Recipe) => number;
 }
 
 export interface WeekScore {
@@ -226,15 +266,17 @@ function markCooked(cooked: Cooked, recipeId: string, date: ISODate) {
  * like to cook ahead (E18), otherwise every meal is cooked fresh.
  */
 export function effectivePrepMin(recipe: Recipe, date: ISODate, cooked: Cooked, mealPrep: boolean): number {
-  if (mealPrep && recipe.mealPrep) {
-    const today = dayNumber(date);
-    const leftover = (cooked.get(recipe.id) ?? []).some((d) => {
-      const age = today - dayNumber(d);
-      return age >= 1 && age <= LEFTOVER_DAYS;
-    });
-    if (leftover) return Math.min(recipe.prepMin, LEFTOVER_PREP_MIN);
-  }
-  return recipe.prepMin;
+  return mealPrep && isLeftover(recipe, date, cooked) ? Math.min(recipe.prepMin, LEFTOVER_PREP_MIN) : recipe.prepMin;
+}
+
+/** A meal-prep dish cooked on one of the previous LEFTOVER_DAYS days. */
+export function isLeftover(recipe: Recipe, date: ISODate, cooked: Cooked): boolean {
+  if (!recipe.mealPrep) return false;
+  const today = dayNumber(date);
+  return (cooked.get(recipe.id) ?? []).some((d) => {
+    const age = today - dayNumber(d);
+    return age >= 1 && age <= LEFTOVER_DAYS;
+  });
 }
 
 /**
@@ -260,8 +302,8 @@ export const ELABORATE_PREP_MIN = 25;
  * Time term of a meal: preparation beyond the day's budget costs score; on a
  * day with much time an elaborate dish gets a small bonus (negative cost).
  */
-function timeCost(prepMin: number, budget: TimeBudget, W: PlannerWeights): number {
-  const over = (W.timeOver * Math.max(0, prepMin - TIME_BUDGETS[budget].maxPrepMin)) / 10;
+function timeCost(prepMin: number, budget: TimeBudget, W: PlannerWeights, maxPrepMin = TIME_BUDGETS[budget].maxPrepMin): number {
+  const over = (W.timeOver * Math.max(0, prepMin - maxPrepMin)) / 10;
   return budget === 'high' && prepMin >= ELABORATE_PREP_MIN ? over - W.elaborate : over;
 }
 
@@ -321,13 +363,15 @@ export function scoreWeek(
   let time = 0;
   for (const day of days) {
     const factor = dayFactor(day);
-    for (const r of day.picks) time += timeCost(effectivePrepMin(r, day.date, cooked, !!extras.mealPrep), day.timeBudget, W);
+    for (const r of day.picks) time += timeCost(effectivePrepMin(r, day.date, cooked, !!extras.mealPrep), day.timeBudget, W, day.maxPrepMin);
     const fixedProtein = day.fixed.reduce((s, m) => s + plannedMealMacros(m).protein, 0);
     const protein = fixedProtein + day.picks.reduce((s, r) => s + baseMacros(r).protein, 0) * factor;
     nutrition += W.proteinGap * (Math.max(0, day.target.protein - protein) / day.target.protein) + belowProteinFloor(fixedProtein + day.picks.reduce((s, r) => s + baseMacros(r).protein, 0) * roundServings(factor), day.target.protein, W);
     if (day.picks.length) nutrition += W.extremeServing * Math.abs(Math.log(factor));
 
     if (extras.affinity) for (const r of day.picks) preference -= W.preference * extras.affinity(r.id, day.timeBudget);
+    if (extras.food) for (const r of day.picks) preference -= W.preference * extras.food(r);
+    if (extras.mealPrep) for (const r of day.picks) if (isLeftover(r, day.date, cooked)) preference -= W.mealPrepBundle;
 
     const fiber = day.fixed.reduce((s, m) => s + recipeFiber(getRecipe(m.recipeId)) * m.servings, 0) + day.picks.reduce((s, r) => s + recipeFiber(r), 0) * factor;
     const fiberTarget = (day.target.kcal / 1000) * FIBER_PER_1000_KCAL_G;
@@ -432,10 +476,12 @@ export function suggestWeek({
   random = Math.random,
   weights: overrides = {},
   mealPrep = false,
+  maxPrepFor,
 }: SuggestInput): PlannedMeal[] {
   const W = weightsFor(priority, overrides);
   const weights = W;
-  const extras: ScoreExtras = { affinity, budgetChf, pantryAgeDays, mealPrep };
+  const food = foodScorer(profile);
+  const extras: ScoreExtras = { affinity, budgetChf, pantryAgeDays, mealPrep, ...(food ? { food } : {}) };
   const usage = new Map<string, number>();
   for (const m of existing) usage.set(m.recipeId, (usage.get(m.recipeId) ?? 0) + 1);
 
@@ -461,6 +507,7 @@ export function suggestWeek({
   for (const date of dates) {
     const target = targetFor?.(date) ?? baseTarget;
     const timeBudget = timeBudgetFor(date);
+    const maxPrepMin = maxPrepFor?.(date);
     const postWorkoutSlot = postWorkoutSlotFor(date);
     const fixed = existing.filter((m) => m.date === date && m.status !== 'skipped');
     // Slots without any matching recipe (strict diet combinations) stay empty
@@ -482,7 +529,10 @@ export function suggestWeek({
     for (let attempt = 0; attempt < 60; attempt++) {
       const picks: Recipe[] = [];
       for (const slot of emptySlots) {
-        const all = recipesFor(slot);
+        // The cooking time holds whenever recipes fit it (Prompt 4).
+        const allowed = recipesFor(slot);
+        const fitting = maxPrepMin === undefined ? allowed : allowed.filter((r) => effectivePrepMin(r, date, cooked, mealPrep) <= maxPrepMin);
+        const all = fitting.length ? fitting : allowed;
         const unused = all.filter((r) => !picks.includes(r));
         const options = unused.length > 0 ? unused : all;
         // Weighted random: recipes used less this week are more likely.
@@ -506,12 +556,13 @@ export function suggestWeek({
       const repeatPenalty = picks.reduce((s, r) => s + (usage.get(r.id) ?? 0), 0) * W.recipeRepeat;
       const extremeServing = Math.abs(Math.log(factor)) * W.extremeServing;
       const unseen = new Set(picks.flatMap((r) => r.ingredients.map((i) => i.foodId)).filter((f) => !weekFoods.has(f) && !isStaple(f)));
-      const time = picks.reduce((sum, r) => sum + timeCost(effectivePrepMin(r, date, cooked, mealPrep), timeBudget, W), 0);
-      const liked = affinity ? picks.reduce((sum, r) => sum - W.preference * affinity(r.id, timeBudget), 0) : 0;
+      const time = picks.reduce((sum, r) => sum + timeCost(effectivePrepMin(r, date, cooked, mealPrep), timeBudget, W, maxPrepMin), 0);
+      const liked = (affinity ? picks.reduce((sum, r) => sum - W.preference * affinity(r.id, timeBudget), 0) : 0) + (food ? picks.reduce((sum, r) => sum - W.preference * food(r), 0) : 0);
       const postIndex = postWorkoutSlot ? emptySlots.indexOf(postWorkoutSlot) : -1;
       const post = postIndex >= 0 ? picks[postIndex] : undefined;
       const postGap = post ? (W.postWorkoutProtein * Math.max(0, POST_WORKOUT_PROTEIN_G - baseMacros(post).protein * factor)) / POST_WORKOUT_PROTEIN_G : 0;
-      const score = proteinGap + repeatPenalty + extremeServing + unseen.size * W.newFood + time + liked + postGap;
+      const bundled = mealPrep ? picks.filter((r) => isLeftover(r, date, cooked)).length * W.mealPrepBundle : 0;
+      const score = proteinGap + repeatPenalty + extremeServing + unseen.size * W.newFood + time + liked + postGap - bundled;
 
       if (!best || score < best.score) best = { picks, score };
     }
@@ -522,7 +573,7 @@ export function suggestWeek({
       r.ingredients.forEach((i) => weekFoods.add(i.foodId));
       markCooked(cooked, r.id, date);
     }
-    days.push({ date, target, fixed, remainingKcal, slots: emptySlots, picks: best.picks, timeBudget, postWorkoutSlot });
+    days.push({ date, target, fixed, remainingKcal, slots: emptySlots, picks: best.picks, timeBudget, postWorkoutSlot, ...(maxPrepMin !== undefined ? { maxPrepMin } : {}) });
   }
 
   // ---- Phase 2: improve the week as a whole ----
@@ -534,8 +585,11 @@ export function suggestWeek({
         const taken = new Set([...day.picks.filter((_, k) => k !== i).map((r) => r.id), ...day.fixed.map((m) => m.recipeId)]);
         const original = day.picks[i]!;
         let bestRecipe = original;
+        const tooLong = (r: Recipe) => day.maxPrepMin !== undefined && r.prepMin > day.maxPrepMin;
         for (const alt of recipesFor(slot)) {
           if (alt.id === original.id || taken.has(alt.id)) continue;
+          // Never trade a dish that fits the cooking time for one that does not.
+          if (tooLong(alt) && !tooLong(original)) continue;
           day.picks[i] = alt;
           const score = scoreWeek(days, pantry, weights, context, extras).total;
           if (score < current - 1e-9) {
@@ -614,6 +668,8 @@ export interface RankInput {
  */
 export function rankMealOptions(input: RankInput, limit = 3): MealOption[] {
   const W = weightsFor(input.priority);
+  const food = input.extras?.food ?? foodScorer(input.profile);
+  const extras: ScoreExtras = { ...input.extras, ...(food ? { food } : {}) };
   return recipesForSlot(input.slot, input.profile)
     .filter((r) => !input.exclude?.includes(r.id))
     .map((recipe) => {
@@ -628,7 +684,7 @@ export function rankMealOptions(input: RankInput, limit = 3): MealOption[] {
         postWorkoutSlot: input.postWorkoutSlot,
       };
       const servings = roundServings(dayFactor(day));
-      return { recipe, servings, macros: recipeMacros(recipe, servings), score: scoreWeek([day], input.pantry, W, input.context, input.extras).total };
+      return { recipe, servings, macros: recipeMacros(recipe, servings), score: scoreWeek([day], input.pantry, W, input.context, extras).total };
     })
     .sort((a, b) => a.score - b.score)
     .slice(0, limit);

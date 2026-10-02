@@ -1,4 +1,6 @@
-import type { DayContext, DayMode, MealSlot, TimeBudget } from './types';
+import { COOKING_TIME_MIN } from './constants';
+import { weekdayIndex } from './dates';
+import type { DayContext, DayMode, ISODate, MealSlot, PlannerSettings, TimeBudget } from './types';
 
 /**
  * F5 – time budget per day. One place defines what "wenig / normal / viel
@@ -56,6 +58,20 @@ export function excludedSlots(context: DayContext | undefined): MealSlot[] {
   const out = context?.mode === 'eating_out' ? EATING_OUT_SLOTS : [];
   const removed = context?.removedSlots ?? [];
   return removed.length ? [...new Set([...out, ...removed])] : out;
+}
+
+/**
+ * Longest preparation that fits a day (Prompt 4, E13). The user's usual
+ * cooking time (weekday / weekend) is a normal day; "Wenig Zeit" caps it at
+ * 15 min, "Viel Zeit" lifts it. Without an answer a normal day has 35 min,
+ * exactly as before. The recipes' minutes are the truth.
+ */
+export function maxPrepFor(settings: Pick<PlannerSettings, 'cookingTime'> | undefined, context: DayContext | undefined, date: ISODate): number {
+  const budget = effectiveTimeBudget(context);
+  if (budget === 'high') return TIME_BUDGETS.high.maxPrepMin;
+  const usual = settings?.cookingTime;
+  const normal = usual ? COOKING_TIME_MIN[weekdayIndex(date) >= 5 ? usual.weekend : usual.weekday] : TIME_BUDGETS.normal.maxPrepMin;
+  return budget === 'low' ? Math.min(TIME_BUDGETS.low.maxPrepMin, normal) : normal;
 }
 
 /** The time budget of a day – the only time model (planner, training, cascade). */

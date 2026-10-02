@@ -1,6 +1,6 @@
 import { FROM_GRAMS, NUTRIENTS } from '../data/nutrients';
 import { consistentMicros, roundMicro, VITAL_NUTRIENTS } from '../domain/nutrition';
-import type { Allergen, Micros, Product } from '../domain/types';
+import type { Allergen, LmivAllergen, Micros, Product } from '../domain/types';
 
 /** Open Food Facts allergen tags → the exclusions LifeFit knows (others are not mapped, never guessed). */
 const OFF_ALLERGEN: Record<string, Allergen> = {
@@ -10,6 +10,25 @@ const OFF_ALLERGEN: Record<string, Allergen> = {
   'en:peanuts': 'nuts',
   'en:fish': 'fish',
 };
+
+/** Open Food Facts allergen tags → the 14 LMIV allergens (Prompt 4). */
+const OFF_LMIV: Record<string, LmivAllergen> = {
+  'en:gluten': 'gluten',
+  'en:crustaceans': 'crustaceans',
+  'en:eggs': 'eggs',
+  'en:fish': 'fish',
+  'en:peanuts': 'peanuts',
+  'en:soybeans': 'soy',
+  'en:milk': 'milk',
+  'en:nuts': 'tree_nuts',
+  'en:celery': 'celery',
+  'en:mustard': 'mustard',
+  'en:sesame-seeds': 'sesame',
+  'en:sulphur-dioxide-and-sulphites': 'sulphites',
+  'en:lupin': 'lupin',
+  'en:molluscs': 'molluscs',
+};
+const lmiv = (tags: string[] | undefined) => [...new Set((tags ?? []).map((t) => OFF_LMIV[t]).filter((a): a is LmivAllergen => !!a))];
 
 /**
  * Barcode → ProductLookupService → source (Open Food Facts) → normalized Product.
@@ -65,6 +84,7 @@ const OFF_FIELDS = [
   'image_front_small_url',
   // Declared allergens and OFF's ingredient analysis – for hard exclusions (only definite values are used).
   'allergens_tags',
+  'traces_tags',
   'ingredients_analysis_tags',
   'labels_tags',
 ].join(',');
@@ -88,6 +108,7 @@ export interface OffProduct {
   quantity?: string;
   image_front_small_url?: string;
   allergens_tags?: string[];
+  traces_tags?: string[];
   ingredients_analysis_tags?: string[];
   labels_tags?: string[];
 }
@@ -174,6 +195,8 @@ export function normalizeOffProduct(barcode: string, raw: OffProduct, now: Date 
     ...(packageSize ? { packageSize } : {}),
     ...(raw.image_front_small_url?.startsWith('https://') ? { imageUrl: raw.image_front_small_url } : {}),
     ...(allergens.length ? { allergens } : {}),
+    ...(lmiv(raw.allergens_tags).length ? { lmivAllergens: lmiv(raw.allergens_tags) } : {}),
+    ...(lmiv(raw.traces_tags).length ? { lmivTraces: lmiv(raw.traces_tags) } : {}),
     ...(Object.keys(diet).length ? { diet } : {}),
     source: 'openfoodfacts',
     fetchedAt: now.toISOString(),

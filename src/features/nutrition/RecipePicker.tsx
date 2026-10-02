@@ -4,7 +4,7 @@ import { today } from '../../domain/dates';
 import { recipeLabels } from '../../domain/catalogTags';
 import { recipeAllowed, recipeMacros } from '../../domain/nutrition';
 import { dayTargetFor } from '../../domain/week';
-import { servingsForSlot } from '../../domain/planner';
+import { recipeSlot, servingsForSlot } from '../../domain/planner';
 import type { ISODate, MealSlot, Recipe } from '../../domain/types';
 import { fmt, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { navigate } from '../../lib/router';
@@ -48,7 +48,7 @@ export function RecipePicker({ target, onClose }: RecipePickerProps) {
     const q = query.trim().toLowerCase();
     return allRecipes().filter((r) => recipeAllowed(r, state.nutritionProfile))
       .filter((r) => !q || r.title.toLowerCase().includes(q) || recipeLabels(r).some((t) => t.toLowerCase().includes(q)))
-      .sort((a, b) => Number(b.slots.includes(target.slot)) - Number(a.slots.includes(target.slot)));
+      .sort((a, b) => Number(b.slots.includes(recipeSlot(target.slot))) - Number(a.slots.includes(recipeSlot(target.slot))));
   }, [target, query, state.nutritionProfile]);
 
   if (!target) return <Sheet open={false} onClose={close} title="" children={null} />;
@@ -108,7 +108,7 @@ export function RecipePicker({ target, onClose }: RecipePickerProps) {
           {list.map((r) => {
             const servings = defaultServings(r);
             const m = recipeMacros(r, servings);
-            const fits = r.slots.includes(target.slot);
+            const fits = r.slots.includes(recipeSlot(target.slot));
             return (
               <li key={r.id}>
                 <button type="button" className={styles.optionRow} onClick={() => setSelected({ recipe: r, servings })}>

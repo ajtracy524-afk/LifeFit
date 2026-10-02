@@ -48,6 +48,7 @@ export const SLOT_LABEL: Record<MealSlot, string> = {
   breakfast: 'Frühstück',
   snack: 'Snack',
   lunch: 'Mittagessen',
+  snack2: 'Snack 2',
   dinner: 'Abendessen',
 };
 

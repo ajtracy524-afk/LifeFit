@@ -37,6 +37,7 @@ function productFood(p: Product): Food | undefined {
     vegan: p.diet?.vegan === true,
     vegetarian: p.diet?.vegetarian === true,
     allergens: p.allergens ?? [],
+    ...(p.lmivAllergens?.length || p.lmivTraces?.length ? { declared: { allergens: p.lmivAllergens ?? [], traces: p.lmivTraces ?? [] } } : {}),
     ...(p.diet?.vegan === undefined || p.diet?.vegetarian === undefined
       ? { dietUnknown: { ...(p.diet?.vegan === undefined ? { vegan: true as const } : {}), ...(p.diet?.vegetarian === undefined ? { vegetarian: true as const } : {}) } }
       : {}),

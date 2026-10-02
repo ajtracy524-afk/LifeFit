@@ -5,7 +5,7 @@ import { today as todayIso } from '../../domain/dates';
 import { explainMeal } from '../../domain/explain';
 import { EMPTY_MANUAL, manualFromProduct, productEntry, type EntryContent, type ManualInput } from '../../domain/foodEntry';
 import { plannedMealMacros, recipeAllowed, recipeMacros, recipeMicros } from '../../domain/nutrition';
-import { matchingTastes } from '../../domain/preferences';
+import { containsDisliked, matchingTastes } from '../../domain/preferences';
 import { replacementHistory, type Replacement } from '../../domain/replacements';
 import { minutesOf } from '../../domain/schedule';
 import { DUE_BEFORE_MIN } from '../../domain/today';
@@ -51,7 +51,9 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
   const history = useMemo(
     () =>
       replacementHistory(state, meal).filter(
-        (h) => h.kind !== 'recipe' || (recipeAllowed(getRecipe(h.recipeId)!, state.nutritionProfile) && !matchingTastes(h.recipeId, state.nutritionProfile?.avoided).length),
+        (h) =>
+          h.kind !== 'recipe' ||
+          (recipeAllowed(getRecipe(h.recipeId)!, state.nutritionProfile) && !matchingTastes(h.recipeId, state.nutritionProfile?.avoided).length && !containsDisliked(getRecipe(h.recipeId)!, state.nutritionProfile)),
       ),
     [state, meal],
   );

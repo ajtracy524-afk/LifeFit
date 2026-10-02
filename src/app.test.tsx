@@ -4,6 +4,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppState } from './domain/types';
+import { getFood } from './data/foods';
+import { getRecipe } from './data/recipes';
 
 /**
  * App-level tests: first start, onboarding, persisted state and reset.
@@ -2953,9 +2955,12 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
 
     await click('Essen & Einkauf');
     expect(title()).toBe('Ernährungsform');
-    expect(text()).toMatch(/Ernährungsform\s*vegetarian\s*eingegeben/);
+    const pressed = (label: string) => [...container.querySelectorAll('main button[aria-pressed="true"]')].some((b) => b.textContent!.includes(label));
+    expect(pressed('Vegetarisch')).toBe(true); // pre-filled from the saved data
     await click('Weiter');
-    expect(text()).toMatch(/Allergene\s*peanuts, tree_nuts\s*bitte bestätigen/); // E5: re-interpreted, to be confirmed
+    // E5: re-interpreted ("Nüsse" → peanuts + tree nuts), to be confirmed
+    expect(text()).toContain('Aus deinen bisherigen Angaben übernommen.');
+    expect(pressed('Erdnüsse') && pressed('Schalenfrüchte (Nüsse)')).toBe(true);
     // Other sections are not part of this run.
     for (let i = 0; i < 4; i++) await click('Weiter');
     expect(title()).toBe('Was hast du schon zu Hause?');
@@ -3209,6 +3214,97 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       await click('Nein, lieber frisch');
       expect(store.getState().onboarding!.food.mealPrep).toMatchObject({ value: false, source: 'user' });
       expect(text()).not.toContain(ask);
+    });
+  });
+
+  describe('area B (Prompt 4): diet, allergies, preferences, everyday life', () => {
+    const planned = (date: string, slot: string, recipeId: string) => ({ id: `${date}-${slot}`, date, slot, recipeId, servings: 1, status: 'planned', source: 'suggest' });
+    const open = async (patch: Record<string, unknown> = {}) => {
+      localStorage.setItem(KEY, JSON.stringify({ ...completeState(), ...patch }));
+      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      const store = await startApp();
+      await click('Essen & Einkauf');
+      return store;
+    };
+    const ingredientsOf = (store: Awaited<ReturnType<typeof startApp>>) =>
+      store
+        .getState()
+        .plannedMeals.filter((m) => m.date >= '2026-10-01' && m.status === 'planned')
+        .flatMap((m) => getRecipe(m.recipeId)!.ingredients.map((i) => i.foodId));
+    const pressed = (label: string) => [...container.querySelectorAll('main button[aria-pressed="true"]')].some((b) => b.textContent!.includes(label));
+
+    it('diet and allergies are hard exclusions at once: forbidden planned meals are replaced, traces and free text count', async () => {
+      const store = await open({ plannedMeals: [planned('2026-10-02', 'dinner', 'tofu-stir-fry'), planned('2026-10-03', 'lunch', 'chicken-rice-bowl')] });
+      expect(title()).toBe('Ernährungsform');
+      await click('Pescetarisch');
+      expect(store.getState().nutritionProfile!.diet).toBe('pescatarian');
+      expect(ingredientsOf(store)).not.toContain('chicken'); // replaced right away
+
+      await click('Weiter');
+      expect(title()).toBe('Allergien & Unverträglichkeiten');
+      await click('Soja');
+      expect(store.getState().nutritionProfile!.allergens).toEqual(['soy']);
+      for (const id of ingredientsOf(store)) expect(getFood(id)!.tags!.allergens, id).not.toContain('soy');
+      await click('Spuren von Soja okay');
+      expect(store.getState().nutritionProfile!.tracesOk).toEqual(['soy']);
+
+      await type('Was isst du sonst nicht?', 'Zwiebel');
+      await click('Hinzufügen');
+      expect(text()).toContain('Zwiebel – im Katalog: Zwiebeln');
+      expect(store.getState().nutritionProfile!.excludedFoods).toEqual(['onion']);
+      expect(store.getState().onboarding!.food.customExclusions).toMatchObject({ value: ['Zwiebel'], source: 'user' });
+    });
+
+    it('too few recipes: a hint with one suggestion that can be taken over', async () => {
+      const store = await open();
+      await click('Vegan');
+      await click('Weiter');
+      await click('Soja');
+      const hint = () => container.querySelector('[aria-label="Machbarkeit"]')?.textContent ?? '';
+      expect(hint()).toContain('Für das Frühstück bleibt kein Rezept');
+      expect(hint()).toContain('Vorschlag: Ernährungsform „vegetarisch“ statt „vegan“');
+      await click('Vorschlag übernehmen');
+      expect(store.getState().nutritionProfile!.diet).toBe('vegetarian');
+    });
+
+    it('preferences: three states per food, excluded foods hidden, quick action per subgroup – weights, no filter', async () => {
+      const store = await open({ nutritionProfile: { diet: 'omnivore', excluded: [], allergens: ['soy'], slots: ['breakfast', 'lunch', 'dinner'] } });
+      await click('Weiter');
+      await click('Weiter');
+      expect(title()).toBe('Vorlieben');
+      const chip = (name: string) => container.querySelector<HTMLButtonElement>(`button[aria-label^="${name}:"]`);
+      expect(chip('Tofu natur')).toBeNull(); // soy is excluded – not shown at all
+      expect(chip('Brokkoli')!.getAttribute('aria-label')).toBe('Brokkoli: neutral');
+      await act(async () => chip('Brokkoli')!.click());
+      expect(chip('Brokkoli')!.getAttribute('aria-label')).toBe('Brokkoli: mag ich');
+      await act(async () => chip('Brokkoli')!.click());
+      expect(chip('Brokkoli')!.getAttribute('aria-label')).toBe('Brokkoli: mag ich nicht');
+      expect(store.getState().nutritionProfile!.dislikedFoods).toEqual(['broccoli']);
+      await act(async () => chip('Brokkoli')!.click());
+      expect(store.getState().nutritionProfile!.dislikedFoods).toBeUndefined();
+
+      await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Kühlregal & Eier (Protein): alle mag ich nicht"]')!.click());
+      expect(store.getState().nutritionProfile!.dislikedFoods).toEqual(expect.arrayContaining(['egg', 'skyr', 'quark']));
+    });
+
+    it('everyday life: Snack 2 is planned, cooking time, household and budget are taken over', async () => {
+      const store = await open();
+      for (let i = 0; i < 3; i++) await click('Weiter');
+      expect(title()).toBe('Dein Essalltag');
+      await click('Snack 2');
+      expect(store.getState().nutritionProfile!.slots).toEqual(['breakfast', 'lunch', 'snack2', 'dinner']);
+      expect(store.getState().plannedMeals.some((m) => m.slot === 'snack2' && m.date >= '2026-10-01')).toBe(true);
+
+      const segment = (group: string, label: string) => [...container.querySelectorAll(`[aria-label="${group}"] button`)].find((b) => b.textContent === label) as HTMLButtonElement;
+      await act(async () => segment('Kochzeit unter der Woche', '≤ 15 min').click());
+      expect(store.getState().plannerSettings.cookingTime).toEqual({ weekday: '15', weekend: 'any' });
+      await click('Ich koche gern einmal für 2–3 Tage vor');
+      expect(store.getState().onboarding!.food.mealPrep).toMatchObject({ value: false }); // existing user: was on (migrated)
+      await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Wie viele Personen essen mit (du eingeschlossen)? erhöhen"]')!.click());
+      expect(store.getState().plannerSettings.householdSize).toBe(2);
+      await act(async () => segment('Budget', 'günstig').click());
+      expect(store.getState().plannerSettings.priority).toBe('save');
+      expect(pressed('Snack 2')).toBe(true);
     });
   });
 });

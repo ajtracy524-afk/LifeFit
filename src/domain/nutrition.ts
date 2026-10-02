@@ -1,5 +1,5 @@
 import { getFood } from '../data/foods';
-import { legacySwapContext, substituteFood } from './catalogTags';
+import { hardExclusionsOf, isExcluded, usableFood } from './catalogTags';
 import { isPersonalFoodId } from '../data/personal';
 import { NUTRIENTS } from '../data/nutrients';
 import { getRecipe } from '../data/recipes';
@@ -217,36 +217,25 @@ export function targetForDate(targets: NutritionTarget[], date: ISODate): Nutrit
 
 // ---------- Diet filters ----------
 
-/** Hard filter: diet, allergens and explicit dislikes. Nothing learned can override it. */
+/**
+ * The ONE hard filter (Prompt 4): diet, the 14 allergens with traces, intolerances,
+ * pork, alcohol and the free-text exclusions – from catalogTags.hardExclusionsOf.
+ * Nothing learned or liked can override it. "Mag ich nicht" is no longer part of
+ * it: it is a strong soft rule in the planner (E23).
+ */
 export function recipeAllowed(recipe: Recipe, profile: NutritionProfile | null): boolean {
   if (!profile) return true;
+  const ex = hardExclusionsOf(profile);
   return recipe.ingredients.every((ing) => {
-    // Own products / ingredients of an own dish: KNOWN facts (declared allergens, stated diet) are hard exclusions;
-    // what is unknown stays the user's own choice – nothing is guessed from a name.
-    if (recipe.personal && isPersonalFoodId(ing.foodId)) {
-      const own = getFood(ing.foodId);
-      if (!own) return true;
-      if (own.allergens.some((a) => profile.excluded.includes(a))) return false;
-      if (profile.diet === 'vegan' && !own.vegan && !own.dietUnknown?.vegan) return false;
-      if (profile.diet === 'vegetarian' && !own.vegetarian && !own.dietUnknown?.vegetarian) return false;
-      return true;
-    }
-    const food = getFood(ing.foodId);
-    if (!food) return false;
-    if (foodAllowed(food, profile)) return true;
-    // E20: swap instead of exclude – the lactose-free variant keeps the recipe allowed.
-    const swapped = substituteFood(food.id, legacySwapContext(profile));
-    const variant = swapped !== food.id ? getFood(swapped) : undefined;
-    return !!variant && foodAllowed(variant, profile);
+    // An own dish whose ingredient is unknown stays the user's own choice.
+    if (recipe.personal && isPersonalFoodId(ing.foodId) && !getFood(ing.foodId)) return true;
+    // E20: a lactose-free variant keeps the recipe allowed (usableFood swaps).
+    return usableFood(ing.foodId, ex) !== undefined;
   });
 }
 
 export function foodAllowed(food: Food, profile: NutritionProfile | null): boolean {
-  if (!profile) return true;
-  if (profile.diet === 'vegan' && !food.vegan) return false;
-  if (profile.diet === 'vegetarian' && !food.vegetarian) return false;
-  if (profile.dislikedFoods?.includes(food.id)) return false;
-  return !food.allergens.some((a) => profile.excluded.includes(a));
+  return !profile || !isExcluded(food, hardExclusionsOf(profile));
 }
 
 /** Log entry for an eaten planned meal – with a nutrient snapshot, so history survives catalog changes. */
@@ -317,7 +306,7 @@ export function summarizeEntries(entries: LogEntry[]): NutritionSummary {
 export function daySummary(entries: LogEntry[], date: ISODate): { day: NutritionSummary; slots: Record<MealSlot, NutritionSummary> } {
   const ofDay = entries.filter((e) => e.date === date);
   const slot = (s: MealSlot) => summarizeEntries(ofDay.filter((e) => e.slot === s));
-  return { day: summarizeEntries(ofDay), slots: { breakfast: slot('breakfast'), snack: slot('snack'), lunch: slot('lunch'), dinner: slot('dinner') } };
+  return { day: summarizeEntries(ofDay), slots: { breakfast: slot('breakfast'), snack: slot('snack'), lunch: slot('lunch'), snack2: slot('snack2'), dinner: slot('dinner') } };
 }
 
 /** Servings are rounded to 0.1 and kept in a sensible range. */

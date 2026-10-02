@@ -3,9 +3,9 @@ import { getRecipe } from '../../data/recipes';
 import { newId } from '../../lib/id';
 import { SLOT_LABEL, weekdayLong, weekdayShort } from '../../lib/format';
 import { addDays, toISODate, weekDays, weekStart, weekdayIndex } from '../dates';
-import { logFromMeal, plannedMealMacros, recipeMacros, roundServings, sumMacros } from '../nutrition';
+import { logFromMeal, plannedMealMacros, recipeAllowed, recipeMacros, roundServings, sumMacros } from '../nutrition';
 import { effectivePrepMin, SLOT_ORDER, slotShare } from '../planner';
-import { DAY_MODE_LABEL, EATING_OUT_SLOTS, effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
+import { DAY_MODE_LABEL, EATING_OUT_SLOTS, effectiveTimeBudget, excludedSlots, maxPrepFor, TIME_BUDGETS } from '../timeBudget';
 import { activeWorkouts, estimateMinutes, resolveWorkouts, trainingWeekdays } from '../training';
 import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, Recipe, ShoppingWeekState, TimeBudget } from '../types';
 import { closeCompletedDays, dayTargetFor } from './dayTargets';
@@ -448,7 +448,7 @@ function retimeDay(s: AppState, date: ISODate, today: ISODate, nowIso: string, p
   const isPast = (m: PlannedMeal) => date === today && minutesOf(s.plannerSettings.mealTimes[m.slot]) <= nowMin;
   const candidates = planned.filter((m) => !own.includes(m) && !isPast(m));
 
-  const maxPrep = TIME_BUDGETS[effectiveTimeBudget(dayContextFor(s, date))].maxPrepMin;
+  const maxPrep = maxPrepFor(s.plannerSettings, dayContextFor(s, date), date);
   const replaced: Replacement[] = [];
   for (const meal of candidates) {
     // Meal-prep leftovers of the previous days count as quick (same rule as the planner).
@@ -486,11 +486,12 @@ function retimeDay(s: AppState, date: ISODate, today: ISODate, nowIso: string, p
  * new picks fill exactly the calorie space of the old ones – the day total
  * does not change, only what is cooked.
  */
-function replanMealsOn(s: AppState, date: ISODate, today: ISODate, seed: string, replace: (recipe: Recipe) => boolean): Replacement[] {
+function replanMealsOn(s: AppState, date: ISODate, today: ISODate, seed: string, replace: (recipe: Recipe) => boolean, includeFixed = false): Replacement[] {
   if (date < today || !dayTargetFor(s, date) || !s.nutritionProfile) return [];
   const week = weekMeals(s, date);
   const affected = week.filter((m) => {
-    if (m.date !== date || m.status !== 'planned' || m.source !== 'suggest' || m.servingsLocked) return false;
+    if (m.date !== date || m.status !== 'planned') return false;
+    if (!includeFixed && (m.source !== 'suggest' || m.servingsLocked)) return false;
     const recipe = getRecipe(m.recipeId);
     return !!recipe && replace(recipe);
   });
@@ -512,6 +513,18 @@ function replanMealsOn(s: AppState, date: ISODate, today: ISODate, seed: string,
   return affected
     .map((old) => ({ from: getRecipe(old.recipeId)!.title, to: getRecipe(picks.find((p) => p.slot === old.slot)?.recipeId ?? '')?.title ?? '' }))
     .filter((r) => r.to && r.to !== r.from);
+}
+
+/**
+ * After the hard exclusions changed (Prompt 4): every planned meal from today on
+ * that the filter forbids now is replaced – also meals the user chose, because an
+ * allergen must never stay in the plan. Mutates the draft.
+ */
+export function replanForbidden(s: AppState, today: ISODate): Replacement[] {
+  if (!s.nutritionProfile) return [];
+  const profile = s.nutritionProfile;
+  const dates = [...new Set(s.plannedMeals.filter((m) => m.date >= today && m.status === 'planned').map((m) => m.date))].sort();
+  return dates.flatMap((date) => replanMealsOn(s, date, today, `${date}:allowed`, (r) => !recipeAllowed(r, profile), true));
 }
 
 /** "Training: Push (kurz) ~30 min" when a session's length changed. */

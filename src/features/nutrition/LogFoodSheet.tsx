@@ -5,6 +5,7 @@ import { getRecipe } from '../../data/recipes';
 import { addDays, today } from '../../domain/dates';
 import { slotRepeat } from '../../domain/repeatMeal';
 import { formatCostRange, priceLookup, recipeCostRange, type PriceLookup } from '../../domain/costs';
+import { DEFAULT_SLOTS } from '../../domain/planner';
 import { explainMeal } from '../../domain/explain';
 import { dbFoodEntry, dbFoodMicros, dishEntry, dishPortionNutrition } from '../../domain/dishes';
 import { EMPTY_MANUAL, manualFromProduct, productEntry, type EntryContent, type ManualInput } from '../../domain/foodEntry';
@@ -182,7 +183,7 @@ export function LogFoodSheet({ target, onClose }: LogFoodSheetProps) {
     );
   }
 
-  const slots = state.nutritionProfile?.slots ?? (['breakfast', 'snack', 'lunch', 'dinner'] as MealSlot[]);
+  const slots = state.nutritionProfile?.slots ?? DEFAULT_SLOTS;
   return (
     <Sheet open onClose={close} title="Lebensmittel hinzufügen" subtitle={relativeDay(target.date)}>
       <div className={styles.logHeader}>

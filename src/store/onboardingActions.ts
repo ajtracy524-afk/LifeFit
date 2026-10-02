@@ -1,4 +1,6 @@
-import { today } from '../domain/dates';
+import { today, weekStart } from '../domain/dates';
+import { nutritionProfileFrom, plannerSettingsFrom } from '../domain/onboarding/food';
+import { fillWeek, replanForbidden } from '../domain/week';
 import { answersOf, flowStateOf, initialState, sectionState, type FlowState } from '../domain/onboarding/flow';
 import { defaultAnswers, defaultCoreSetup, emptyOnboarding, isSetupComplete } from '../domain/onboarding/migrate';
 import type { AnswerGroup, Field, OnboardingMode, OnboardingProfile, OnboardingSection } from '../domain/onboarding/types';
@@ -72,6 +74,10 @@ function ensureCoreSetup(): void {
   const nowIso = new Date().toISOString();
   const p = profileOf(s);
   const setup = defaultCoreSetup(p, today(), nowIso);
+  // Area B before the first week is planned: cooking time, household, budget (Prompt 4).
+  update((d) => {
+    d.plannerSettings = plannerSettingsFrom(p.food, d.plannerSettings);
+  });
   completeOnboarding(setup);
   update((d) => {
     d.onboarding = defaultAnswers(profileOf(d), setup, nowIso);
@@ -139,4 +145,49 @@ export function applyGoalAsTarget(goal: { type: GoalType; targetWeightKg?: numbe
     }
   });
   setTargets(macros, 'formula');
+}
+
+type FoodAnswers = OnboardingProfile['food'];
+type FoodValue<K extends keyof FoodAnswers> = NonNullable<FoodAnswers[K]> extends Field<infer T> ? T : never;
+
+/**
+ * An area-B answer (Prompt 4): stored with source "user", then written into the
+ * nutrition profile and planner settings. Planned meals the stricter filter
+ * forbids now are replaced; a changed set of meals is planned at once.
+ */
+export function setFoodAnswer<K extends keyof FoodAnswers>(key: K, value: FoodValue<K>): void {
+  update((s) => {
+    const p = profileOf(s);
+    const at = new Date().toISOString();
+    s.onboarding = { ...p, food: { ...p.food, [key]: { value, source: 'user', updatedAt: at } } };
+    applyFoodAnswers(s, key === 'meals');
+  });
+}
+
+/** Confirms answers that were migrated from older data (E5, E18) – they become "user" answers. */
+export function confirmFoodAnswers(keys: (keyof FoodAnswers)[]): void {
+  update((s) => {
+    const p = profileOf(s);
+    const food = { ...p.food } as Record<string, Field<unknown> | undefined>;
+    for (const key of keys) {
+      const f = food[key];
+      if (f?.source === 'migrated') food[key] = { ...f, source: 'user', confirmedAt: new Date().toISOString() };
+    }
+    s.onboarding = { ...p, food: food as FoodAnswers };
+  });
+}
+
+function applyFoodAnswers(s: AppState, mealsChanged: boolean): void {
+  const food = profileOf(s).food;
+  const t = today();
+  s.plannerSettings = plannerSettingsFrom(food, s.plannerSettings);
+  if (!s.nutritionProfile) return; // a new user: applied with the core setup
+  s.nutritionProfile = nutritionProfileFrom(food, s.nutritionProfile);
+  replanForbidden(s, t);
+  if (mealsChanged) {
+    // Meals no longer chosen leave the plan from today on, new ones are filled in.
+    const slots = s.nutritionProfile.slots;
+    s.plannedMeals = s.plannedMeals.filter((m) => m.date < t || m.status !== 'planned' || slots.includes(m.slot));
+    fillWeek(s, weekStart(t), t);
+  }
 }

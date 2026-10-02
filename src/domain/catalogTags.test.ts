@@ -7,7 +7,8 @@ import {
   fitsDiet,
   foodGroups,
   isExcluded,
-  legacySwapContext,
+  hardExclusionsOf,
+  swapContextOf,
   recipeAllowedBy,
   recipeLabels,
   recipeTags,
@@ -110,9 +111,9 @@ describe('swap instead of exclude (E20)', () => {
     expect(recipeAllowedBy(recipe('protein-pancakes'), { intolerances: ['lactose'] })).toBe(true); // quark → quark-lf
     expect(recipeAllowedBy(recipe('protein-pancakes'), { intolerances: ['lactose'], allergens: ['milk'] })).toBe(false);
     expect(recipeAllowedBy(recipe('overnight-oats'), { intolerances: ['lactose'] })).toBe(false); // whey
-    // The old profile ("Laktose") gets the same swap until Prompt 4.
+    // The old profile ("Laktose") is the intolerance and gets the same swap (E5).
     const old: NutritionProfile = { diet: 'omnivore', excluded: ['lactose'], slots: ['breakfast', 'lunch', 'dinner'] };
-    expect(legacySwapContext(old)).toEqual({ lactoseIntolerant: true, milkAllergy: false });
+    expect(swapContextOf(hardExclusionsOf(old))).toEqual({ lactoseIntolerant: true, milkAllergy: false });
     expect(recipeAllowed(recipe('protein-pancakes'), old)).toBe(true);
     expect(recipeAllowed(recipe('overnight-oats'), old)).toBe(false);
     expect(recipeAllowed(recipe('protein-pancakes'), { ...old, diet: 'vegan' })).toBe(false); // the diet still wins

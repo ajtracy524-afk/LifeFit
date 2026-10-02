@@ -167,7 +167,7 @@ describe('everything together through the central planner', () => {
     const s = state({
       learning: { preferences: prefs },
       pantry: { rice: { foodId: 'rice', quantityG: 1000, updatedAt: '2026-09-15T08:00:00Z' } },
-      plannerSettings: { priority: 'balanced', weeklyBudgetChf: 90, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', dinner: '19:30' }, trainingTime: '18:00' },
+      plannerSettings: { priority: 'balanced', weeklyBudgetChf: 90, mealTimes: { breakfast: '07:30', snack: '10:30', lunch: '12:30', snack2: '16:00', dinner: '19:30' }, trainingTime: '18:00' },
       dayContexts: { '2026-09-24': { timeBudget: 'low', mode: 'normal' } },
     });
     const meals = planMeals(s, { dates, today: '2026-09-21', seed: 'all' });

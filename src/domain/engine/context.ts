@@ -1,6 +1,6 @@
 import { addDays, weekStart } from '../dates';
 import { ZERO_MACROS, dayTotals, plannedMealMacros, sumMacros } from '../nutrition';
-import { SLOT_ORDER, slotShare } from '../planner';
+import { DEFAULT_SLOTS, slotShare } from '../planner';
 import { currentWeight, weeklyRate } from '../progress';
 import { activeWorkouts, isCompletedOn, type PlannedWorkout } from '../training';
 import { effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
@@ -47,7 +47,7 @@ export interface EngineContext {
 }
 
 /** Latest hour at which a slot still makes sense. */
-const SLOT_UNTIL: Record<MealSlot, number> = { breakfast: 11, lunch: 15, snack: 22, dinner: 23 };
+const SLOT_UNTIL: Record<MealSlot, number> = { breakfast: 11, lunch: 15, snack: 22, snack2: 22, dinner: 23 };
 
 export function buildContext(state: AppState, options: EngineOptions): EngineContext {
   const { date } = options;
@@ -55,7 +55,7 @@ export function buildContext(state: AppState, options: EngineOptions): EngineCon
   const ws = weekStart(date);
   // Day-specific target: training days get more, rest days less (weekly sum unchanged).
   const target = dayTargetFor(state, date);
-  const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
+  const slots = state.nutritionProfile?.slots ?? DEFAULT_SLOTS;
 
   const eaten = dayTotals(state.logEntries, date);
   const plannedOpen = state.plannedMeals.filter((m) => m.date === date && m.status === 'planned');

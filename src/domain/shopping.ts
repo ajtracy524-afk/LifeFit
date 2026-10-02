@@ -33,7 +33,14 @@ export interface ShoppingItem {
  * meal contributes its scaled ingredients. Adding, swapping or removing a meal
  * therefore updates the list automatically – no sync code needed.
  */
-export function buildShoppingList(meals: PlannedMeal[], from: ISODate, to: ISODate, buyAs: (foodId: string) => string = (id) => id): ShoppingItem[] {
+export function buildShoppingList(
+  meals: PlannedMeal[],
+  from: ISODate,
+  to: ISODate,
+  buyAs: (foodId: string) => string = (id) => id,
+  /** People who eat along (Prompt 4): scales the amounts – the plan and its nutrients stay the user's. */
+  people = 1,
+): ShoppingItem[] {
   const byFood = new Map<string, ShoppingItem>();
 
   for (const meal of meals) {
@@ -44,7 +51,7 @@ export function buildShoppingList(meals: PlannedMeal[], from: ISODate, to: ISODa
     for (const ing of recipe.ingredients) {
       const food = getFood(ing.foodId);
       if (!food) continue;
-      const grams = ing.grams * meal.servings;
+      const grams = ing.grams * meal.servings * people;
       let item = byFood.get(food.id);
       if (!item) {
         const buyId = buyAs(food.id);

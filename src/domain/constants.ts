@@ -281,3 +281,26 @@ export const PROTEIN_REFERENCE_BODY_FAT = { male: 20, female: 28, unspecified: 2
 
 /** Fat at least 0.8 g/kg and at least 20 % of the energy (ISSN 2017; Helms et al. 2014: 20–30 %). */
 export const FAT_MIN = { perKg: 0.8, share: 0.2 } as const;
+
+// ---------- Area B: food (Prompt 4) ----------
+
+/**
+ * Food preferences 👍 / 👎 as affinity per ingredient (the learned scale is
+ * −1 … +1, explicitly avoided tastes −4). "Mag ich nicht" is stronger than
+ * everything else, so such a recipe is planned only when nothing else fits
+ * (E23); "mag ich" is a small, capped bonus. No source – a product decision.
+ */
+export const FOOD_PREFERENCE = { like: 0.3, likeMax: 0.6, dislike: -8 } as const;
+
+/**
+ * Feasibility check in the onboarding: fewer allowed recipes per meal than
+ * this → a hint with a suggestion instead of an empty plan later. 3 keeps a
+ * week from repeating one dish more than every other day.
+ */
+export const MIN_RECIPES_PER_SLOT = 3;
+
+/** Household size: shopping amounts only (people who eat along). */
+export const HOUSEHOLD = { min: 1, max: 8 } as const;
+
+/** Cooking time levels in minutes; "egal" = no limit. The recipes' minutes are the truth (E13). */
+export const COOKING_TIME_MIN = { '15': 15, '30': 30, '45': 45, any: Number.POSITIVE_INFINITY } as const;

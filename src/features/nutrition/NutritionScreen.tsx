@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { getRecipe } from '../../data/recipes';
 import { addDays, isoWeekNumber, today, weekDays, weekStart } from '../../domain/dates';
 import { BASIC_NUTRIENTS, daySummary, type NutritionSummary } from '../../domain/nutrition';
-import { SLOT_ORDER } from '../../domain/planner';
+import { DEFAULT_SLOTS, SLOT_ORDER } from '../../domain/planner';
 import { activeWorkouts } from '../../domain/training';
 import { excludedSlots } from '../../domain/timeBudget';
 import { buildWeekPlan, dayContextFor, dayTargetFor } from '../../domain/week';
@@ -106,7 +106,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
   const kcalBump = useIncrease(totals.kcal);
   const meals = state.plannedMeals.filter((m) => m.date === date);
   const extras = state.logEntries.filter((e) => e.date === date && !e.plannedMealId);
-  const profileSlots = state.nutritionProfile?.slots ?? SLOT_ORDER;
+  const profileSlots = state.nutritionProfile?.slots ?? DEFAULT_SLOTS;
   const slots = SLOT_ORDER.filter((s) => profileSlots.includes(s) || meals.some((m) => m.slot === s) || extras.some((e) => e.slot === s));
   const isFuture = date > today();
   const closed = excludedSlots(dayContextFor(state, date));
@@ -329,7 +329,7 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
   const t = today();
   const days = weekDays(start);
   const end = days[6]!;
-  const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
+  const slots = state.nutritionProfile?.slots ?? DEFAULT_SLOTS;
   const training = useMemo(() => activeWorkouts(state.training, state.workoutOverrides, state.workouts, start, state.dayContexts), [state.training, state.workoutOverrides, state.workouts, state.dayContexts, start]);
   // The week as the central WeekPlan computes it – the cards only display it.
   const plan = useMemo(() => buildWeekPlan(state, start, t), [state, start, t]);

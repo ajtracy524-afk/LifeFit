@@ -25,6 +25,7 @@ import { Button, IconButton } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { OptionCard } from '../../../components/ui/Controls';
 import { AREA_A_STEPS, AreaAStep } from './AreaA';
+import { AREA_B_STEPS, AreaBStep } from './AreaB';
 import styles from './onboardingV2.module.css';
 
 /**
@@ -125,7 +126,13 @@ export function OnboardingV2() {
             </div>
           )}
 
-          {AREA_A_STEPS.includes(flow.step) ? <AreaAStep step={flow.step} /> : !isWelcome && !isSummary && <Placeholder step={flow.step} profile={profile} />}
+          {AREA_A_STEPS.includes(flow.step) ? (
+            <AreaAStep step={flow.step} />
+          ) : AREA_B_STEPS.includes(flow.step) ? (
+            <AreaBStep step={flow.step} />
+          ) : (
+            !isWelcome && !isSummary && <Placeholder step={flow.step} profile={profile} />
+          )}
 
           {isSummary && (
             <div className={styles.stack}>
@@ -175,17 +182,6 @@ export function OnboardingV2() {
 
 /** Which stored answers belong to a step – shown read-only until the step gets its content (Prompts 2–8). */
 const STEP_FIELDS: Partial<Record<OnboardingStepId, Array<[keyof OnboardingProfile, string, string]>>> = {
-  diet: [['food', 'diet', 'Ernährungsform']],
-  allergies: [
-    ['food', 'allergens', 'Allergene'],
-    ['food', 'intolerances', 'Unverträglichkeiten'],
-  ],
-  preferences: [['food', 'preferences', 'Vorlieben']],
-  routine: [
-    ['food', 'meals', 'Mahlzeiten'],
-    ['food', 'householdSize', 'Personen'],
-    ['food', 'budget', 'Budget'],
-  ],
   level: [['training', 'level', 'Stufe']],
   frame: [
     ['training', 'weekdays', 'Trainingstage'],

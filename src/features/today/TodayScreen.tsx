@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { addDays, daysBetween, today, weekDays, weekStart, weekdayIndex } from '../../domain/dates';
 import { daySummary, targetForDate } from '../../domain/nutrition';
 import { sessionLoad } from '../../domain/adaptive/load';
-import { SLOT_ORDER } from '../../domain/planner';
+import { DEFAULT_SLOTS } from '../../domain/planner';
 import { goalProgress, latestWeight } from '../../domain/progress';
 import { isCompletedOn, resolveWorkouts } from '../../domain/training';
 import { nextAction } from '../../domain/today';
@@ -74,7 +74,7 @@ export function TodayScreen() {
   const zone = target ? calorieStatus({ eaten: totals.kcal, planned: 0, targetKcal: target.kcal, finished: false })?.key : undefined;
   const ringImpact = useIncrease(totals.kcal);
   const ringSuccess = useCrossing(zone === 'in_zone');
-  const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
+  const slots = state.nutritionProfile?.slots ?? DEFAULT_SLOTS;
   const weekHasMeals = state.plannedMeals.some((m) => m.date >= t && m.date <= addDays(start, 6));
   // Meals left out today (dinner out, removed) – shown as a state; the decision lives in the week plan.
   const closedToday = closedMeals(state, t);

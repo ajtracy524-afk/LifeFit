@@ -13,7 +13,7 @@ import { sessionLoad } from '../adaptive/load';
 import { formatCostRange, priceLookup, recipeCostRange, type CostRange } from '../costs';
 import { dishCostRange, dishPortionNutrition } from '../dishes';
 import { plannerAffinity } from '../preferences';
-import { effectiveTimeBudget, TIME_BUDGETS } from '../timeBudget';
+import { effectiveTimeBudget, maxPrepFor, TIME_BUDGETS } from '../timeBudget';
 import { formatLitres, waterOn, waterReminder, waterReminderId } from '../water';
 import type { EngineContext } from './context';
 import type { EngineAction, Recommendation } from './types';
@@ -102,7 +102,7 @@ export function suggestMealsForGap(ctx: EngineContext, gap: Pick<Macros, 'kcal' 
   if (!slot) return [];
 
   const timeBudget = effectiveTimeBudget(dayContextFor(ctx.state, ctx.date));
-  const maxPrep = TIME_BUDGETS[timeBudget].maxPrepMin;
+  const maxPrep = maxPrepFor(ctx.state.plannerSettings, dayContextFor(ctx.state, ctx.date), ctx.date);
   const trainingDay = !!ctx.todaysSession || ctx.trainedToday;
   const affinity = plannerAffinity(ctx.state.learning?.preferences ?? {}, profile);
   const price = priceLookup(ctx.state.products);

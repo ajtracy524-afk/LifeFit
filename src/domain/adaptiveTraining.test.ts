@@ -252,7 +252,7 @@ describe('cardio adaptation', () => {
 });
 
 describe('training ↔ nutrition', () => {
-  const ppl = base({ training: { programId: 'push-pull-legs', weekdays: [0, 2, 4] }, plannerSettings: { priority: 'balanced', mealTimes: { breakfast: '07:30', snack: '15:00', lunch: '12:30', dinner: '19:30' }, trainingTime: '18:00' } });
+  const ppl = base({ training: { programId: 'push-pull-legs', weekdays: [0, 2, 4] }, plannerSettings: { priority: 'balanced', mealTimes: { breakfast: '07:30', snack: '15:00', lunch: '12:30', snack2: '16:00', dinner: '19:30' }, trainingTime: '18:00' } });
 
   it('the day target knows the session: leg day with its bonus and label', () => {
     const days = ['2026-09-21', '2026-09-23', '2026-09-25'].map((d) => trainingDayBonus(ppl, d)!);

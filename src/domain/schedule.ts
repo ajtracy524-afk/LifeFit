@@ -1,5 +1,5 @@
 import { learnedTrainingHour } from './learning';
-import { SLOT_ORDER } from './planner';
+import { DEFAULT_SLOTS } from './planner';
 import { activeWorkouts, type PlannedWorkout } from './training';
 import type { AppState, ISODate, LogEntry, MealSlot, PlannedMeal } from './types';
 import { weekStart } from './dates';
@@ -32,7 +32,7 @@ export function sessionOn(state: AppState, date: ISODate): PlannedWorkout | unde
 /** First meal at least 60 min after training on a training day. */
 export function postWorkoutSlot(state: AppState, date: ISODate): MealSlot | undefined {
   if (!sessionOn(state, date)) return undefined;
-  const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
+  const slots = state.nutritionProfile?.slots ?? DEFAULT_SLOTS;
   const training = minutesOf(trainingTimeFor(state).time);
   return slots
     .map((slot) => ({ slot, at: minutesOf(state.plannerSettings.mealTimes[slot]) }))
@@ -43,7 +43,7 @@ export function postWorkoutSlot(state: AppState, date: ISODate): MealSlot | unde
 /** A snack 30 min – 3 h before training. */
 export function preWorkoutSlot(state: AppState, date: ISODate): MealSlot | undefined {
   if (!sessionOn(state, date)) return undefined;
-  const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
+  const slots = state.nutritionProfile?.slots ?? DEFAULT_SLOTS;
   if (!slots.includes('snack')) return undefined;
   const gap = minutesOf(trainingTimeFor(state).time) - minutesOf(state.plannerSettings.mealTimes.snack);
   return gap >= 30 && gap <= 180 ? 'snack' : undefined;

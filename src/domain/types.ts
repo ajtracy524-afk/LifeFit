@@ -13,7 +13,12 @@ export type GoalType = 'muscle_gain' | 'fat_loss' | 'maintain' | 'recomp';
 export type Sex = 'male' | 'female' | 'unspecified';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active';
 export type Experience = 'beginner' | 'intermediate' | 'advanced';
-export type DietType = 'omnivore' | 'vegetarian' | 'vegan';
+/** pescatarian = fish and seafood, no meat (Prompt 4). */
+export type DietType = 'omnivore' | 'pescatarian' | 'vegetarian' | 'vegan';
+/** Intolerances, separate from the allergens (Prompt 4). */
+export type Intolerance = 'lactose' | 'fructose' | 'celiac';
+/** Cooking time levels; the recipes' minutes are the truth (E13). */
+export type CookingTime = '15' | '30' | '45' | 'any';
 /** The four exclusions of the old profile (nutritionProfile.excluded) – derived from the catalog tags until Prompt 4 switches the filter. */
 export type Allergen = 'lactose' | 'gluten' | 'nuts' | 'fish';
 /** The 14 main allergens of the EU food information regulation (LMIV, Annex II). */
@@ -32,7 +37,8 @@ export type LmivAllergen =
   | 'sulphites'
   | 'lupin'
   | 'molluscs';
-export type MealSlot = 'breakfast' | 'snack' | 'lunch' | 'dinner';
+/** snack2 = "Snack 2" (E13): a second snack; it uses the snack recipes. */
+export type MealSlot = 'breakfast' | 'snack' | 'lunch' | 'dinner' | 'snack2';
 
 export interface Macros {
   kcal: number;
@@ -107,6 +113,8 @@ export interface Food {
   dietUnknown?: { vegan?: true; vegetarian?: true };
   /** Catalog foods only: the hard facts (own products keep the declared allergens above). */
   tags?: FoodTags;
+  /** Own products only: declared LMIV allergens and traces (unknown ones are absent, never guessed). */
+  declared?: { allergens: LmivAllergen[]; traces: LmivAllergen[] };
 }
 
 /**
@@ -293,8 +301,23 @@ export interface NutritionProfile {
   diet: DietType;
   excluded: Allergen[];
   slots: MealSlot[];
-  /** Explicit "mag ich nicht" – a hard filter right after allergens, stronger than anything learned. */
+  /** The 14 LMIV allergens (Prompt 4). The old `excluded` above is merged in (catalogTags.hardExclusionsOf). */
+  allergens?: LmivAllergen[];
+  /** Allergens for which traces are okay (E15) – otherwise traces are excluded. */
+  tracesOk?: LmivAllergen[];
+  intolerances?: Intolerance[];
+  noPork?: true;
+  /** No alcohol in recipes – including alcohol from fermentation unless allowed (E17). */
+  noAlcohol?: true;
+  fermentationAlcoholOk?: true;
+  /** Catalog foods matched from the free text "Was noch nicht?" – hard exclusions. */
+  excludedFoods?: string[];
+  /** Free text that matched no catalog food – kept, shown, checked against own products by name. */
+  excludedText?: string[];
+  /** "Mag ich nicht" – a strong SOFT rule since Prompt 4: only planned when nothing else fits (E23). */
   dislikedFoods?: string[];
+  /** "Mag ich" – planned a little more often. */
+  likedFoods?: string[];
   /** "Würde ich gern häufiger essen" (taste ids, see data/tastes.ts) – a starting point, learning can outweigh it. */
   favorites?: string[];
   /** "Eher selten oder gar nicht" – a strong soft rule, always stronger than anything learned. */
@@ -448,6 +471,9 @@ export interface Product {
   imageUrl?: string;
   /** Declared allergens (Open Food Facts `allergens_tags`, or set by the user) – known present. */
   allergens?: Allergen[];
+  /** The same declaration with all 14 LMIV allergens, and declared traces (Open Food Facts `traces_tags`). */
+  lmivAllergens?: LmivAllergen[];
+  lmivTraces?: LmivAllergen[];
   /** Known diet facts: true/false only when the source (or the user) states it – missing = unknown. */
   diet?: { vegan?: boolean; vegetarian?: boolean };
   /** Set when the user corrected the nutrients (the source stays in `source`): ISO time of the last correction. */
@@ -707,6 +733,10 @@ export interface PlannerSettings {
   mealTimes: Record<MealSlot, string>;
   /** Usual training time "HH:MM" – falls back to what LifeFit learned. */
   trainingTime?: string;
+  /** People who eat along – scales ONLY the shopping amounts, never the nutrition targets (Prompt 4). */
+  householdSize?: number;
+  /** Usual cooking time on a normal weekday / weekend day (Prompt 4); without it 35 min as before. */
+  cookingTime?: { weekday: CookingTime; weekend: CookingTime };
 }
 
 export interface AppState {

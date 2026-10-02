@@ -1,9 +1,9 @@
 import { allRecipes } from '../data/recipes';
 import { getFood } from '../data/foods';
 import { dayTotals, recipeAllowed, recipeMacros } from './nutrition';
-import { SLOT_ORDER, servingsForSlot } from './planner';
+import { DEFAULT_SLOTS, servingsForSlot } from './planner';
 import { matchingTastes } from './preferences';
-import { effectiveTimeBudget, TIME_BUDGETS } from './timeBudget';
+import { maxPrepFor } from './timeBudget';
 import type { AppState, ISODate, Macros, MealSlot, Recipe } from './types';
 import { dayContextFor, dayTargetFor, pantryEstimate, trainingDayBonus } from './week';
 
@@ -59,9 +59,9 @@ export function cookableRecipes(state: AppState, date: ISODate, have: ReadonlySe
   if (!have.size) return [];
   const R = COOK_RULES;
   const target = dayTargetFor(state, date);
-  const slots = state.nutritionProfile?.slots ?? SLOT_ORDER;
+  const slots = state.nutritionProfile?.slots ?? DEFAULT_SLOTS;
   const used = new Set(state.plannedMeals.filter((m) => m.date === date && m.status !== 'skipped').map((m) => m.slot));
-  const maxPrep = TIME_BUDGETS[effectiveTimeBudget(dayContextFor(state, date))].maxPrepMin;
+  const maxPrep = maxPrepFor(state.plannerSettings, dayContextFor(state, date), date);
   const openKcal = target ? Math.max(0, target.kcal - dayTotals(state.logEntries, date).kcal) : undefined;
   // Training day (planned or done): protein per meal matters more – from the day's own protein target.
   const training = trainingDayBonus(state, date);

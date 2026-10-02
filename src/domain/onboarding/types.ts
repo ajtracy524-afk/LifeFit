@@ -1,4 +1,4 @@
-import type { LmivAllergen } from '../types';
+import type { CookingTime, Intolerance, LmivAllergen } from '../types';
 import type { ActivityLevel, BodyArea, EquipmentItem, Experience, Macros, MealSlot, MuscleGroup } from '../types';
 
 /**
@@ -54,8 +54,7 @@ export type OnboardingStepId =
 
 export type { LmivAllergen } from '../types';
 
-export type Intolerance = 'lactose' | 'fructose' | 'celiac';
-export type CookingTime = '15' | '30' | '45' | 'any';
+export type { CookingTime, Intolerance } from '../types';
 export type CardioType = 'walking' | 'cycling' | 'running' | 'rowing' | 'swimming' | 'crosstrainer';
 /** 0 = Monday … 6 = Sunday (as everywhere in the app). */
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -115,6 +114,10 @@ export interface OnboardingProfile {
   food: {
     diet?: Field<'omnivore' | 'pescatarian' | 'vegetarian' | 'vegan'>;
     allergens?: Field<LmivAllergen[]>;
+    /** Allergens for which traces are okay (E15). */
+    tracesOk?: Field<LmivAllergen[]>;
+    /** "Alkohol aus Fermentation ist für mich okay" (E17). */
+    fermentationAlcoholOk?: Field<boolean>;
     intolerances?: Field<Intolerance[]>;
     exclusions?: Field<Array<'pork' | 'alcohol'>>;
     customExclusions?: Field<string[]>;

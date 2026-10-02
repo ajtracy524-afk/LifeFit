@@ -2,6 +2,7 @@ import { getFood } from '../data/foods';
 import { getRecipe } from '../data/recipes';
 import { STYLE_DENSITY, TASTE_RECIPES, TASTES, type Taste } from '../data/tastes';
 import { affinityIndex, preferenceOf, prefKey, type Preferences } from './learning';
+import { FOOD_PREFERENCE } from './constants';
 import { recipeMacros } from './nutrition';
 import type { MealStyle, NutritionProfile, Recipe, TimeBudget } from './types';
 
@@ -106,4 +107,27 @@ export function plannerAffinity(prefs: Preferences, profile: Pick<NutritionProfi
     }
     return value;
   };
+}
+
+/**
+ * Foods 👍 / 👎 (Prompt 4): every disliked ingredient costs FOOD_PREFERENCE.dislike –
+ * more than anything else, so the recipe is a last resort; liked ingredients add a
+ * small bonus, capped. Scored by the planner from the profile (planner.foodScorer),
+ * whatever the learned affinity is.
+ */
+export function foodPreference(recipe: Recipe, liked: ReadonlySet<string>, disliked: ReadonlySet<string>): number {
+  const ids = new Set(recipe.ingredients.map((i) => i.foodId));
+  let dislikes = 0;
+  let likes = 0;
+  for (const id of ids) {
+    if (disliked.has(id)) dislikes++;
+    else if (liked.has(id)) likes++;
+  }
+  return dislikes * FOOD_PREFERENCE.dislike + Math.min(FOOD_PREFERENCE.likeMax, likes * FOOD_PREFERENCE.like);
+}
+
+/** Does the recipe contain a food the user does not like? (Remembered replacements are not offered then.) */
+export function containsDisliked(recipe: Recipe, profile: Pick<NutritionProfile, 'dislikedFoods'> | null): boolean {
+  const disliked = profile?.dislikedFoods ?? [];
+  return disliked.length > 0 && recipe.ingredients.some((i) => disliked.includes(i.foodId));
 }
