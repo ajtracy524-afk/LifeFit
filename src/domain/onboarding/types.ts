@@ -1,4 +1,5 @@
 import type { CardioPlan, ComplaintSeverity, CookingTime, Intolerance, LmivAllergen, SlotPlan, TrainingPlace, Weekday } from '../types';
+import type { DayPlan, PlanSession, SplitId } from '../training/recommendPlan';
 import type { ActivityLevel, BodyArea, EquipmentItem, Experience, Macros, MealSlot, MuscleGroup } from '../types';
 
 /**
@@ -135,6 +136,8 @@ export interface OnboardingProfile {
     cardio?: Field<CardioPlan>;
     focusMuscles?: Field<MuscleGroup[]>;
     plan?: Field<{ programId: string; weekdays: number[] }>;
+    /** The plan being edited in "Dein Trainingsplan" (Prompt 8) – kept between visits; `key` = the answers it was made for. */
+    planDraft?: Field<PlanDraft>;
   };
   /** One-time hints: confirmation of migrated values, the "Neue Angaben ergänzen" card. */
   notices?: { confirmMigratedAt?: string; completeCard?: { dismissedUntil?: string } };
@@ -142,3 +145,11 @@ export interface OnboardingProfile {
 
 /** The groups of answers, as stored in OnboardingProfile. */
 export type AnswerGroup = 'body' | 'health' | 'goal' | 'food' | 'training';
+
+/** A generated plan with the user's edits (Prompt 8). */
+export interface PlanDraft {
+  key: string;
+  split: SplitId;
+  sessions: PlanSession[];
+  week: DayPlan[];
+}

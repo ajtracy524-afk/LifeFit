@@ -185,7 +185,6 @@ export function OnboardingV2() {
 
 /** Which stored answers belong to a step – shown read-only until the step gets its content (Prompts 2–8). */
 const STEP_FIELDS: Partial<Record<OnboardingStepId, Array<[keyof OnboardingProfile, string, string]>>> = {
-  plan: [['training', 'plan', 'Programm']],
 };
 
 const SOURCE_LABEL: Record<Field<unknown>['source'], string> = {

@@ -17,11 +17,12 @@ import { Card } from '../../../components/ui/Card';
 import { Chip, Field, OptionCard, Segmented, WeekdayPicker } from '../../../components/ui/Controls';
 import { Sheet } from '../../../components/ui/Sheet';
 import { BACK, FRONT, type Zone } from '../../training/BodyMap';
+import { PlanStep } from './AreaCPlan';
 import { NumberField } from './NumberField';
 import styles from './onboardingV2.module.css';
 
 /** Steps of section C with their content (Prompt 7). */
-export const AREA_C_STEPS: OnboardingStepId[] = ['level', 'frame', 'cardio', 'focus'];
+export const AREA_C_STEPS: OnboardingStepId[] = ['level', 'frame', 'cardio', 'focus', 'plan'];
 
 type Training = OnboardingProfile['training'];
 
@@ -37,6 +38,8 @@ export function AreaCStep({ step }: { step: OnboardingStepId }) {
       return <CardioStep profile={profile} t={t} />;
     case 'focus':
       return <FocusStep t={t} />;
+    case 'plan':
+      return <PlanStep />;
     default:
       return null;
   }

@@ -5,7 +5,10 @@ import { applyTemplateChange, fillWeek, replanForbidden } from '../domain/week';
 import { answersOf, flowStateOf, initialState, sectionState, type FlowState } from '../domain/onboarding/flow';
 import { defaultAnswers, defaultCoreSetup, emptyOnboarding, isSetupComplete } from '../domain/onboarding/migrate';
 import type { AnswerGroup, Field, OnboardingMode, OnboardingProfile, OnboardingSection } from '../domain/onboarding/types';
-import type { AppState, GoalType, Macros, Profile } from '../domain/types';
+import type { AppState, CardioType, GoalType, Macros, Profile, WorkoutTemplate } from '../domain/types';
+import type { PlanDraft } from '../domain/onboarding/types';
+import { CARDIO } from '../domain/constants';
+import { ensurePlanBaseline, recordPlanVersion } from '../domain/planVersions';
 import { completeOnboarding, setTargets } from './actions';
 import { getState, update } from './store';
 
@@ -212,4 +215,51 @@ export function setTrainingAnswer<K extends keyof TrainingAnswers>(key: K, value
     if (s.training) s.training = trainingSetupFrom(s.onboarding.training, s.training);
     if (key === 'level' && s.profile) s.profile = { ...s.profile, experience: value as Profile['experience'] };
   });
+}
+
+/** Rotation template of a cardio / mobility day of the plan. */
+function extraTemplate(kind: 'cardio' | 'mobility', types: CardioType[] = []): WorkoutTemplate {
+  if (kind === 'mobility') {
+    return { id: '', name: 'Mobilität', focus: 'Beweglichkeit & Erholung', exercises: [{ exerciseId: 'mobility-flow', sets: 1, repMin: 1, repMax: 1, restSec: 0, durationMin: 15 }, { exerciseId: 'hip-mobility', sets: 1, repMin: 1, repMax: 1, restSec: 0, durationMin: 10 }] };
+  }
+  const exerciseId = types.includes('cycling') ? 'zone2-bike' : types.includes('running') ? 'zone2-run' : types.includes('rowing') ? 'rowing' : 'brisk-walk';
+  return { id: '', name: 'Lockeres Cardio', focus: 'Ausdauer (Zone 2)', exercises: [{ exerciseId, sets: 1, repMin: 1, repMax: 1, restSec: 0, durationMin: CARDIO.zone2.minutes }] };
+}
+
+/**
+ * "Plan übernehmen" (Prompt 8): the plan becomes the active program of the
+ * existing rotation – one own routine per training day (strength, plus cardio /
+ * mobility days), one own program, the weekdays in order, a plan version. The
+ * start weights of Prompt 7 are already in the setup (workingWeights). No
+ * second scheduler; Heute and the training surcharge read the rotation.
+ */
+export function adoptPlan(plan: Pick<PlanDraft, 'sessions' | 'week'>): string | undefined {
+  ensureCoreSetup();
+  let programId: string | undefined;
+  update((s) => {
+    if (!s.training) return;
+    const now = new Date().toISOString();
+    const t = today();
+    const stamp = Date.now().toString(36);
+    const days = plan.week.filter((d) => d.kind === 'strength' || d.kind === 'extra').sort((a, b) => a.weekday - b.weekday);
+    if (!days.length) return;
+    const routineIds = days.map((d, i) => {
+      const template = d.kind === 'strength' ? plan.sessions[d.session]!.template : extraTemplate(d.kind === 'extra' ? d.extra : 'cardio', s.training?.cardio?.types);
+      const id = `routine:plan-${stamp}-${i + 1}`;
+      s.routines[id] = { ...structuredClone(template), id, createdAt: now, updatedAt: now };
+      return id;
+    });
+    programId = `program:plan-${stamp}`;
+    s.customPrograms[programId] = { id: programId, name: 'Mein Plan', routineIds, createdAt: now };
+    const cardioDays = plan.week.flatMap((d) =>
+      d.kind === 'rest' && d.cardio ? [{ weekday: d.weekday, kind: d.cardio }] : d.kind === 'strength' && d.cardioAfter ? [{ weekday: d.weekday, kind: d.cardioAfter, afterStrength: true as const }] : [],
+    );
+    ensurePlanBaseline(s);
+    s.training = { ...s.training, programId, weekdays: days.map((d) => d.weekday), startedAt: t, ...(cardioDays.length ? { cardioDays } : {}) };
+    if (!cardioDays.length) delete s.training.cardioDays;
+    recordPlanVersion(s, 'program', t, 'Aus dem Onboarding');
+    const p = profileOf(s);
+    s.onboarding = { ...p, training: { ...p.training, plan: { value: { programId, weekdays: days.map((d) => d.weekday) }, source: 'user', updatedAt: now } } };
+  });
+  return programId;
 }

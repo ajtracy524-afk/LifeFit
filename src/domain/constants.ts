@@ -374,3 +374,34 @@ export const CARDIO = {
   hiit: { perWeek: 1, minutes: 20, met: 8 },
   whoMinutes: [150, 300],
 } as const;
+
+// ---------- Area C: plan generator (Prompt 8) ----------
+
+/**
+ * Training plan rules (starting points, see domain/training/recommendPlan.ts):
+ * - Frequency: every muscle at least 2× per week – more effective than once
+ *   at equal volume (Schoenfeld, Ogborn & Krieger, Sports Med 2016;46:1689–97).
+ * - Weekly hard sets per muscle: ~10+ sets for hypertrophy, a dose-response
+ *   relationship (Schoenfeld, Ogborn & Krieger, J Sports Sci 2017;35:1073–82;
+ *   Pelland et al., SportRxiv 2024 meta-regression). Ranges by level as given.
+ *   Synergists count half a set ("fractional" counting, Pelland et al. 2024).
+ * - Reps: compounds 6–12, isolation 10–20, 1–3 reps in reserve – similar
+ *   hypertrophy across loading ranges when taken close to failure
+ *   (Schoenfeld et al., J Strength Cond Res 2017;31:3508–23; Refalo et al.,
+ *   Sports Med 2023;53:649–65 on proximity to failure).
+ * - Rest: ≥ 2 min on compounds supports volume (Schoenfeld et al., J Strength
+ *   Cond Res 2016;30:1805–12); shorter for isolation.
+ * - Time: ~40 s per set plus rest (same as estimateSeconds); supersets of
+ *   non-competing muscles save time without losing volume (Weakley et al.,
+ *   Eur J Appl Physiol 2017;117:1877–89).
+ */
+export const PLAN = {
+  volume: { beginner: [8, 12], intermediate: [12, 16], advanced: [14, 20] },
+  focusBoost: 1.25,
+  secondaryShare: 0.5,
+  minFrequency: 2,
+  sets: { min: 1, maxPerExercise: 4 },
+  reps: { main: [6, 10], compound: [8, 12], isolation: [10, 15] },
+  rest: { main: 120, compound: 90, isolation: 60 },
+  setSeconds: 40,
+} as const;

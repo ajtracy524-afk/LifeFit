@@ -418,6 +418,8 @@ export interface TrainingSetup {
   workingWeights?: Record<string, { kg: number; reps: number }>;
   /** Additional cardio (Prompt 7) – adds to the training surcharge of the energy estimate. */
   cardio?: CardioPlan;
+  /** Cardio days of the adopted plan (Prompt 8): Zone 2 / HIIT on rest days, or Zone 2 after strength – shown on Heute. */
+  cardioDays?: Array<{ weekday: number; kind: 'zone2' | 'hiit'; afterStrength?: true }>;
 }
 
 /** A body measurement over time – body fat now, circumferences later, one log for all. */

@@ -37,9 +37,26 @@ export function scheduleForWeek(setup: TrainingSetup | null, weekStartDate: ISOD
   }));
 }
 
-/** Session length in seconds: rest time plus ~40 s per set; cardio / mobility blocks by their minutes. */
+/**
+ * Session length in seconds: rest time plus ~40 s per set; cardio / mobility blocks by their minutes.
+ * A superset (same supersetGroup) rests once per round – after its last exercise.
+ */
 export function estimateSeconds(template: Pick<WorkoutTemplate, 'exercises'>): number {
-  return template.exercises.reduce((s, e) => s + e.sets * ((e.durationMin ? e.durationMin * 60 : 40) + e.restSec), 0);
+  const work = (e: TemplateExercise) => (e.durationMin ? e.durationMin * 60 : 40);
+  let total = 0;
+  const seen = new Set<string>();
+  for (const e of template.exercises) {
+    if (!e.supersetGroup) {
+      total += e.sets * (work(e) + e.restSec);
+      continue;
+    }
+    if (seen.has(e.supersetGroup)) continue;
+    seen.add(e.supersetGroup);
+    const group = template.exercises.filter((x) => x.supersetGroup === e.supersetGroup);
+    const rounds = Math.max(...group.map((x) => x.sets));
+    total += group.reduce((sum, x) => sum + x.sets * work(x), 0) + rounds * Math.max(...group.map((x) => x.restSec));
+  }
+  return total;
 }
 
 /** Rough session length in minutes, rounded to 5. */

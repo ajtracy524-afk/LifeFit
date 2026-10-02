@@ -3508,4 +3508,54 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       expect(text()).toContain('Zwei sind gewählt');
     });
   });
+
+  describe('area C (Prompt 8): your training plan', () => {
+    it('week overview: 7 days, swap with a live hint, switch the split, "Warum?", adopt into the rotation', async () => {
+      localStorage.setItem(KEY, JSON.stringify(completeState()));
+      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      const store = await startApp();
+      await click('Training');
+      for (let i = 0; i < 4; i++) await click('Weiter');
+      expect(title()).toBe('Dein Trainingsplan');
+      const days = () => [...container.querySelectorAll('[aria-label="Deine Woche"] > li')];
+      expect(days()).toHaveLength(7);
+      expect(days()[0]!.textContent).toContain('Ganzkörper A'); // beginner, Mo/Mi/Fr → A/B/C
+      expect(days()[1]!.textContent).toContain('Ruhe');
+
+      // Swap Monday with Tuesday (the accessible way): Tue A + Wed B = full body two days in a row → a hint, never a block.
+      const select = container.querySelector<HTMLSelectElement>('select[aria-label="Montag tauschen mit"]')!;
+      await act(async () => {
+        select.value = '1';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(days()[1]!.textContent).toContain('Ganzkörper A');
+      expect(container.querySelector('[aria-label="Hinweise zum Plan"]')!.textContent).toMatch(/Di und Mi: .* an zwei Tagen hintereinander schwer/);
+      expect(store.getState().onboarding!.training.planDraft!.value.week[1]).toMatchObject({ kind: 'strength', session: 0 });
+
+      // Exercises of a session, with the catalog's alternatives.
+      await act(async () => [...days()[1]!.querySelectorAll('button')].find((b) => b.textContent === 'Übungen ansehen')!.click());
+      expect(days()[1]!.textContent).toMatch(/\d × \d+–\d+ /);
+
+      // Switch the split.
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[aria-label="Split wechseln"] button')].find((b) => b.querySelector('strong')?.textContent === 'Ganzkörper A/B')!.click());
+      expect(store.getState().onboarding!.training.planDraft!.value.split).toBe('fb2');
+
+      HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+        this.setAttribute('open', '');
+      };
+      HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+        this.removeAttribute('open');
+      };
+      await click('Warum dieser Plan?');
+      expect(document.body.textContent).toContain('Schoenfeld, Ogborn & Krieger 2016');
+
+      await click('Plan übernehmen');
+      const s = store.getState();
+      expect(s.training!.programId).toMatch(/^program:plan-/);
+      // A/B on three chosen days: strength Mo and Fr (most rest between), cardio on Wednesday – all three in the rotation, in weekday order.
+      const routines = s.customPrograms[s.training!.programId]!.routineIds.map((id) => s.routines[id]!.name);
+      expect(routines).toEqual(['Ganzkörper A', 'Lockeres Cardio', 'Ganzkörper B']);
+      expect(text()).toContain('Plan übernommen – er steht ab heute in deinem Training und auf Heute.');
+    });
+  });
 });

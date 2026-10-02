@@ -380,4 +380,6 @@ Alle sechs Vorschläge sind angenommen (01.10.2026) und als E9–E14 im Abschnit
 
 - **Beschwerden im Training-Check (aus Prompt 7):** Beschwerden, die nur beim Start einer Einheit gemeldet werden, gelten als „leicht“ (Stufe 2 wird ersetzt); dauerhafte aus dem Profil behalten ihre Stufe, ältere ohne Stufe gelten als „deutlich“ (E22). Rückfrage: soll „heute gemeldet“ strenger sein?
 
-Nächster Schritt: **Prompt 8**.
+- **Trainingsaufschlag mit Zusatztagen (aus Prompt 8):** Cardio- und Mobilitätstage, die Anfänger mit 5–6 Tagen statt Krafttagen bekommen, stehen in der Rotation und zählen im Trainingsaufschlag wie Krafteinheiten (Mobilität etwas zu hoch, Zone 2 etwas zu tief). Zone 2/HIIT aus der Cardio-Wahl liegen an Ruhetagen () und zählen über den Cardio-Aufschlag. Offen: getrennte Zählung, falls genauer gewünscht.
+
+Nächster Schritt: **Prompt 9**.
