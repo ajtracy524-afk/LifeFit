@@ -1,6 +1,6 @@
 import { today, weekStart } from '../domain/dates';
 import { nutritionProfileFrom, plannerSettingsFrom } from '../domain/onboarding/food';
-import { fillWeek, replanForbidden } from '../domain/week';
+import { applyTemplateChange, fillWeek, replanForbidden } from '../domain/week';
 import { answersOf, flowStateOf, initialState, sectionState, type FlowState } from '../domain/onboarding/flow';
 import { defaultAnswers, defaultCoreSetup, emptyOnboarding, isSetupComplete } from '../domain/onboarding/migrate';
 import type { AnswerGroup, Field, OnboardingMode, OnboardingProfile, OnboardingSection } from '../domain/onboarding/types';
@@ -160,7 +160,7 @@ export function setFoodAnswer<K extends keyof FoodAnswers>(key: K, value: FoodVa
     const p = profileOf(s);
     const at = new Date().toISOString();
     s.onboarding = { ...p, food: { ...p.food, [key]: { value, source: 'user', updatedAt: at } } };
-    applyFoodAnswers(s, key === 'meals');
+    applyFoodAnswers(s, key);
   });
 }
 
@@ -177,14 +177,17 @@ export function confirmFoodAnswers(keys: (keyof FoodAnswers)[]): void {
   });
 }
 
-function applyFoodAnswers(s: AppState, mealsChanged: boolean): void {
+function applyFoodAnswers(s: AppState, key: keyof FoodAnswers): void {
   const food = profileOf(s).food;
   const t = today();
   s.plannerSettings = plannerSettingsFrom(food, s.plannerSettings);
   if (!s.nutritionProfile) return; // a new user: applied with the core setup
+  const templateBefore = s.nutritionProfile.weekTemplate;
   s.nutritionProfile = nutritionProfileFrom(food, s.nutritionProfile);
   replanForbidden(s, t);
-  if (mealsChanged) {
+  // A new typical week: this and next week follow it (deviations of a single week stay).
+  if (key === 'weekTemplate') applyTemplateChange(s, templateBefore, t);
+  if (key === 'meals') {
     // Meals no longer chosen leave the plan from today on, new ones are filled in.
     const slots = s.nutritionProfile.slots;
     s.plannedMeals = s.plannedMeals.filter((m) => m.date < t || m.status !== 'planned' || slots.includes(m.slot));

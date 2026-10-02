@@ -11,7 +11,10 @@ import type { ISODate, WorkoutTemplate } from '../../domain/types';
 import { dayContextFor, weekShopping } from '../../domain/week';
 import { fmt, relativeDay, SLOT_LABEL } from '../../lib/format';
 import { href } from '../../lib/router';
+import { withUndo } from '../../lib/undo';
+import { logEntry } from '../../store/actions';
 import { useAppState } from '../../store/store';
+import { outMealEntry, PLACE_LABEL, SIZE_LABEL } from '../../domain/week/slotPlans';
 import { Button } from '../../components/ui/Button';
 import { Card, CardHeader } from '../../components/ui/Card';
 import { Icon } from '../../components/ui/Icon';
@@ -111,18 +114,43 @@ export function DayPlanCard({ date, weekStartDate, startInNextAction, running, o
             );
           }
           if (item.kind === 'closed') {
-            const out = item.closed.reason === 'eating_out';
+            const c = item.closed;
+            const out = c.reason === 'eating_out';
+            const logged = state.logEntries.filter((e) => e.date === date && e.slot === c.slot);
+            const detail = out && c.plan?.place ? `${PLACE_LABEL[c.plan.place]}, ${SIZE_LABEL[c.plan.size ?? 'normal']}` : out && c.plan?.size ? SIZE_LABEL[c.plan.size] : undefined;
             return (
-              <li key={`closed-${item.closed.slot}`}>
-                <div className={`${styles.timelineItem} ${styles.timelineSkipped}`} data-state="closed">
+              <li key={`closed-${c.slot}`}>
+                <div className={`${styles.timelineItem} ${styles.timelineSkipped}`} data-state="closed" aria-label={out ? `${SLOT_LABEL[c.slot]} auswärts` : undefined}>
                   <span className={styles.time}>{item.time}</span>
                   <span className={styles.skipMark} aria-hidden>
-                    {out ? '🍽️' : '–'}
+                    {out ? '🍽️' : c.reason === 'skip' ? '⏭️' : '–'}
                   </span>
                   <span className={styles.flex}>
-                    <span className={styles.timelineLabel}>{SLOT_LABEL[item.closed.slot]}</span>
-                    <strong className={styles.timelineTitle}>{out ? 'Auswärts' : 'Nicht geplant'}</strong>
-                    <span className={styles.muted}>{out ? 'Nicht im Plan – erfasse einfach, was du isst' : 'Heute bewusst nicht geplant'}</span>
+                    <span className={styles.timelineLabel}>{SLOT_LABEL[c.slot]}</span>
+                    <strong className={styles.timelineTitle}>{out ? `Auswärts${detail ? ` · ${detail}` : ''}` : c.reason === 'skip' ? 'Ausgelassen' : 'Nicht geplant'}</strong>
+                    <span className={styles.muted}>
+                      {out
+                        ? logged.length
+                          ? `Erfasst: ${energy.kcal(logged.reduce((s, e) => s + e.macros.kcal, 0))}`
+                          : `${c.reserved ? `${energy.numberFree ? energy.kcal(c.reserved.kcal) : `ca. ${fmt.kcal(c.reserved.kcal)}`} reserviert – ` : ''}nicht im Plan, nicht im Einkauf`
+                        : c.reason === 'skip'
+                          ? 'Geplant ausgelassen – die anderen Mahlzeiten übernehmen den Anteil'
+                          : 'Heute bewusst nicht geplant'}
+                    </span>
+                    {out && !logged.length && date <= today() && (
+                      <span className={styles.outActions}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => withUndo(`${SLOT_LABEL[c.slot]}: wie geplant erfasst`, () => logEntry(date, c.slot, outMealEntry(c.plan, c.reserved ?? { kcal: 0, protein: 0 })))}
+                        >
+                          Wie geplant gegessen
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={onLogFood}>
+                          Anpassen
+                        </Button>
+                      </span>
+                    )}
                   </span>
                 </div>
               </li>

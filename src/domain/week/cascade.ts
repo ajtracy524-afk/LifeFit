@@ -1,13 +1,14 @@
 import { getFood } from '../../data/foods';
+import { excludedSlotsOn, planTargetOf, planTargetOn, slotPlanOn, templateOn } from './slotPlans';
 import { getRecipe } from '../../data/recipes';
 import { newId } from '../../lib/id';
 import { SLOT_LABEL, weekdayLong, weekdayShort } from '../../lib/format';
 import { addDays, toISODate, weekDays, weekStart, weekdayIndex } from '../dates';
 import { logFromMeal, plannedMealMacros, recipeAllowed, recipeMacros, roundServings, sumMacros } from '../nutrition';
-import { effectivePrepMin, SLOT_ORDER, slotShare } from '../planner';
-import { DAY_MODE_LABEL, EATING_OUT_SLOTS, effectiveTimeBudget, excludedSlots, maxPrepFor, TIME_BUDGETS } from '../timeBudget';
+import { effectivePrepMin, isPortable, SLOT_ORDER } from '../planner';
+import { DAY_MODE_LABEL, EATING_OUT_SLOTS, effectiveTimeBudget, excludedSlots, maxPrepFor, slotPlanOf, templateDay, TIME_BUDGETS, type TemplateDay } from '../timeBudget';
 import { activeWorkouts, estimateMinutes, resolveWorkouts, trainingWeekdays } from '../training';
-import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, Recipe, ShoppingWeekState, TimeBudget } from '../types';
+import type { AppState, DayContext, ISODate, MealSlot, PlanSlotId, PlannedMeal, Recipe, ShoppingWeekState, TimeBudget, WeekTemplate, SlotPlan } from '../types';
 import { closeCompletedDays, dayTargetFor } from './dayTargets';
 import { minutesOf } from '../schedule';
 import { recordEvent } from '../learning';
@@ -166,7 +167,7 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
       const notes = applyModeToMeals(s, change.date, before, merged, today);
       const retimed = effectiveTimeBudget(merged) !== effectiveTimeBudget(before) ? retimeDay(s, change.date, today, nowIso, effectiveTimeBudget(before)) : undefined;
       if (retimed) notes.push(...retimed.notes);
-      const label = merged.mode !== before.mode ? DAY_MODE_LABEL[merged.mode] : TIME_BUDGETS[merged.timeBudget].label;
+      const label = merged.mode !== before.mode ? DAY_MODE_LABEL[merged.mode] : change.context.slots ? 'diese Woche angepasst' : TIME_BUDGETS[merged.timeBudget].label;
       return { ok: true, title: `${weekdayLong(weekdayIndex(change.date))}: ${label}`, replaced: retimed?.replaced ?? [], notes, replacedInNotes: true };
     }
 
@@ -306,8 +307,10 @@ function mutate(s: AppState, change: WeekChange, today: ISODate, nowIso: string)
 
 function storeDayContext(s: AppState, date: ISODate, context: DayContext) {
   const removed = context.removedSlots?.length ? { removedSlots: [...context.removedSlots] } : {};
-  if (context.timeBudget === DEFAULT_DAY_CONTEXT.timeBudget && context.mode === DEFAULT_DAY_CONTEXT.mode && !removed.removedSlots) delete s.dayContexts[date];
-  else s.dayContexts[date] = { timeBudget: context.timeBudget, mode: context.mode, ...removed };
+  // Deviations of this week from the typical week (Prompt 5).
+  const slots = context.slots && Object.keys(context.slots).length ? { slots: structuredClone(context.slots) } : {};
+  if (context.timeBudget === DEFAULT_DAY_CONTEXT.timeBudget && context.mode === DEFAULT_DAY_CONTEXT.mode && !removed.removedSlots && !slots.slots) delete s.dayContexts[date];
+  else s.dayContexts[date] = { timeBudget: context.timeBudget, mode: context.mode, ...removed, ...slots };
 }
 
 /** Opens or closes a meal slot of a day (see DayContext.removedSlots). */
@@ -322,10 +325,22 @@ function setSlotRemoved(s: AppState, date: ISODate, slot: MealSlot, removed: boo
  * list, stays visible, and comes back when the exception is removed.
  */
 function applyModeToMeals(s: AppState, date: ISODate, before: DayContext, after: DayContext, today: ISODate): string[] {
+  const template = templateOn(s, date);
+  const balance = shiftsBudget(s, (slot) => slotPlanOf(before, template, slot), (slot) => slotPlanOf(after, template, slot));
+  return reconcileDay(s, date, today, excludedSlots(before, template), excludedSlots(after, template), `${date}:${after.mode}`, balance ? plannedWant(s, date, before, template) : undefined);
+}
+
+/**
+ * Brings the meals of a day in line with what is closed now (out / skip /
+ * removed) – after a day setting, a week deviation or a new typical week
+ * (Prompt 5): closed meals leave the plan (visible, not bought), reopened ones
+ * come back, to-go slots get portable dishes, and the portions follow the
+ * reserved budget (a skipped meal's share goes to the others, E12).
+ */
+function reconcileDay(s: AppState, date: ISODate, today: ISODate, wasOut: MealSlot[], isOut: MealSlot[], seed: string, wantBefore?: number): string[] {
   if (date < today) return [];
-  const wasOut = excludedSlots(before);
-  const isOut = excludedSlots(after);
   const notes: string[] = [];
+  const haveBefore = plannedKcal(s, date);
 
   const leaving = s.plannedMeals.filter((m) => m.date === date && isOut.includes(m.slot) && !wasOut.includes(m.slot) && m.status === 'planned');
   for (const m of leaving) {
@@ -343,8 +358,69 @@ function applyModeToMeals(s: AppState, date: ISODate, before: DayContext, after:
       delete m.skippedFor;
     }
     const missing = back.filter((slot) => !s.plannedMeals.some((m) => m.date === date && m.slot === slot && m.status !== 'skipped'));
-    if (missing.length) s.plannedMeals.push(...planMeals(s, { dates: [date], today, seed: `${date}:${after.mode}`, slots: missing }));
+    if (missing.length) s.plannedMeals.push(...planMeals(s, { dates: [date], today, seed, slots: missing }));
     notes.push(`${back.map((slot) => SLOT_LABEL[slot]).join(', ')} wieder eingeplant`);
+  }
+
+  // To go: a dish that does not travel is exchanged for a portable one.
+  const togo = (s.nutritionProfile?.slots ?? []).filter((slot) => slotPlanOn(s, date, slot).kind === 'togo');
+  if (togo.length) {
+    const swapped = replanMealsOn(s, date, today, `${seed}:togo`, (r) => !isPortable(r), true, (m) => togo.includes(m.slot));
+    if (swapped.length) notes.push(`Mitnehmen: ${swapped.map((r) => r.to).join(', ')}`);
+  }
+
+  // Portions follow the budget: only the shift THIS change causes is balanced –
+  // a skipped meal's share goes to the others, a bigger out meal takes from them;
+  // an out meal and its removed dish cancel out (the others keep their servings).
+  const target = dayTargetFor(s, date);
+  if (target && wantBefore !== undefined) {
+    const delta = (planTargetOn(s, date, target).target.kcal - wantBefore) - (plannedKcal(s, date) - haveBefore);
+    if (Math.abs(delta) / Math.max(1, target.kcal) > REBALANCE_THRESHOLD) rebalanceDay(s, date, delta);
+  }
+  return notes;
+}
+
+/**
+ * Does the change move budget between the meals of a day? Skipping hands a share
+ * on (E12), a different size or place of an out meal changes its reservation.
+ * Out ↔ Zuhause alone does not: the other meals keep their servings, as before.
+ */
+function shiftsBudget(s: AppState, before: (slot: MealSlot) => SlotPlan, after: (slot: MealSlot) => SlotPlan): boolean {
+  return (s.nutritionProfile?.slots ?? []).some((slot) => {
+    const b = before(slot);
+    const a = after(slot);
+    if (b.kind !== a.kind) return b.kind === 'skip' || a.kind === 'skip';
+    return b.kind === 'out' && a.kind === 'out' && (b.size !== a.size || b.place !== a.place);
+  });
+}
+
+function plannedKcal(s: AppState, date: ISODate): number {
+  return sumMacros(s.plannedMeals.filter((m) => m.date === date && m.status !== 'skipped').map(plannedMealMacros)).kcal;
+}
+
+/** What the planned meals of a day should reach under a context and template. */
+function plannedWant(s: AppState, date: ISODate, context: DayContext, template: TemplateDay | undefined): number | undefined {
+  const target = dayTargetFor(s, date);
+  return target && s.nutritionProfile ? planTargetOf(target, s.nutritionProfile.slots, context, template).target.kcal : undefined;
+}
+
+/** Below this share of the day target a difference is rounding, not worth touching portions. */
+const REBALANCE_THRESHOLD = 0.05;
+
+/**
+ * A new typical week (Prompt 5): days from today to the end of next week follow
+ * it – unless the week deviates there (dayContexts), which the template never
+ * overrides. Mutates the draft.
+ */
+export function applyTemplateChange(s: AppState, before: WeekTemplate | undefined, today: ISODate): string[] {
+  const notes: string[] = [];
+  for (const date of [...weekDays(weekStart(today)), ...weekDays(addDays(weekStart(today), 7))]) {
+    if (date < today) continue;
+    const context = dayContextFor(s, date);
+    const old = templateDay(before, date);
+    const now = templateOn(s, date);
+    const balance = shiftsBudget(s, (slot) => slotPlanOf(context, old, slot), (slot) => slotPlanOf(context, now, slot));
+    notes.push(...reconcileDay(s, date, today, excludedSlots(context, old), excludedSlots(context, now), `${date}:template`, balance ? plannedWant(s, date, context, old) : undefined));
   }
   return notes;
 }
@@ -392,7 +468,7 @@ function planWeek(s: AppState, change: Extract<WeekChange, { type: 'planWeek' }>
   );
   const added = planMeals(s, { dates: open, today, seed: week });
   const slots = s.nutritionProfile.slots;
-  const freeSlots = open.some((d) => slots.some((slot) => !excludedSlots(dayContextFor(s, d)).includes(slot) && !s.plannedMeals.some((m) => m.date === d && m.slot === slot)));
+  const freeSlots = open.some((d) => slots.some((slot) => !excludedSlotsOn(s, d).includes(slot) && !s.plannedMeals.some((m) => m.date === d && m.slot === slot)));
   if (added.length === 0 && freeSlots) return fail('Für diese Vorgaben gibt es keine passenden Rezepte. Deine bisherige Woche bleibt unverändert.');
   s.plannedMeals.push(...added);
 
@@ -486,11 +562,11 @@ function retimeDay(s: AppState, date: ISODate, today: ISODate, nowIso: string, p
  * new picks fill exactly the calorie space of the old ones – the day total
  * does not change, only what is cooked.
  */
-function replanMealsOn(s: AppState, date: ISODate, today: ISODate, seed: string, replace: (recipe: Recipe) => boolean, includeFixed = false): Replacement[] {
+function replanMealsOn(s: AppState, date: ISODate, today: ISODate, seed: string, replace: (recipe: Recipe) => boolean, includeFixed = false, which: (meal: PlannedMeal) => boolean = () => true): Replacement[] {
   if (date < today || !dayTargetFor(s, date) || !s.nutritionProfile) return [];
   const week = weekMeals(s, date);
   const affected = week.filter((m) => {
-    if (m.date !== date || m.status !== 'planned') return false;
+    if (m.date !== date || m.status !== 'planned' || !which(m)) return false;
     if (!includeFixed && (m.source !== 'suggest' || m.servingsLocked)) return false;
     const recipe = getRecipe(m.recipeId);
     return !!recipe && replace(recipe);
@@ -554,10 +630,8 @@ function rebalanceWeek(before: AppState, after: AppState, week: ISODate, today: 
     const to = dayTargetFor(after, date)?.kcal;
     if (from === undefined || to === undefined || from === to) continue;
     targetChanges.push({ date, fromKcal: from, toKcal: to });
-    // On an eating-out day the dinner's share of the change belongs to the restaurant meal.
-    const profileSlots = after.nutritionProfile?.slots ?? [];
-    const out = excludedSlots(dayContextFor(after, date)).filter((sl) => profileSlots.includes(sl));
-    const share = out.length ? 1 - slotShare(out, profileSlots) : 1;
+    // On a day with out meals only the planned meals' part of the change is theirs.
+    const share = to > 0 ? planTargetOn(after, date, { kcal: to, protein: 0, carbs: 0, fat: 0 }).target.kcal / to : 1;
     rebalanced.push(...rebalanceDay(after, date, (to - from) * share));
   }
   return { targetChanges, rebalanced };

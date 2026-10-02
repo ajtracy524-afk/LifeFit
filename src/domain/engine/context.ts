@@ -1,9 +1,10 @@
 import { addDays, weekStart } from '../dates';
+import { excludedSlotsOn, planTargetOn } from '../week/slotPlans';
 import { ZERO_MACROS, dayTotals, plannedMealMacros, sumMacros } from '../nutrition';
-import { DEFAULT_SLOTS, slotShare } from '../planner';
+import { DEFAULT_SLOTS } from '../planner';
 import { currentWeight, weeklyRate } from '../progress';
 import { activeWorkouts, isCompletedOn, type PlannedWorkout } from '../training';
-import { effectiveTimeBudget, excludedSlots, TIME_BUDGETS } from '../timeBudget';
+import { effectiveTimeBudget, TIME_BUDGETS } from '../timeBudget';
 import { dayContextFor, dayTargetFor, pantryEstimate } from '../week';
 import type { AppState, ISODate, Macros, MealSlot, NutritionTarget, PlannedMeal } from '../types';
 import { computeSafety } from './guardrails';
@@ -60,13 +61,14 @@ export function buildContext(state: AppState, options: EngineOptions): EngineCon
   const eaten = dayTotals(state.logEntries, date);
   const plannedOpen = state.plannedMeals.filter((m) => m.date === date && m.status === 'planned');
   const logged = new Set(state.logEntries.filter((e) => e.date === date).map((e) => e.slot));
-  const closed = excludedSlots(dayContextFor(state, date));
+  const closed = excludedSlotsOn(state, date);
   // A slot is taken by any meal record – also "Anders gegessen" (skipped): the user already decided about it.
   const usedSlots = new Set<MealSlot>([...state.plannedMeals.filter((m) => m.date === date).map((m) => m.slot), ...logged, ...closed]);
   const freeSlots = slots.filter((s) => !usedSlots.has(s) && hour < SLOT_UNTIL[s]);
   const reservedSlots = closed.filter((s) => slots.includes(s) && !logged.has(s) && hour < SLOT_UNTIL[s]);
-  const share = reservedSlots.length ? slotShare(reservedSlots, slots) : 0;
-  const reserved = { kcal: (target?.kcal ?? 0) * share, protein: (target?.protein ?? 0) * share };
+  // Out meals keep their budget (size, place, low protein – Prompt 5), removed ones their share.
+  const kept = target ? planTargetOn(state, date, target).reserved.filter((r) => reservedSlots.includes(r.slot)) : [];
+  const reserved = { kcal: kept.reduce((s, r) => s + r.kcal, 0), protein: kept.reduce((s, r) => s + r.protein, 0) };
 
   const stock = pantryEstimate(state);
   const pantry = new Set<string>([...Object.keys(stock).filter((id) => stock[id]! > 0), ...(options.pantry ?? [])]);

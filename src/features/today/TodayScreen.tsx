@@ -190,7 +190,7 @@ export function TodayScreen() {
           </div>
           {closedToday.map((c) => (
             <p key={c.slot} className={styles.closedToday}>
-              {c.reason === 'eating_out' ? '🍽️' : '–'} {SLOT_LABEL[c.slot]} heute {c.reason === 'eating_out' ? 'auswärts' : 'nicht geplant'} ·{' '}
+              {c.reason === 'eating_out' ? '🍽️' : c.reason === 'skip' ? '⏭️' : '–'} {SLOT_LABEL[c.slot]} heute {c.reason === 'eating_out' ? 'auswärts' : c.reason === 'skip' ? 'ausgelassen' : 'nicht geplant'} ·{' '}
               <a href={href('nutrition', { view: 'week' })}>im Wochenplan ändern</a>
             </p>
           ))}

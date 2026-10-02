@@ -44,7 +44,7 @@ export function ShoppingScreen() {
   const leftOut = weekDays(week)
     .filter((d) => d >= from && d <= to)
     .flatMap((d) => closedMeals(state, d))
-    .map((c) => `${weekdayShort(weekdayIndex(c.date))} ${SLOT_LABEL[c.slot]} ${c.reason === 'eating_out' ? 'auswärts' : 'nicht geplant'}`);
+    .map((c) => `${weekdayShort(weekdayIndex(c.date))} ${SLOT_LABEL[c.slot]} ${c.reason === 'eating_out' ? 'auswärts' : c.reason === 'skip' ? 'ausgelassen' : 'nicht geplant'}`);
   const total = items.length + weekState.manual.length;
   const remaining = open.length + manualOpen.length;
   const [detail, setDetail] = useState<ShoppingListItem | null>(null);

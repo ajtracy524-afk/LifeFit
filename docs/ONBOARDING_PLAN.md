@@ -371,10 +371,11 @@ Alle sechs Vorschläge sind angenommen (01.10.2026) und als E9–E14 im Abschnit
 ## Backlog
 
 - **Katalog erweitern (E23)** für vegan + Soja-Allergie, vegan + Zöliakie und Zöliakie allgemein. Ziel: ≥ 4 Rezepte pro Mahlzeit (Stand: Machbarkeitstabelle in `docs/CATALOG_TAGS_REVIEW.md`). Dabei glutenfreie Haferflocken prüfen. Neue Rezepte durchlaufen dasselbe Review.
+- **Auswärts-Extremtage (aus Prompt 5):** Liegt der grösste Teil der Tagesenergie auswärts (z. B. Kantine mittags + grosses Restaurantessen abends), ist das Protein-Tagesziel mit der Annahme „auswärts proteinarm“ nicht erreichbar (Rest bräuchte > 50 % Protein). Der Planer trifft die Kalorien und verschiebt Protein nach Hause, so weit es geht. Offen: ein Hinweis im UI für solche Tage.
 - **Planer „Sparen“ (aus 3b):** Untergrenze 90 % Protein pro Tag als Stufen-Strafe (`PROTEIN_FLOOR`, Gewicht `proteinFloor` nur bei „Sparen“), geprüft an den gerundeten Portionen. Anlass: Durch die neuen Zutaten fiel ein Testtag auf 89,7 %. Bei Bedarf auf andere Prioritäten ausweiten.
 
 ## Offene Punkte
 
 - **E13, Auslegung aus Prompt 4 (Rückfrage):** Im alten Code gibt es **keine gespeicherte Kochzeit-Einstellung**, nur Tages-Overrides (`dayContexts`: „Wenig Zeit“ = 15 min, „Viel Zeit“ = ohne Grenze). Diese behalten ihre Bedeutung (≤ 15 bzw. egal). „Normal“ ist jetzt die Kochzeit-Antwort (Werktag/Wochenende); **ohne Antwort bleiben 35 min wie bisher** – Bestandsnutzer werden nicht automatisch auf ≤ 30 gesetzt. Falls doch gewünscht: Migration `cookingTime = { weekday: '30', weekend: '30' }` mit `source: 'migrated'` und einmaliger Bestätigung.
 
-Nächster Schritt: **Prompt 5**.
+Nächster Schritt: **Prompt 6**.

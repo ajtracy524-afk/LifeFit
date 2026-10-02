@@ -146,6 +146,9 @@ export function foodScorer(profile: Pick<NutritionProfile, 'likedFoods' | 'disli
   };
 }
 
+/** Survives a day in a box – "chilled" ones need cooling (E23). */
+export const isPortable = (r: Recipe): boolean => r.portable === 'yes' || r.portable === 'chilled';
+
 /** Share of the day's protein target below which the steep penalty applies. */
 export const PROTEIN_FLOOR = 0.9;
 
@@ -190,6 +193,8 @@ interface SuggestInput {
    * planned only when nothing else fits. Without it the time budget is a soft cost.
    */
   maxPrepFor?: (date: ISODate) => number;
+  /** "Mitnehmen" (Prompt 5): only portable recipes for this slot on this date. */
+  portableFor?: (date: ISODate, slot: MealSlot) => boolean;
 }
 
 /** One day of the week being planned: fixed (user) meals + the suggested picks. */
@@ -477,6 +482,7 @@ export function suggestWeek({
   weights: overrides = {},
   mealPrep = false,
   maxPrepFor,
+  portableFor,
 }: SuggestInput): PlannedMeal[] {
   const W = weightsFor(priority, overrides);
   const weights = W;
@@ -502,6 +508,8 @@ export function suggestWeek({
     if (!list) slotRecipes.set(slot, (list = recipesForSlot(slot, profile)));
     return list;
   };
+  // "Mitnehmen": portable recipes only ("chilled" ones show "Kühlung nötig").
+  const poolFor = (date: ISODate, slot: MealSlot) => (portableFor?.(date, slot) ? recipesFor(slot).filter(isPortable) : recipesFor(slot));
 
   // ---- Phase 1: day by day ----
   for (const date of dates) {
@@ -514,7 +522,7 @@ export function suggestWeek({
     // instead of blocking the whole day.
     const excluded = excludedSlotsFor(date);
     const emptySlots = slots.filter(
-      (s) => !excluded.includes(s) && !existing.some((m) => m.date === date && m.slot === s) && recipesFor(s).length > 0,
+      (s) => !excluded.includes(s) && !existing.some((m) => m.date === date && m.slot === s) && poolFor(date, s).length > 0,
     );
     if (emptySlots.length === 0) continue;
 
@@ -530,7 +538,7 @@ export function suggestWeek({
       const picks: Recipe[] = [];
       for (const slot of emptySlots) {
         // The cooking time holds whenever recipes fit it (Prompt 4).
-        const allowed = recipesFor(slot);
+        const allowed = poolFor(date, slot);
         const fitting = maxPrepMin === undefined ? allowed : allowed.filter((r) => effectivePrepMin(r, date, cooked, mealPrep) <= maxPrepMin);
         const all = fitting.length ? fitting : allowed;
         const unused = all.filter((r) => !picks.includes(r));
@@ -586,7 +594,7 @@ export function suggestWeek({
         const original = day.picks[i]!;
         let bestRecipe = original;
         const tooLong = (r: Recipe) => day.maxPrepMin !== undefined && r.prepMin > day.maxPrepMin;
-        for (const alt of recipesFor(slot)) {
+        for (const alt of poolFor(day.date, slot)) {
           if (alt.id === original.id || taken.has(alt.id)) continue;
           // Never trade a dish that fits the cooking time for one that does not.
           if (tooLong(alt) && !tooLong(original)) continue;
@@ -659,6 +667,8 @@ export interface RankInput {
   extras?: ScoreExtras;
   priority?: PlanPriority;
   exclude?: string[];
+  /** "Mitnehmen" (Prompt 5): portable recipes only. */
+  portableOnly?: boolean;
 }
 
 /**
@@ -671,7 +681,7 @@ export function rankMealOptions(input: RankInput, limit = 3): MealOption[] {
   const food = input.extras?.food ?? foodScorer(input.profile);
   const extras: ScoreExtras = { ...input.extras, ...(food ? { food } : {}) };
   return recipesForSlot(input.slot, input.profile)
-    .filter((r) => !input.exclude?.includes(r.id))
+    .filter((r) => !input.exclude?.includes(r.id) && (!input.portableOnly || isPortable(r)))
     .map((recipe) => {
       const day: PlanningDay = {
         date: input.date,

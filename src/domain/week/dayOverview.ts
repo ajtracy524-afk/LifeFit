@@ -38,10 +38,11 @@ export interface DayOverview {
 export function dayOverview(day: PlanDay, today: ISODate, slots: MealSlot[], price: PriceLookup): DayOverview {
   const active = day.meals.filter((m) => m.status !== 'skipped');
   const eaten = active.filter((m) => m.status === 'eaten').length;
+  // The planned meals' part of the day: out meals keep their budget, skipped ones hand it on (Prompt 5).
   const out = excludedSlots(day.context).filter((s) => slots.includes(s));
   const share = out.length ? 1 - slotShare(out, slots) : 1;
-  const kcalRef = day.target ? Math.round(day.target.kcal * share) : undefined;
-  const proteinRef = day.target ? Math.round(day.target.protein * share) : undefined;
+  const kcalRef = day.planTarget ? Math.round(day.planTarget.kcal) : day.target ? Math.round(day.target.kcal * share) : undefined;
+  const proteinRef = day.planTarget ? Math.round(day.planTarget.protein) : day.target ? Math.round(day.target.protein * share) : undefined;
   const past = day.date < today;
   // What the day really is: eaten values for a past day, plan (eaten + still planned) otherwise.
   const kcal = past ? day.eaten.kcal : day.planned.kcal;

@@ -1181,3 +1181,11 @@ button.timelineItem:active {
 .recheckActions > button {
   min-height: 44px;
 }
+
+/* Out meal on Heute (Prompt 5): one tap logs the reserved budget. */
+.outActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}

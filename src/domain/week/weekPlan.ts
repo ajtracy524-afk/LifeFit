@@ -3,8 +3,8 @@ import { ZERO_MACROS, dayTotals, plannedMealMacros, sumMacros } from '../nutriti
 import { applyStock, buildShoppingList, shoppingRange, type ShoppingListItem } from '../shopping';
 import { hardExclusionsOf, substituteFood, swapContextOf } from '../catalogTags';
 import { resolveWorkouts, type PlannedWorkout } from '../training';
-import { EATING_OUT_SLOTS, excludedSlots } from '../timeBudget';
-import type { AppState, DayContext, ISODate, Macros, MealSlot, NutritionTarget, PlannedMeal } from '../types';
+import { excludedSlotsOn, planTargetOn, slotPlanOn } from './slotPlans';
+import type { AppState, DayContext, ISODate, Macros, MealSlot, NutritionTarget, PlannedMeal, SlotPlan } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { getFood } from '../../data/foods';
 import { ingredientCostRange, priceLookup, purchaseCost, type CostItem, type CostRange } from '../costs';
@@ -29,8 +29,12 @@ export function dayContextFor(state: Pick<AppState, 'dayContexts'>, date: ISODat
 export interface ClosedMeal {
   date: ISODate;
   slot: MealSlot;
-  /** Dinner eaten out, or a meal the user removed. */
-  reason: 'eating_out' | 'removed';
+  /** Eaten out (typical week or "Auswärts"), skipped on purpose (E12), or removed in the plan. */
+  reason: 'eating_out' | 'skip' | 'removed';
+  /** Out meals: place / size as planned. */
+  plan?: Extract<SlotPlan, { kind: 'out' }>;
+  /** Out and removed meals: the budget kept for them. */
+  reserved?: { kcal: number; protein: number };
   /** The dish that was planned before "Auswärts" – comes back with "Zuhause". */
   recipeId?: string;
 }
@@ -39,15 +43,27 @@ export interface ClosedMeal {
  * Meals of a day the plan leaves out on purpose (see excludedSlots) with the
  * reason – ONE answer for Heute, the week plan and the shopping list.
  */
-export function closedMeals(state: Pick<AppState, 'dayContexts' | 'nutritionProfile' | 'plannedMeals'>, date: ISODate): ClosedMeal[] {
+export function closedMeals(state: AppState, date: ISODate): ClosedMeal[] {
   const context = dayContextFor(state, date);
   const slots = state.nutritionProfile?.slots;
-  return excludedSlots(context)
+  const target = dayTargetFor(state, date);
+  const reserved = target ? planTargetOn(state, date, target).reserved : [];
+  return excludedSlotsOn(state, date)
     .filter((slot) => !slots || slots.includes(slot))
-    .map((slot) => {
-      const reason = context.mode === 'eating_out' && EATING_OUT_SLOTS.includes(slot) ? 'eating_out' : 'removed';
+    .map((slot): ClosedMeal => {
+      const plan = slotPlanOn(state, date, slot);
+      const removed = context.removedSlots?.includes(slot) && plan.kind !== 'out';
+      const reason = removed ? 'removed' : plan.kind === 'out' ? 'eating_out' : plan.kind === 'skip' ? 'skip' : 'removed';
       const recipeId = state.plannedMeals.find((m) => m.date === date && m.slot === slot && m.skippedFor === 'eating_out')?.recipeId;
-      return { date, slot, reason, ...(recipeId ? { recipeId } : {}) };
+      const budget = reserved.find((r) => r.slot === slot);
+      return {
+        date,
+        slot,
+        reason,
+        ...(recipeId ? { recipeId } : {}),
+        ...(plan.kind === 'out' ? { plan } : {}),
+        ...(budget ? { reserved: { kcal: budget.kcal, protein: budget.protein } } : {}),
+      };
     });
 }
 
@@ -58,6 +74,8 @@ export interface PlanDay {
   workout?: PlannedWorkout;
   isTrainingDay: boolean;
   target?: NutritionTarget;
+  /** What the planned meals should reach: the target minus out / removed meals (Prompt 5). */
+  planTarget?: Macros;
   meals: PlannedMeal[];
   /** Planned + eaten meals of the day (skipped ones excluded). */
   planned: Macros;
@@ -136,12 +154,14 @@ export function buildWeekPlan(state: AppState, weekStartDate: ISODate, today: IS
     const meals = state.plannedMeals.filter((m) => m.date === date);
     const active = meals.filter((m) => m.status !== 'skipped');
     const workout = workouts.find((w) => w.date === date && w.status !== 'skipped');
+    const target = dayTargetFor(state, date);
     return {
       date,
       context: dayContextFor(state, date),
       workout,
       isTrainingDay: !!workout,
-      target: dayTargetFor(state, date),
+      target,
+      ...(target && state.nutritionProfile ? { planTarget: planTargetOn(state, date, target).target } : {}),
       meals,
       planned: active.length ? sumMacros(active.map(plannedMealMacros)) : ZERO_MACROS,
       eaten: dayTotals(state.logEntries, date),

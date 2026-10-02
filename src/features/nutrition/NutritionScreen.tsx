@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
+import { excludedSlotsOn } from '../../domain/week/slotPlans';
 import { getRecipe } from '../../data/recipes';
 import { addDays, isoWeekNumber, today, weekDays, weekStart } from '../../domain/dates';
 import { BASIC_NUTRIENTS, daySummary, type NutritionSummary } from '../../domain/nutrition';
 import { DEFAULT_SLOTS, SLOT_ORDER } from '../../domain/planner';
 import { activeWorkouts } from '../../domain/training';
-import { excludedSlots } from '../../domain/timeBudget';
 import { buildWeekPlan, dayContextFor, dayTargetFor } from '../../domain/week';
 import type { ISODate, LogEntry, MealSlot } from '../../domain/types';
 import { fmt, formatDateLong, relativeDay, SLOT_LABEL } from '../../lib/format';
@@ -109,7 +109,7 @@ function DayView({ date, onOpenMeal, onPick, onLog }: DayViewProps) {
   const profileSlots = state.nutritionProfile?.slots ?? DEFAULT_SLOTS;
   const slots = SLOT_ORDER.filter((s) => profileSlots.includes(s) || meals.some((m) => m.slot === s) || extras.some((e) => e.slot === s));
   const isFuture = date > today();
-  const closed = excludedSlots(dayContextFor(state, date));
+  const closed = excludedSlotsOn(state, date);
 
   const go = (d: ISODate) => navigate('nutrition', { view: 'day', date: d === today() ? undefined : d }, { replace: true });
   const [cooking, setCooking] = useState(false);
@@ -339,7 +339,7 @@ function WeekView({ start, onOpenMeal, onPick }: WeekViewProps) {
   // Slots eaten out are free on purpose – not "open".
   const openSlots = days
     .filter((d) => d >= t)
-    .reduce((n, d) => n + slots.filter((s) => !excludedSlots(dayContextFor(state, d)).includes(s) && !state.plannedMeals.some((m) => m.date === d && m.slot === s)).length, 0);
+    .reduce((n, d) => n + slots.filter((s) => !excludedSlotsOn(state, d).includes(s) && !state.plannedMeals.some((m) => m.date === d && m.slot === s)).length, 0);
   const isPastWeek = end < t;
   const thisWeek = weekStart(t);
 

@@ -1,4 +1,5 @@
 import { daysBetween, weekDays, weekStart } from '../dates';
+import { excludedSlotsOn, planTargetOn, slotPlanOn } from './slotPlans';
 import { plannerAffinity } from '../preferences';
 import { postWorkoutSlot } from '../schedule';
 import { rankMealOptions, seededRandom, slotShare, suggestWeek, type MealOption } from '../planner';
@@ -6,7 +7,7 @@ import { plannedMealMacros, sumMacros } from '../nutrition';
 import type { AppState, ISODate, Macros, MealSlot, PlannedMeal } from '../types';
 import { dayTargetFor } from './dayTargets';
 import { availablePantry, dayContextFor } from './weekPlan';
-import { effectiveTimeBudget, excludedSlots, maxPrepFor } from '../timeBudget';
+import { effectiveTimeBudget, maxPrepFor } from '../timeBudget';
 import { syncPersonal } from '../personal';
 
 /**
@@ -50,7 +51,7 @@ export function planMeals(
   const profile = state.nutritionProfile;
   const target = first ? dayTargetFor(state, first) : undefined;
   if (!first || !profile || !target) return [];
-  const notPlannable = (d: ISODate) => [...new Set([...excludedSlots(dayContextFor(state, d)), ...handledSlots(state, d, today)])];
+  const notPlannable = (d: ISODate) => [...new Set([...excludedSlotsOn(state, d), ...handledSlots(state, d, today)])];
   return suggestWeek({
     dates,
     slots: opts.slots ?? profile.slots,
@@ -60,12 +61,9 @@ export function planMeals(
       if (!t) return t;
       const kcal = opts.targetKcalFor?.(d);
       if (kcal !== undefined) return { ...t, kcal };
-      // Slots eaten out (or already eaten otherwise) keep their share of the
-      // day – the planned meals do not grow to make up for it.
-      const out = notPlannable(d).filter((sl) => profile.slots.includes(sl));
-      if (out.length === 0) return t;
-      const share = 1 - slotShare(out, profile.slots);
-      return { ...t, kcal: t.kcal * share, protein: t.protein * share };
+      // Out meals reserve their budget (and leave more protein to the meals at home),
+      // removed / otherwise eaten ones keep their share, skipped ones hand it on (E12).
+      return planTargetOn(state, d, t, handledSlots(state, d, today)).target;
     },
     profile,
     existing: opts.existing ?? weekMeals(state, first),
@@ -74,6 +72,7 @@ export function planMeals(
     // Only with an answer: the user's cooking time is held (Prompt 4); without it the soft time cost as before.
     ...(state.plannerSettings?.cookingTime ? { maxPrepFor: (d: ISODate) => maxPrepFor(state.plannerSettings, dayContextFor(state, d), d) } : {}),
     excludedSlotsFor: notPlannable,
+    portableFor: (d, slot) => slotPlanOn(state, d, slot).kind === 'togo',
     postWorkoutSlotFor: (d) => postWorkoutSlot(state, d),
     random: seededRandom(opts.seed),
   });
@@ -173,6 +172,7 @@ function rankForSlot(
       extras: { affinity: ctx.affinity, budgetChf: ctx.budgetChf, pantryAgeDays: ctx.pantryAgeDays, mealPrep: ctx.mealPrep },
       priority: ctx.priority,
       exclude: p.exclude,
+      portableOnly: slotPlanOn(state, p.date, p.slot).kind === 'togo',
     },
     p.limit,
   );

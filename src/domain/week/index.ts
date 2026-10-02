@@ -1,4 +1,4 @@
-export { applyWeekChange, rebalanceDay, replanForbidden, type CascadeResult, type ChangeSummary, type WeekChange } from './cascade';
+export { applyTemplateChange, applyWeekChange, rebalanceDay, replanForbidden, type CascadeResult, type ChangeSummary, type WeekChange } from './cascade';
 export { bonusDates, bonusKcalByDate, closeCompletedDays, dayShift, dayTargetFor, MAX_BONUS_DAYS, MAX_DAY_SHIFT, shiftTarget, trainingDates, TRAINING_DAY_KCAL, trainingDayBonus } from './dayTargets';
 export { addToPantry, entryIngredients, pantryEstimate, purchaseAmount, setPantryQuantity } from './pantry';
 export { availablePantry, buildWeekPlan, closedMeals, shoppingCost, weekFoodCost, dayContextFor, DEFAULT_DAY_CONTEXT, openShoppingCount, weekShopping, type ClosedMeal, type PlanDay, type WeekPlan } from './weekPlan';

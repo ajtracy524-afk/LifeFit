@@ -504,3 +504,67 @@
   color: var(--text-2);
   background: var(--surface-2);
 }
+
+/* ---------- Typical week (Prompt 5) ---------- */
+
+.legend {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.weekDayRow {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.slotGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.slotCell {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.slotButton {
+  display: grid;
+  gap: 2px;
+  min-height: 56px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+}
+
+.slotButton[data-kind='togo'] {
+  border-color: var(--accent);
+}
+
+.slotButton[data-kind='out'] {
+  border-style: dashed;
+  background: var(--surface-2);
+}
+
+.slotButton[data-kind='skip'] {
+  border-style: dotted;
+  color: var(--text-2);
+}
+
+.outDetails {
+  display: grid;
+  gap: 6px;
+}

@@ -304,3 +304,25 @@ export const HOUSEHOLD = { min: 1, max: 8 } as const;
 
 /** Cooking time levels in minutes; "egal" = no limit. The recipes' minutes are the truth (E13). */
 export const COOKING_TIME_MIN = { '15': 15, '30': 30, '45': 45, any: Number.POSITIVE_INFINITY } as const;
+
+// ---------- Area B: the typical week (Prompt 5) ----------
+
+/**
+ * Eating out: no recipe, no purchase, a reserved share of the day instead of
+ * a kcal number (E12). Reserved kcal = the slot's usual share × size × place.
+ * Restaurant meals tend to be larger than canteen meals, meals at friends'
+ * in between – rough orientation, no source; the user picks the size.
+ * Out meals are assumed to be low in protein (15 % of their energy vs. ~25 %
+ * planned at home), so the planner shifts protein to the meals at home.
+ */
+export const EATING_OUT = {
+  size: { small: 0.7, normal: 1, large: 1.4 },
+  place: { canteen: 1, restaurant: 1.2, friends: 1.1 },
+  /** Share of the out meal's energy assumed to come from protein. */
+  proteinShare: 0.15,
+  /** Logged "as planned": the rest of the energy split into carbs / fat (by energy). */
+  carbShareOfRest: 0.55,
+} as const;
+
+/** Tolerance for the day with out meals: planned + reserved within ±10 % kcal, protein at least 90 % (same as the planner's day tests). */
+export const DAY_TOLERANCE = { kcal: 0.1, protein: 0.1 } as const;

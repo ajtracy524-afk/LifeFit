@@ -39,6 +39,10 @@ export function nutritionProfileFrom(food: FoodAnswers, base: NutritionProfile):
     setList(np, 'dislikedFoods', entries.filter(([, v]) => v === 'dislike').map(([id]) => id));
   }
   if (food.meals?.value.length) np.slots = orderedSlots(food.meals.value);
+  if (food.weekTemplate) {
+    if (Object.keys(food.weekTemplate.value).length) np.weekTemplate = structuredClone(food.weekTemplate.value);
+    else delete np.weekTemplate;
+  }
   return np;
 }
 

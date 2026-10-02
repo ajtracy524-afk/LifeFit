@@ -1931,3 +1931,46 @@
 .dinnerChoice [role='tab'] {
   min-height: 44px;
 }
+
+/* "Diese Woche abweichen" (Prompt 5) – the typical week stays as it is. */
+.weekDeviation {
+  display: grid;
+  gap: 6px;
+}
+
+.weekDeviationList {
+  display: grid;
+  gap: 6px;
+}
+
+.weekDeviationRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.weekDeviationRow select {
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.planLink {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}

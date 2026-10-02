@@ -3307,4 +3307,77 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       expect(pressed('Snack 2')).toBe(true);
     });
   });
+
+  describe('area B (Prompt 5): the typical week', () => {
+    const at = '2026-10-01T07:00:00.000Z';
+    const withTemplate = (template: Record<string, unknown>) => {
+      const s = completeState();
+      return { ...s, nutritionProfile: { ...s.nutritionProfile, weekTemplate: template } };
+    };
+
+    it('the grid: tap cycles the four states with icon and text, quick action Mo–Fr, place of an out meal', async () => {
+      localStorage.setItem(KEY, JSON.stringify(completeState()));
+      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      const store = await startApp();
+      await click('Essen & Einkauf');
+      for (let i = 0; i < 4; i++) await click('Weiter');
+      expect(title()).toBe('Deine typische Woche');
+      const slot = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label^="${label}:"]`)!;
+      expect(slot('Montag, Mittagessen').getAttribute('aria-label')).toBe('Montag, Mittagessen: Zuhause');
+      expect(slot('Montag, Mittagessen').textContent).toContain('🏠 Zuhause'); // icon AND text, not only colour
+      for (const state of ['Mitnehmen', 'Auswärts', 'Auslassen', 'Zuhause']) {
+        await act(async () => slot('Montag, Mittagessen').click());
+        expect(slot('Montag, Mittagessen').getAttribute('aria-label')).toBe(`Montag, Mittagessen: ${state}`);
+      }
+
+      await click('Mo–Fr Mittag auswärts');
+      expect(slot('Freitag, Mittagessen').getAttribute('aria-label')).toBe('Freitag, Mittagessen: Auswärts');
+      expect(store.getState().nutritionProfile!.weekTemplate![4]).toEqual({ lunch: { kind: 'out' } });
+      expect(text()).toContain('Mo–Fr Mittag auswärts'); // undo toast
+      const place = [...container.querySelectorAll('[aria-label="Freitag, Mittagessen: Art"] button')].find((b) => b.textContent === 'Restaurant') as HTMLButtonElement;
+      await act(async () => place.click());
+      expect(store.getState().onboarding!.food.weekTemplate!.value[4]).toEqual({ lunch: { kind: 'out', place: 'restaurant' } });
+      // The template reached the plan: tomorrow (Friday) has no lunch to cook or buy.
+      expect(store.getState().plannedMeals.some((m) => m.date === '2026-10-02' && m.slot === 'lunch' && m.status === 'planned')).toBe(false);
+    });
+
+    it('Heute: an out meal is a card – "Wie geplant gegessen" logs the reserved budget with one tap', async () => {
+      // A planned day: breakfast and dinner at home, lunch out by the typical week.
+      const meal = (slot: string, recipeId: string) => ({ id: slot, date: '2026-10-01', slot, recipeId, servings: 1, status: 'planned', source: 'suggest' });
+      const s = { ...withTemplate({ 3: { lunch: { kind: 'out', place: 'canteen' } } }), plannedMeals: [meal('breakfast', 'overnight-oats'), meal('dinner', 'chili')] };
+      localStorage.setItem(KEY, JSON.stringify({ ...s, onboarding: { version: 1, progress: { completed: {}, skipped: [], finishedAt: at }, body: {}, health: {}, goal: {}, food: {}, training: {} } }));
+      window.history.replaceState(null, '', '/#/today');
+      const store = await startApp();
+      const card = () => container.querySelector('[aria-label="Mittagessen auswärts"]')!;
+      expect(card().textContent).toContain('Auswärts · Kantine, normal');
+      expect(card().textContent).toMatch(/ca\. [\d.]+ kcal reserviert/);
+      await act(async () => [...card().querySelectorAll('button')].find((b) => b.textContent === 'Wie geplant gegessen')!.click());
+      const entry = store.getState().logEntries.find((e) => e.slot === 'lunch' && e.date === '2026-10-01')!;
+      expect(entry).toMatchObject({ name: 'Auswärts (Kantine)', method: 'quick' });
+      expect(entry.macros.kcal).toBeGreaterThan(400);
+      expect(card().textContent).toContain('Erfasst:');
+    });
+
+    it('the week plan: one day deviates, the typical week stays', async () => {
+      const store = await (async () => {
+        localStorage.setItem(KEY, JSON.stringify(withTemplate({ 4: { lunch: { kind: 'out' } } })));
+        window.history.replaceState(null, '', '/#/nutrition?view=week');
+        return startApp();
+      })();
+      // The smallest element holding Friday's link and its own deviation button = Friday's card.
+      const friday = [...container.querySelectorAll('div, section, article')]
+        .filter((el) => el.querySelector('a[aria-label^="Fr "]') && el.textContent!.includes('Diese Woche abweichen'))
+        .sort((a, b) => a.textContent!.length - b.textContent!.length)[0]!;
+      await act(async () => [...friday.querySelectorAll('button')].find((b) => b.textContent === 'Diese Woche abweichen')!.click());
+      const select = friday.querySelector<HTMLSelectElement>('select[aria-label="Mittagessen diese Woche"]')!;
+      expect(select.value).toBe('out');
+      await act(async () => {
+        select.value = 'home';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(store.getState().dayContexts['2026-10-02']!.slots).toEqual({ lunch: { kind: 'home' } });
+      expect(store.getState().nutritionProfile!.weekTemplate).toEqual({ 4: { lunch: { kind: 'out' } } });
+      expect(store.getState().plannedMeals.some((m) => m.date === '2026-10-02' && m.slot === 'lunch' && m.status === 'planned')).toBe(true);
+    });
+  });
 });

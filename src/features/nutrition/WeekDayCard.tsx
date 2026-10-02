@@ -4,9 +4,10 @@ import { weekdayIndex } from '../../domain/dates';
 import { DAY_MODE_LABEL, DAY_MODE_ORDER, EATING_OUT_SLOTS, TIME_BUDGETS } from '../../domain/timeBudget';
 import type { PlannedWorkout } from '../../domain/training';
 import { estimateMinutes } from '../../domain/training';
-import type { DayMode, MealSlot, PlannedMeal } from '../../domain/types';
+import type { DayMode, MealSlot, PlannedMeal, SlotPlan } from '../../domain/types';
 import type { DayOverview } from '../../domain/week/dayOverview';
 import { closedMeals, type PlanDay } from '../../domain/week';
+import { slotPlanOn, templateOn, weekSlotOverride } from '../../domain/week/slotPlans';
 import { applyWithUndo } from '../../lib/undo';
 import { useAppState } from '../../store/store';
 import { Segmented } from '../../components/ui/Controls';
@@ -47,6 +48,13 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
   const closed = closedMeals(state, day.date);
   // Where dinner happens is a planning decision – made here (and in the check-in), shown on Heute.
   const dinnerChoice = !past && slots.some((s) => EATING_OUT_SLOTS.includes(s));
+  const [deviate, setDeviate] = useState(false);
+  const setWeekSlot = (slot: MealSlot, kind: SlotPlan['kind']) => {
+    const current = slotPlanOn(state, day.date, slot);
+    if (current.kind === kind) return;
+    const slotsOverride = weekSlotOverride(context, templateOn(state, day.date), slot, { kind } as SlotPlan);
+    applyWithUndo({ type: 'setDayContext', date: day.date, context: { slots: slotsOverride } });
+  };
 
   return (
     <Card padded={false} className={[styles.weekDay, isToday && styles.weekDayToday, past && styles.weekDayPast].filter(Boolean).join(' ')}>
@@ -113,6 +121,12 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
                     <span aria-hidden>🍽️</span> {SLOT_LABEL[slot]} · Auswärts <span className={styles.muted}>– nicht im Plan, nicht im Einkauf</span>
                   </p>
                 );
+              if (off?.reason === 'skip')
+                return (
+                  <p key={slot} className={styles.closedSlot}>
+                    <span aria-hidden>⏭️</span> {SLOT_LABEL[slot]} · Ausgelassen <span className={styles.muted}>– die anderen Mahlzeiten übernehmen den Anteil</span>
+                  </p>
+                );
               if (past) return null;
               return (
                 <button key={slot} type="button" className={styles.emptySlot} onClick={() => onPick({ date: day.date, slot })}>
@@ -123,6 +137,29 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
             }
             return slotMeals.map((m: PlannedMeal) => <MealRow key={m.id} meal={m} label={SLOT_LABEL[slot]} onOpen={() => onOpenMeal(m.id)} checkable={day.date <= today} />);
           })}
+          {!past && (
+            <div className={styles.weekDeviation}>
+              <button type="button" className={styles.planLink} aria-expanded={deviate} onClick={() => setDeviate(!deviate)}>
+                Diese Woche abweichen
+              </button>
+              {deviate && (
+                <div className={styles.weekDeviationList}>
+                  {slots.map((slot) => (
+                    <label key={slot} className={styles.weekDeviationRow}>
+                      <span>{SLOT_LABEL[slot]}</span>
+                      <select aria-label={`${SLOT_LABEL[slot]} diese Woche`} value={slotPlanOn(state, day.date, slot).kind} onChange={(e) => setWeekSlot(slot, e.currentTarget.value as SlotPlan['kind'])}>
+                        <option value="home">🏠 Zuhause</option>
+                        <option value="togo">🥡 Mitnehmen</option>
+                        <option value="out">🍽️ Auswärts</option>
+                        <option value="skip">⏭️ Auslassen</option>
+                      </select>
+                    </label>
+                  ))}
+                  <p className={styles.muted}>Gilt nur für diesen Tag – deine typische Woche bleibt, wie sie ist.</p>
+                </div>
+              )}
+            </div>
+          )}
           {dinnerChoice && (
             <div className={styles.dinnerChoice}>
               <span className={styles.dinnerChoiceLabel}>Abendessen</span>

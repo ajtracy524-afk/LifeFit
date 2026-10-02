@@ -175,7 +175,8 @@ describe('dinner "Zuhause / Auswärts": decided in the week plan, followed by pl
     let s = store.getState();
     expect(s.plannedMeals.find((m) => m.id === 'd')).toMatchObject({ status: 'skipped', skippedFor: 'eating_out' });
     expect(eggs(s)).toBe(0);
-    expect(closedMeals(s, WED)).toEqual([{ date: WED, slot: 'dinner', reason: 'eating_out', recipeId: 'veggie-omelette' }]);
+    // With the budget kept for it (Prompt 5) – the share of a normal dinner.
+    expect(closedMeals(s, WED)).toEqual([{ date: WED, slot: 'dinner', reason: 'eating_out', recipeId: 'veggie-omelette', plan: { kind: 'out' }, reserved: { kcal: expect.any(Number), protein: expect.any(Number) } }]);
     // The day target stays – nothing is spread onto the other meals.
     expect(dayTargetFor(s, WED)).toEqual(dayTargetFor(base(), WED));
 
@@ -217,7 +218,7 @@ describe('dinner "Zuhause / Auswärts": decided in the week plan, followed by pl
     expect(items[1]).toMatchObject({ kind: 'closed', closed: { slot: 'dinner', reason: 'eating_out' } });
     // Removed: a closed slot without any meal record.
     const removed = base({ dayContexts: { [T]: { timeBudget: 'normal', mode: 'normal', removedSlots: ['lunch'] } } });
-    expect(dayTimeline(removed, T)).toEqual([{ kind: 'closed', time: '12:30', closed: { date: T, slot: 'lunch', reason: 'removed' } }]);
+    expect(dayTimeline(removed, T)).toEqual([{ kind: 'closed', time: '12:30', closed: { date: T, slot: 'lunch', reason: 'removed', reserved: { kcal: expect.any(Number), protein: expect.any(Number) } } }]);
   });
 });
 

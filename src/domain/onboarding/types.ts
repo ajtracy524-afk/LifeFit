@@ -1,4 +1,4 @@
-import type { CookingTime, Intolerance, LmivAllergen } from '../types';
+import type { CookingTime, Intolerance, LmivAllergen, SlotPlan, Weekday } from '../types';
 import type { ActivityLevel, BodyArea, EquipmentItem, Experience, Macros, MealSlot, MuscleGroup } from '../types';
 
 /**
@@ -56,15 +56,7 @@ export type { LmivAllergen } from '../types';
 
 export type { CookingTime, Intolerance } from '../types';
 export type CardioType = 'walking' | 'cycling' | 'running' | 'rowing' | 'swimming' | 'crosstrainer';
-/** 0 = Monday … 6 = Sunday (as everywhere in the app). */
-export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-
-export type SlotPlan =
-  | { kind: 'home' }
-  | { kind: 'togo' }
-  | { kind: 'out'; place?: 'canteen' | 'restaurant' | 'friends'; size?: 'small' | 'normal' | 'large' }
-  /** Planned skip (e.g. intermittent fasting) – its share goes to the other meals (E12). */
-  | { kind: 'skip' };
+export type { SlotPlan, Weekday, WeekTemplate } from '../types';
 
 export interface OnboardingProgress {
   /** Step to resume at. */

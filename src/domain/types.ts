@@ -17,6 +17,24 @@ export type Experience = 'beginner' | 'intermediate' | 'advanced';
 export type DietType = 'omnivore' | 'pescatarian' | 'vegetarian' | 'vegan';
 /** Intolerances, separate from the allergens (Prompt 4). */
 export type Intolerance = 'lactose' | 'fructose' | 'celiac';
+/** 0 = Monday … 6 = Sunday (as everywhere in the app). */
+export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+/** One meal of the typical week (Prompt 5). */
+export type SlotPlan =
+  /** Planned and bought. */
+  | { kind: 'home' }
+  /** Planned and bought – only portable recipes. */
+  | { kind: 'togo' }
+  /** No recipe, no purchase – a reserved calorie budget (E12). */
+  | { kind: 'out'; place?: EatingOutPlace; size?: EatingOutSize }
+  /** Planned skip (e.g. intermittent fasting) – its share goes to the other meals (E12). */
+  | { kind: 'skip' };
+export type EatingOutPlace = 'canteen' | 'restaurant' | 'friends';
+export type EatingOutSize = 'small' | 'normal' | 'large';
+/** The recurring template: weekday → slot → plan. Missing = Zuhause. */
+export type WeekTemplate = Partial<Record<Weekday, Partial<Record<MealSlot, SlotPlan>>>>;
+
 /** Cooking time levels; the recipes' minutes are the truth (E13). */
 export type CookingTime = '15' | '30' | '45' | 'any';
 /** The four exclusions of the old profile (nutritionProfile.excluded) – derived from the catalog tags until Prompt 4 switches the filter. */
@@ -318,6 +336,8 @@ export interface NutritionProfile {
   dislikedFoods?: string[];
   /** "Mag ich" – planned a little more often. */
   likedFoods?: string[];
+  /** "Deine typische Woche" (Prompt 5) – the recurring template; single weeks deviate in dayContexts. */
+  weekTemplate?: WeekTemplate;
   /** "Würde ich gern häufiger essen" (taste ids, see data/tastes.ts) – a starting point, learning can outweigh it. */
   favorites?: string[];
   /** "Eher selten oder gar nicht" – a strong soft rule, always stronger than anything learned. */
@@ -648,6 +668,8 @@ export interface DayContext {
    * plans something there again.
    */
   removedSlots?: MealSlot[];
+  /** This week only (Prompt 5): deviations from the typical week – the template stays as it is. */
+  slots?: Partial<Record<MealSlot, SlotPlan>>;
 }
 
 /**

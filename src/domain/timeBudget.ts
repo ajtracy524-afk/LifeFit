@@ -1,6 +1,6 @@
 import { COOKING_TIME_MIN } from './constants';
 import { weekdayIndex } from './dates';
-import type { DayContext, DayMode, ISODate, MealSlot, PlannerSettings, TimeBudget } from './types';
+import type { DayContext, DayMode, ISODate, MealSlot, PlannerSettings, SlotPlan, TimeBudget, Weekday, WeekTemplate } from './types';
 
 /**
  * F5 – time budget per day. One place defines what "wenig / normal / viel
@@ -54,11 +54,35 @@ export const EATING_OUT_SLOTS: MealSlot[] = ['dinner'];
  * task": dinner eaten out, and meals the user removed. Planner, cascade,
  * engine and the day view all read from here.
  */
-export function excludedSlots(context: DayContext | undefined): MealSlot[] {
-  const out = context?.mode === 'eating_out' ? EATING_OUT_SLOTS : [];
+export function excludedSlots(context: DayContext | undefined, template?: TemplateDay): MealSlot[] {
+  const closed = ALL_SLOTS.filter((slot) => isClosedPlan(slotPlanOf(context, template, slot)));
   const removed = context?.removedSlots ?? [];
-  return removed.length ? [...new Set([...out, ...removed])] : out;
+  return removed.length ? [...new Set([...closed, ...removed])] : closed;
 }
+
+/** The template of one weekday (Prompt 5). */
+export type TemplateDay = Partial<Record<MealSlot, SlotPlan>>;
+const ALL_SLOTS: MealSlot[] = ['breakfast', 'snack', 'lunch', 'snack2', 'dinner'];
+const HOME: SlotPlan = { kind: 'home' };
+
+export function templateDay(template: WeekTemplate | undefined, date: ISODate): TemplateDay | undefined {
+  return template?.[weekdayIndex(date) as Weekday];
+}
+
+/**
+ * ONE answer per date and slot (Prompt 5): this week's deviation → the old
+ * "Abendessen auswärts" of the day → the typical week → Zuhause. A meal removed
+ * spontaneously ("Entfernt", E12) is separate: removedSlots.
+ */
+export function slotPlanOf(context: DayContext | undefined, template: TemplateDay | undefined, slot: MealSlot): SlotPlan {
+  const own = context?.slots?.[slot];
+  if (own) return own;
+  if (context?.mode === 'eating_out' && EATING_OUT_SLOTS.includes(slot)) return { kind: 'out' };
+  return template?.[slot] ?? HOME;
+}
+
+/** Out and skip are not planned (and not bought); home and to-go are. */
+export const isClosedPlan = (plan: SlotPlan): boolean => plan.kind === 'out' || plan.kind === 'skip';
 
 /**
  * Longest preparation that fits a day (Prompt 4, E13). The user's usual
