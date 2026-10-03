@@ -283,6 +283,10 @@
   color: var(--text-3);
 }
 
+.search:focus-within {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 .search input {
   flex: 1;
   height: 44px;

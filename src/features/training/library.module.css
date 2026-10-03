@@ -53,6 +53,10 @@
   color: var(--text-3);
 }
 
+.search:focus-within {
+  box-shadow: var(--shadow), 0 0 0 2px var(--accent);
+}
+
 .search input {
   flex: 1;
   align-self: stretch;

@@ -2987,6 +2987,19 @@ describe('onboarding – frame, resume, re-open', () => {
     expect(window.location.hash).toBe('#/profile');
   });
 
+  it('#/onboarding without an open flow (back button after "Fertig") shows Heute, not a stale step', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/profile');
+    await startApp();
+    await click('Essen & Einkauf');
+    for (let i = 0; i < 6 && title() !== 'Was hast du schon zu Hause?'; i++) await click('Weiter');
+    await click('Fertig');
+    expect(window.location.hash).toBe('#/profile');
+    await go('onboarding');
+    expect(window.location.hash).toBe('#/today');
+    expect(text()).toMatch(/Guten Morgen/);
+  });
+
   describe('area A (Prompt 2): body data, analysis, body fat', () => {
     const input = () => container.querySelector<HTMLInputElement>('main input')!;
     /** Detailed path up to the analysis: 90 kg, 180 cm, born 1990, male, 3–5 years, active, no waist. */

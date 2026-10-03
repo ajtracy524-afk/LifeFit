@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { today, weekStart } from './domain/dates';
 import { openShoppingCount } from './domain/week';
-import { useRoute, type Tab } from './lib/router';
+import { navigate, useRoute, type Route, type Tab } from './lib/router';
 import { closeDays } from './store/actions';
 import { isSetupComplete } from './store/persistence';
 import { useAppState, useStorageStatus } from './store/store';
@@ -33,6 +33,7 @@ export function App() {
   const shoppingBadge = useShoppingBadge();
   useDayClose();
   useWaterNotifications();
+  useLeaveStaleOnboarding(route, isSetupComplete(state) && !state.onboarding?.progress.active);
 
   // An open flow resumes at its step after a restart; the profile and Heute re-open single sections via #/onboarding.
   const onboardingOpen = isSetupComplete(state) && (route.path === 'onboarding' || !!state.onboarding?.progress.active);
@@ -83,6 +84,17 @@ export function App() {
  * to the foreground and when the date changes while it is open. Runs in an
  * effect (never during render) and is idempotent.
  */
+/**
+ * #/onboarding without an open flow (e.g. the back button after "Fertig") shows
+ * Heute instead of a stale step. Only while the address bar still says
+ * #/onboarding – right after an exit the hash already points elsewhere.
+ */
+function useLeaveStaleOnboarding(route: Route, nothingOpen: boolean) {
+  useEffect(() => {
+    if (route.path === 'onboarding' && nothingOpen && window.location.hash.startsWith('#/onboarding')) navigate('today', undefined, { replace: true });
+  }, [route, nothingOpen]);
+}
+
 function useDayClose() {
   useEffect(() => {
     closeDays();
