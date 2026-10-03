@@ -13,13 +13,12 @@ interface SegmentedProps<T extends string> {
 
 export function Segmented<T extends string>({ options, value, onChange, label }: SegmentedProps<T>) {
   return (
-    <div className={styles.segmented} role="tablist" aria-label={label}>
+    <div className={styles.segmented} role="group" aria-label={label}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
-          role="tab"
-          aria-selected={o.value === value}
+          aria-pressed={o.value === value}
           className={o.value === value ? styles.segmentActive : styles.segment}
           onClick={() => onChange(o.value)}
         >

@@ -350,7 +350,7 @@ describe('move / skip a workout (end to end)', () => {
     const full = minutes();
 
     // Heute shows status only – no control that re-plans meals.
-    expect(container.querySelector('[role="tablist"][aria-label="Zeit zum Kochen"]')).toBeNull();
+    expect(container.querySelector('[role="group"][aria-label="Zeit zum Kochen"]')).toBeNull();
     expect(store.getState()).toBe(before);
 
     await act(async () => window.location.assign('#/nutrition'));
@@ -467,7 +467,7 @@ describe('weekly autopilot (F1)', () => {
     return found;
   };
   const tab = (group: string, label: string) => {
-    const list = container.querySelector(`[role="tablist"][aria-label="${group}"]`);
+    const list = container.querySelector(`[role="group"][aria-label="${group}"]`);
     const found = [...(list?.querySelectorAll('button') ?? [])].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
     if (!found) throw new Error(`${group} / ${label} not found`);
     return found;
@@ -1447,10 +1447,12 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     const store = await startApp();
     // A stored "Busy" day was loaded as what it meant: little time, dinner at home.
     expect(store.getState().dayContexts[TUE]).toEqual({ timeBudget: 'low', mode: 'normal' });
-    const groups = [...container.querySelectorAll('[role="tablist"]')].map((g) => g.getAttribute('aria-label'));
+    const groups = [...container.querySelectorAll('[role="group"]')].map((g) => g.getAttribute('aria-label'));
     expect(groups).toEqual(expect.arrayContaining(['Zeit zum Kochen', 'Abendessen']));
-    const dinner = container.querySelector('[role="tablist"][aria-label="Abendessen"]')!;
+    const dinner = container.querySelector('[role="group"][aria-label="Abendessen"]')!;
     expect([...dinner.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Zuhause', 'Auswärts']);
+    // A choice, announced as pressed toggle buttons in a labelled group (not as tabs without panels).
+    expect([...dinner.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent)).toEqual(['Zuhause']);
     expect(text()).not.toMatch(/Busy|Reise/);
     expect(text()).toMatch(/Nur schnelle Gerichte \(bis 15 min\)/);
   });
@@ -1520,11 +1522,11 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     window.history.replaceState(null, '', '/#/today');
     const store = await startApp();
     // Heute: no dinner decision here any more.
-    expect(container.querySelector('[role="tablist"][aria-label="Abendessen"]')).toBeNull();
+    expect(container.querySelector('[role="group"][aria-label="Abendessen"]')).toBeNull();
 
     await act(async () => window.location.assign('#/nutrition?view=week'));
     await act(async () => new Promise((r) => setTimeout(r, 0)));
-    const wed = container.querySelector('[role="tablist"][aria-label^="Abendessen Mi"]')!;
+    const wed = container.querySelector('[role="group"][aria-label^="Abendessen Mi"]')!;
     await act(async () => [...wed.querySelectorAll('button')].find((b) => b.textContent?.includes('Auswärts'))!.click());
     expect(store.getState().plannedMeals.find((m) => m.id === 'd-wed')).toMatchObject({ status: 'skipped', skippedFor: 'eating_out' });
     expect(text()).toMatch(/Abendessen · Auswärts/);
@@ -1536,7 +1538,7 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     await go('nutrition');
     await act(async () => window.location.assign('#/nutrition?view=week'));
     await act(async () => new Promise((r) => setTimeout(r, 0)));
-    const tue = container.querySelector('[role="tablist"][aria-label^="Abendessen Di"]')!;
+    const tue = container.querySelector('[role="group"][aria-label^="Abendessen Di"]')!;
     await act(async () => [...tue.querySelectorAll('button')].find((b) => b.textContent?.includes('Auswärts'))!.click());
     await go('today');
     expect(text()).toMatch(/Abendessen heute auswärts · im Wochenplan ändern/);
@@ -1544,7 +1546,7 @@ describe('Heute & Ernährung: status signals, day type, clear day options, expla
     // Back to Zuhause: the same dinner returns, once.
     await act(async () => window.location.assign('#/nutrition?view=week'));
     await act(async () => new Promise((r) => setTimeout(r, 0)));
-    const wed2 = container.querySelector('[role="tablist"][aria-label^="Abendessen Mi"]')!;
+    const wed2 = container.querySelector('[role="group"][aria-label^="Abendessen Mi"]')!;
     await act(async () => [...wed2.querySelectorAll('button')].find((b) => b.textContent?.includes('Zuhause'))!.click());
     expect(store.getState().plannedMeals.filter((m) => m.date === '2026-09-23' && m.slot === 'dinner').map((m) => [m.id, m.status])).toEqual([['d-wed', 'planned']]);
   });
