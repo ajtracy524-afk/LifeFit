@@ -1160,6 +1160,11 @@ export function dismissRecommendation(id: string, topic?: string): void {
   });
 }
 
+/** "Sicherung einspielen": a checked and migrated backup replaces the data (undo via the snapshot). */
+export function importBackup(next: AppState): void {
+  commit(next);
+}
+
 export function exportData(): string {
   return JSON.stringify({ exportedAt: new Date().toISOString(), app: 'LifeFit', data: getState() }, null, 2);
 }

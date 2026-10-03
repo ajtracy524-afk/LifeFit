@@ -72,7 +72,7 @@ Stand: Onboarding abgeschlossen (Prompt 9). Die Rückverfolgung jeder Onboarding
 ## Profil
 
 - Körperdaten, Ziel und Kalorien, Training: Änderungen zeigen Vorher/Nachher. Die neue Zielversion entsteht erst nach Bestätigung, mit Rückgängig; ältere Versionen bleiben unverändert.
-- Ernährung, Budget, Tagesablauf, Wasser-Erinnerungen, „Was LifeFit gelernt hat“ (zurücksetzbar), Export, alles löschen.
+- Ernährung, Budget, Tagesablauf, Wasser-Erinnerungen, „Was LifeFit gelernt hat“ (zurücksetzbar), Export und „Sicherung einspielen“ (mit Vorschau und Rückgängig), alles löschen.
 
 ## Zahlenfreier Modus
 
@@ -80,7 +80,7 @@ Portionen und Ringe statt kcal-Zahlen, in der ganzen App: Heute, Ernährung, For
 
 ## Daten und Sicherheit
 
-- Alles lokal (`localStorage`), versionierte Migrationen, beschädigte Daten werden gesichert.
+- Alles lokal (`localStorage`), versionierte Migrationen, beschädigte Daten werden gesichert. Die App bittet den Browser, die Daten dauerhaft zu behalten; eine exportierte Sicherung lässt sich wieder einspielen.
 - Netzwerk nur auf Nutzeraktion (Barcode, Online-Suche). Preise kommen nie aus fremden Quellen.
 - Schutzregeln:
   - Unter 18 sowie in Schwangerschaft und Stillzeit gibt es nur „Halten“ und kein Defizit.

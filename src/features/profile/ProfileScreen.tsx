@@ -46,6 +46,7 @@ import { flowStateOf, SECTION_LABEL, SECTIONS, stepDef } from '../../domain/onbo
 import { applyProfileChange, openOnboardingSection, saveOnboardingFlow } from '../../store/onboardingActions';
 import { previewLines, recalcPreview } from '../../domain/onboarding/recalc';
 import { RecalcPreview } from './RecalcPreview';
+import { BackupImport } from './BackupSheet';
 import styles from './profile.module.css';
 
 type Panel = 'goal' | 'nutrition' | 'training' | 'body' | 'budget' | 'schedule' | 'water' | 'reset' | null;
@@ -214,6 +215,7 @@ export function ProfileScreen() {
       <Section title="Daten & Datenschutz">
         <Card padded={false}>
           <Row icon="download" label="Daten exportieren" value="Alle Einträge als JSON-Datei" onClick={download} />
+          <BackupImport>{(pick) => <Row icon="upload" label="Sicherung einspielen" value="Eine exportierte Datei wiederherstellen" onClick={pick} />}</BackupImport>
           <Row icon="trash" label="Alle Daten löschen" value="App zurücksetzen" onClick={() => setPanel('reset')} danger />
         </Card>
         <p className={styles.note}>🔒 Deine Daten werden ausschließlich auf diesem Gerät gespeichert. Es gibt kein Konto und keine Übertragung an Server.</p>

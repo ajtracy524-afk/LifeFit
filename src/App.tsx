@@ -3,7 +3,7 @@ import { today, weekStart } from './domain/dates';
 import { openShoppingCount } from './domain/week';
 import { navigate, useRoute, type Route, type Tab } from './lib/router';
 import { closeDays } from './store/actions';
-import { isSetupComplete } from './store/persistence';
+import { isSetupComplete, requestPersistentStorage } from './store/persistence';
 import { useAppState, useStorageStatus } from './store/store';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TabBar } from './components/TabBar';
@@ -34,6 +34,7 @@ export function App() {
   useDayClose();
   useWaterNotifications();
   useLeaveStaleOnboarding(route, isSetupComplete(state) && !state.onboarding?.progress.active);
+  usePersistentStorage(isSetupComplete(state));
 
   // An open flow resumes at its step after a restart; the profile and Heute re-open single sections via #/onboarding.
   const onboardingOpen = isSetupComplete(state) && (route.path === 'onboarding' || !!state.onboarding?.progress.active);
@@ -93,6 +94,13 @@ function useLeaveStaleOnboarding(route: Route, nothingOpen: boolean) {
   useEffect(() => {
     if (route.path === 'onboarding' && nothingOpen && window.location.hash.startsWith('#/onboarding')) navigate('today', undefined, { replace: true });
   }, [route, nothingOpen]);
+}
+
+/** Once the app holds real data, ask the browser not to clear it. */
+function usePersistentStorage(hasData: boolean) {
+  useEffect(() => {
+    if (hasData) void requestPersistentStorage();
+  }, [hasData]);
 }
 
 function useDayClose() {

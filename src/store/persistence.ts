@@ -104,13 +104,8 @@ export function loadState(): LoadResult {
   if (!raw) return { state: emptyState() };
 
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
     // Migrated state is only written on the next change – loading never writes.
-    if (parsed.schemaVersion === 1) return { state: migrateLegacy(migrateV1(parsed)) };
-    // v2 → v3 adds only the onboarding record (derived from the core data, nothing else changes).
-    if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) throw new Error('Unknown schema version');
-    // Merge onto defaults so newly added fields always exist.
-    return { state: migrateLegacy({ ...emptyState(), ...parsed, schemaVersion: 3 } as AppState) };
+    return { state: migrateStored(JSON.parse(raw) as Record<string, unknown>) };
   } catch {
     // Never silently discard user data: keep a copy for recovery.
     try {
@@ -119,6 +114,55 @@ export function loadState(): LoadResult {
       /* storage full – nothing more we can do */
     }
     return { state: emptyState(), notice: 'recovered' };
+  }
+}
+
+/** Stored data of any known schema version → the current state. Throws on anything else. */
+function migrateStored(parsed: Record<string, unknown>): AppState {
+  if (!parsed || typeof parsed !== 'object') throw new Error('Not an object');
+  if (parsed.schemaVersion === 1) return migrateLegacy(migrateV1(parsed));
+  // v2 → v3 adds only the onboarding record (derived from the core data, nothing else changes).
+  if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) throw new Error('Unknown schema version');
+  // Merge onto defaults so newly added fields always exist.
+  return migrateLegacy({ ...emptyState(), ...parsed, schemaVersion: 3 } as AppState);
+}
+
+export type BackupResult = { ok: true; state: AppState; exportedAt?: string } | { ok: false; reason: string };
+
+/**
+ * A file from "Daten exportieren" (or a raw stored state) → a complete state,
+ * migrated like stored data. Nothing is written here.
+ */
+export function parseBackup(text: string): BackupResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, reason: 'Die Datei ist keine LifeFit-Sicherung (kein gültiges JSON).' };
+  }
+  const wrapper = parsed as { app?: unknown; data?: unknown; exportedAt?: unknown } | null;
+  const data = wrapper && wrapper.app === 'LifeFit' ? wrapper.data : parsed;
+  let state: AppState;
+  try {
+    state = migrateStored(data as Record<string, unknown>);
+  } catch {
+    return { ok: false, reason: 'Die Datei ist keine LifeFit-Sicherung oder stammt aus einer unbekannten Version.' };
+  }
+  if (!isSetupComplete(state)) return { ok: false, reason: 'Die Sicherung enthält keine vollständigen LifeFit-Daten.' };
+  return { ok: true, state, ...(typeof wrapper?.exportedAt === 'string' ? { exportedAt: wrapper.exportedAt } : {}) };
+}
+
+/**
+ * Asks the browser to keep the data (otherwise it may be cleared under storage
+ * pressure, or after a week without use in Safari). Asked once the app holds
+ * real data; a browser that already granted it is not asked again.
+ */
+export async function requestPersistentStorage(): Promise<void> {
+  try {
+    if (!navigator.storage?.persist || (await navigator.storage.persisted())) return;
+    await navigator.storage.persist();
+  } catch {
+    /* not supported – the data stays in localStorage as before */
   }
 }
 

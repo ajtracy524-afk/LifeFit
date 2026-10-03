@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
-import { emptyState, loadState } from './persistence';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { emptyState, loadState, parseBackup, requestPersistentStorage } from './persistence';
 
 const KEY = 'lifefit:v1';
 const BACKUP_KEY = 'lifefit:corrupt-backup';
@@ -55,5 +55,53 @@ describe('persistence: schema v3 (onboarding record)', () => {
     expect(notice).toBeUndefined();
     expect(state.profile).toEqual(v2.profile);
     expect(state.onboarding!.body.heightCm).toMatchObject({ value: 182 });
+  });
+});
+
+describe('backup: "Sicherung einspielen"', () => {
+  it('reads an export file (wrapper with data) and migrates it like stored data', () => {
+    const file = JSON.stringify({ exportedAt: '2026-09-30T18:00:00.000Z', app: 'LifeFit', data: v2 });
+    const result = parseBackup(file);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.exportedAt).toBe('2026-09-30T18:00:00.000Z');
+    expect(result.state.schemaVersion).toBe(3);
+    expect(result.state.targets).toEqual(v2.targets);
+    expect(result.state.onboarding!.progress.legacy).toBe(true);
+  });
+
+  it('also accepts a raw stored state', () => {
+    expect(parseBackup(JSON.stringify(v2)).ok).toBe(true);
+  });
+
+  it('refuses what is not a complete LifeFit backup – with a reason, never a half state', () => {
+    const reason = (text: string) => {
+      const r = parseBackup(text);
+      return r.ok ? undefined : r.reason;
+    };
+    expect(reason('{nope')).toMatch(/kein gültiges JSON/);
+    expect(reason(JSON.stringify({ ...v2, schemaVersion: 99 }))).toMatch(/unbekannten Version/);
+    expect(reason(JSON.stringify({ ...v2, targets: [] }))).toMatch(/keine vollständigen LifeFit-Daten/);
+    expect(reason('null')).toMatch(/keine LifeFit-Sicherung/);
+  });
+});
+
+describe('persistent storage', () => {
+  const withStorage = (storage: unknown) => Object.defineProperty(navigator, 'storage', { value: storage, configurable: true });
+  afterEach(() => withStorage(undefined));
+
+  it('asks the browser once – not again when already granted, quietly without support', async () => {
+    const persist = vi.fn(async () => true);
+    withStorage({ persisted: async () => false, persist });
+    await requestPersistentStorage();
+    expect(persist).toHaveBeenCalledTimes(1);
+
+    const again = vi.fn(async () => true);
+    withStorage({ persisted: async () => true, persist: again });
+    await requestPersistentStorage();
+    expect(again).not.toHaveBeenCalled();
+
+    withStorage(undefined);
+    await expect(requestPersistentStorage()).resolves.toBeUndefined();
   });
 });

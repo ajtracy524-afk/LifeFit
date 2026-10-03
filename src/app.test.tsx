@@ -661,6 +661,56 @@ describe('undo safety', () => {
   });
 });
 
+describe('backup (Daten & Datenschutz)', () => {
+  beforeEach(() => {
+    HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+
+  const choose = async (content: string) => {
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = new File([content], 'lifefit-export.json', { type: 'application/json' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  };
+
+  it('"Sicherung einspielen": preview of the file, replace on confirm, "Rückgängig" restores the previous data', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/profile');
+    const store = await startApp();
+    const before = store.getState();
+    const backup = { ...completeState(), profile: { ...completeState().profile, name: 'Backup' }, weights: [{ id: 'w1', date: '2026-09-01', kg: 79 }, { id: 'w2', date: '2026-09-08', kg: 78.5 }] };
+    await choose(JSON.stringify({ exportedAt: '2026-09-10T12:00:00.000Z', app: 'LifeFit', data: backup }));
+    const preview = container.querySelector('[aria-label="Inhalt der Sicherung"]')!;
+    expect(preview.textContent).toContain('2 Gewichtseinträge');
+    expect(store.getState()).toBe(before); // nothing replaced before confirming
+    await clickInDialog('Einspielen');
+    expect(store.getState().profile!.name).toBe('Backup');
+    expect(store.getState().weights).toHaveLength(2);
+    expect(storedState()!.profile!.name).toBe('Backup');
+    await click('Rückgängig');
+    expect(store.getState().profile!.name).toBe('Alex');
+  });
+
+  it('a wrong file is refused with a reason – the data stays untouched', async () => {
+    localStorage.setItem(KEY, JSON.stringify(completeState()));
+    window.history.replaceState(null, '', '/#/profile');
+    const store = await startApp();
+    const before = store.getState();
+    await choose('{"hello": "world"}');
+    expect(text()).toMatch(/keine LifeFit-Sicherung|keine vollständigen LifeFit-Daten/);
+    expect(container.querySelector('[aria-label="Inhalt der Sicherung"]')).toBeNull();
+    expect(store.getState()).toBe(before);
+  });
+});
+
 describe('error boundary', () => {
   it('shows a fallback with "Neu laden" instead of a blank page', async () => {
     vi.doMock('./features/onboarding/v2/OnboardingV2', () => ({
