@@ -8,13 +8,29 @@ export function appStartDate(state: Pick<AppState, 'profile'>): ISODate {
   return state.profile ? toISODate(new Date(state.profile.createdAt)) : today();
 }
 
-/** Trailing 7-day average per entry – smooths out daily water fluctuations. */
+/** Days since 1970 – parsed once per entry. */
+const dayNumber = (iso: ISODate) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return Date.UTC(y!, m! - 1, d!) / 86_400_000;
+};
+
+/**
+ * Trailing 7-day average per entry – smooths out daily water fluctuations.
+ * One pass over the sorted entries with a sliding window (it runs for every
+ * day target, so it must stay linear with years of daily weights).
+ */
 export function withTrend(weights: WeightEntry[]): (WeightEntry & { trend: number })[] {
   const sorted = [...weights].sort((a, b) => a.date.localeCompare(b.date));
-  return sorted.map((w) => {
-    const window = sorted.filter((o) => o.date <= w.date && daysBetween(o.date, w.date) < 7);
-    const trend = window.reduce((s, o) => s + o.kg, 0) / window.length;
-    return { ...w, trend };
+  const days = sorted.map((w) => dayNumber(w.date));
+  let from = 0;
+  let to = 0;
+  return sorted.map((w, i) => {
+    // The window: every entry of the same day or up to 6 days earlier.
+    while (to < sorted.length && days[to]! <= days[i]!) to++;
+    while (days[from]! <= days[i]! - 7) from++;
+    let sum = 0;
+    for (let j = from; j < to; j++) sum += sorted[j]!.kg;
+    return { ...w, trend: sum / (to - from) };
   });
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getFood } from '../data/foods';
 import { RECIPES, getRecipe } from '../data/recipes';
-import { addDays, weekDays, weekStart, weekdayIndex } from './dates';
+import { addDays, daysBetween, weekDays, weekStart, weekdayIndex } from './dates';
 import { calculateTargets, plannedMealMacros, recipeAllowed, sumMacros, targetForDate } from './nutrition';
 import { suggestWeek, swapOptions } from './planner';
 import { goalProgress, withTrend } from './progress';
@@ -199,5 +199,25 @@ describe('progress', () => {
     const g = goalProgress({ type: 'muscle_gain', startWeightKg: 78, targetWeightKg: 82, startedAt: '2026-09-01' }, weights);
     expect(g.percent).toBe(38);
     expect(g.etaWeeks).toBeGreaterThan(0);
+  });
+
+  it('the linear trend equals the plain 7-day window – also with gaps, two entries a day and the DST change', () => {
+    // The plain definition (the former O(n²) implementation).
+    const reference = (weights: { date: string; kg: number }[]) => {
+      const sorted = [...weights].sort((a, b) => a.date.localeCompare(b.date));
+      return sorted.map((w) => {
+        const window = sorted.filter((o) => o.date <= w.date && daysBetween(o.date, w.date) < 7);
+        return window.reduce((s, o) => s + o.kg, 0) / window.length;
+      });
+    };
+    let seed = 7;
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const weights: { id: string; date: string; kg: number }[] = [];
+    for (let d = '2026-03-01'; d < '2027-04-15'; d = addDays(d, 1)) {
+      const n = random() < 0.3 ? 0 : random() < 0.1 ? 2 : 1; // gaps and doubles
+      for (let k = 0; k < n; k++) weights.push({ id: `${d}-${k}`, date: d, kg: Math.round((75 + random() * 10) * 10) / 10 });
+    }
+    const unsorted = [...weights].reverse();
+    expect(withTrend(unsorted).map((w) => w.trend)).toEqual(reference(unsorted));
   });
 });
