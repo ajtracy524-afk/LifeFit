@@ -10,9 +10,12 @@ Was die App kann, steht in [FEATURES.md](FEATURES.md). Wie jede Onboarding-Angab
 npm install
 npm run dev        # http://localhost:5173 (im WLAN auch vom Handy erreichbar)
 npm run typecheck  # TypeScript strict
+npm run lint       # oxlint: React-Hooks-Regeln und Korrektheit (.oxlintrc.json)
 npm test           # Domänen-, Store- und App-Tests (Vitest)
 npm run build      # Typecheck + Produktions-Build nach dist/
 ```
+
+GitHub Actions (`.github/workflows/ci.yml`) führt bei jedem Push Typecheck, Lint, Tests und Build aus.
 
 ## Architektur
 

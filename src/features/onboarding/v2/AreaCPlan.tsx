@@ -47,6 +47,7 @@ export function PlanStep() {
   };
   // A stored draft counts only for the answers it was made for.
   const draft = stored && stored.key === key ? stored : undefined;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands in for the answers in `input` (a new object each render)
   const generated = useMemo(() => recommendPlan({ ...input, ...(draft ? { split: draft.split } : {}) }), [key, draft?.split]);
   const plan: PlanDraft = draft ?? { key, split: generated.split.id, sessions: generated.sessions, week: generated.week };
   const save = (next: PlanDraft) => setTrainingAnswer('planDraft', next);

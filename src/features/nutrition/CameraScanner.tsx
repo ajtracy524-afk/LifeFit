@@ -113,7 +113,7 @@ export function CameraScanner({ onDetected, onCancel, onManualEntry, onSearch, c
       }
     })();
     return stop;
-  }, []);
+  }, [continuous]);
 
   if (status !== 'starting' && status !== 'scanning') {
     return (

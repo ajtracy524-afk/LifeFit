@@ -36,17 +36,17 @@ function StartSheetInner({ template, onClose }: { template: WorkoutTemplate; onC
   const usual = state.training?.sessionMinutes;
   const [minutes, setMinutes] = useState<number | undefined>(usual && usual < planned - 2 ? usual : undefined);
   // Discomfort from the feedback of a session in the last 7 days is preselected – visible and removable.
-  const carried = useMemo(() => {
+  const [carried] = useState(() => {
     const last = state.workouts.filter((w) => w.status === 'completed' && w.date >= addDays(today(), -7)).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
     return last?.feedback?.discomfort ?? [];
-  }, []);
+  });
   // Lasting limitations from the profile, plus discomfort reported after a recent session – visible and removable.
   const lasting = state.training?.limitations?.areas ?? [];
   const [areas, setAreas] = useState<BodyArea[]>(() => [...new Set([...lasting, ...carried])]);
   const [energy, setEnergy] = useState<Energy | undefined>(undefined);
   const [decisions, setDecisions] = useState<Record<string, 'accepted' | 'skipped'>>({});
-  const checkIn: SessionCheckIn = { ...(minutes ? { minutes } : {}), ...(areas.length ? { discomfort: areas } : {}), ...(energy ? { energy } : {}) };
-  const proposals = useMemo(() => proposeAdaptations(template, checkIn, { history: state.workouts, equipment: state.training?.equipment, setup: state.training }), [template, minutes, areas, energy, state.workouts]);
+  const checkIn = useMemo<SessionCheckIn>(() => ({ ...(minutes ? { minutes } : {}), ...(areas.length ? { discomfort: areas } : {}), ...(energy ? { energy } : {}) }), [minutes, areas, energy]);
+  const proposals = useMemo(() => proposeAdaptations(template, checkIn, { history: state.workouts, equipment: state.training?.equipment, setup: state.training }), [template, checkIn, state.workouts, state.training]);
   const accepted = proposals.filter((p) => decisions[p.id] === 'accepted');
   const options = [...new Set([25, 35, 45, 60, 75, planned].filter((m) => m <= planned + 30))].sort((a, b) => a - b);
 

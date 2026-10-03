@@ -27,6 +27,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidUpdate(prev: Props) {
+    // eslint-disable-next-line react/no-did-update-set-state -- guarded reset when the screen changes (no render loop)
     if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null });
   }
 

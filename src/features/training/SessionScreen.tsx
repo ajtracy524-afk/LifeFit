@@ -602,14 +602,12 @@ interface NumberCellProps {
 /** Keeps a local draft so typing "82," works; commits valid numbers immediately. */
 function NumberCell({ value, placeholder, label, integer, disabled, onCommit }: NumberCellProps) {
   const [draft, setDraft] = useState(value === null ? '' : String(value).replace('.', ','));
-
-  useEffect(() => {
-    const parsed = parseNumber(draft);
-    if ((value ?? NaN) !== parsed && !(value === null && draft === '')) {
-      setDraft(value === null ? '' : String(value).replace('.', ','));
-    }
-    // Only react to external changes (e.g. "+ Satz" copying the previous values).
-  }, [value]);
+  // Only external changes (e.g. "+ Satz" copying the previous values) replace the draft – adjusted while rendering.
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) {
+    setSeen(value);
+    if ((value ?? NaN) !== parseNumber(draft) && !(value === null && draft === '')) setDraft(value === null ? '' : String(value).replace('.', ','));
+  }
 
   return (
     <span role="cell">

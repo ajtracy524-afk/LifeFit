@@ -237,7 +237,7 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
   const [mealId] = useState(newId);
   // "Wie gestern": the same slot yesterday, as it was really eaten – one tap.
   const yesterday = addDays(date, -1);
-  const again = useMemo(() => slotRepeat(state, yesterday, slot), [state.plannedMeals, state.logEntries, yesterday, slot]);
+  const again = useMemo(() => slotRepeat(state, yesterday, slot), [state, yesterday, slot]);
 
   return (
     <>

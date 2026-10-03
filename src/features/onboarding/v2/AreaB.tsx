@@ -19,6 +19,9 @@ import styles from './onboardingV2.module.css';
 export const AREA_B_STEPS: OnboardingStepId[] = ['diet', 'allergies', 'preferences', 'routine', 'week', 'pantry'];
 
 type Food = OnboardingProfile['food'];
+/** Stable fallbacks – a new {} / [] on every render would defeat the memos below. */
+const NO_ANSWERS: Food = {};
+const NO_ENTRIES: string[] = [];
 
 /** The nutrition profile as the answers so far define it – also before the core setup exists. */
 function profileFromAnswers(food: Food, current: NutritionProfile | null): NutritionProfile {
@@ -27,7 +30,7 @@ function profileFromAnswers(food: Food, current: NutritionProfile | null): Nutri
 
 export function AreaBStep({ step }: { step: OnboardingStepId }) {
   const state = useAppState();
-  const food = state.onboarding?.food ?? {};
+  const food = state.onboarding?.food ?? NO_ANSWERS;
   const np = useMemo(() => profileFromAnswers(food, state.nutritionProfile), [food, state.nutritionProfile]);
   switch (step) {
     case 'diet':
@@ -100,7 +103,7 @@ function AllergiesStep({ food, np }: { food: Food; np: NutritionProfile }) {
   const tracesOk = food.tracesOk?.value ?? [];
   const intolerances = food.intolerances?.value ?? [];
   const exclusions = food.exclusions?.value ?? [];
-  const custom = food.customExclusions?.value ?? [];
+  const custom = food.customExclusions?.value ?? NO_ENTRIES;
   const [text, setText] = useState('');
   const migrated = food.allergens?.source === 'migrated' || food.intolerances?.source === 'migrated';
   const matched = useMemo(() => custom.map((c) => ({ entry: c, ...matchCatalog([c], FOODS) })), [custom]);

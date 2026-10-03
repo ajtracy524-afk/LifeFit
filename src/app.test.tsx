@@ -930,7 +930,8 @@ describe('Heute: replace a meal, balance, eaten vs. next (phase 1)', () => {
     await act(async () => eat.click());
     // Replacing is one flow with ONE feedback line: what the new food brings, or what changed (old → new · kcal).
     const replaced = document.querySelector<HTMLElement>('[data-testid="celebration"]')!;
-    if (replaced.dataset.kind === 'check') expect(replaced.textContent).toMatch(new RegExp(`Vollkorn-Pasta Bolognese → ${chosen} · [+−][\d.]+ kcal`));
+    const escaped = chosen.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (replaced.dataset.kind === 'check') expect(replaced.textContent).toMatch(new RegExp(`Vollkorn-Pasta Bolognese → ${escaped} · [+−][\\d.]+ kcal`));
     else expect(replaced.dataset.level).toMatch(/^[123]$/);
 
     const s = store.getState();

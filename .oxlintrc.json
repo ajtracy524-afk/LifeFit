@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript"],
+  "categories": { "correctness": "error" },
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "error",
+    "react/purity": "off",
+    "react/refs": "off",
+    "react/preserve-manual-memoization": "off",
+    "react/set-state-in-effect": "off",
+    "react/globals": "off",
+    "react/no-children-prop": "off"
+  },
+  "ignorePatterns": ["dist/**"]
+}

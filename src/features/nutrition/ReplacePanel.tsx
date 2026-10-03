@@ -81,12 +81,12 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
     }));
     onDone();
   };
-  const useRecipe = (recipe: Recipe, servings: number) =>
+  const chooseRecipe = (recipe: Recipe, servings: number) =>
     finish(due ? `${recipe.title} statt ${oldTitle} erfasst` : `Ersetzt durch ${recipe.title}`, () => replaceWithRecipe(meal.id, recipe.id, servings, due), {
       title: recipe.title,
       content: { macros: recipeMacros(recipe, servings), micros: recipeMicros(recipe, servings) },
     });
-  const useEntry = (content: EntryContent, id = newId()) => finish(`${content.name} statt ${oldTitle} erfasst`, () => replaceWithEntry(meal.id, content, { id }), { title: content.name, content });
+  const chooseEntry = (content: EntryContent, id = newId()) => finish(`${content.name} statt ${oldTitle} erfasst`, () => replaceWithEntry(meal.id, content, { id }), { title: content.name, content });
 
   if (product) {
     return (
@@ -145,7 +145,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
               <p className={styles.listCaption}>Zuletzt als Ersatz</p>
               <div>
                 {history.map((h) => (
-                  <HistoryRow key={h.kind === 'recipe' ? h.recipeId : h.entry.id} item={h} meal={meal} due={due} onRecipe={useRecipe} onEntry={(e) => useEntry(e)} />
+                  <HistoryRow key={h.kind === 'recipe' ? h.recipeId : h.entry.id} item={h} meal={meal} due={due} onRecipe={chooseRecipe} onEntry={(e) => chooseEntry(e)} />
                 ))}
               </div>
             </>
@@ -170,7 +170,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
                       </span>
                       {reason && <span className={styles.reason}>✓ {reason}</span>}
                     </span>
-                    <Button size="sm" variant={due ? 'primary' : 'secondary'} onClick={() => useRecipe(o.recipe, o.servings)} aria-label={`${o.recipe.title} ${due ? 'gegessen' : 'übernehmen'}`}>
+                    <Button size="sm" variant={due ? 'primary' : 'secondary'} onClick={() => chooseRecipe(o.recipe, o.servings)} aria-label={`${o.recipe.title} ${due ? 'gegessen' : 'übernehmen'}`}>
                       {due ? 'Gegessen' : 'Übernehmen'}
                     </Button>
                   </div>
@@ -190,7 +190,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
             setManual({ ...EMPTY_MANUAL, barcode });
             setMode('manual');
           }} />}
-      {mode === 'manual' && <ManualForm key={manual?.barcode ?? manual?.name ?? 'new'} initial={manual ?? EMPTY_MANUAL} onSubmit={(entry, id) => useEntry(entry, id)} />}
+      {mode === 'manual' && <ManualForm key={manual?.barcode ?? manual?.name ?? 'new'} initial={manual ?? EMPTY_MANUAL} onSubmit={(entry, id) => chooseEntry(entry, id)} />}
 
       <Button variant="ghost" block onClick={onBack}>
         <Icon name="chevronLeft" size={16} /> Zurück zur Mahlzeit

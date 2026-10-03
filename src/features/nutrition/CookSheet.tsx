@@ -34,7 +34,7 @@ function CookSheetInner({ date, onClose }: { date: ISODate; onClose: () => void 
   const energy = useEnergyText(date);
   const [have, setHave] = useState<Set<string>>(() => new Set(atHome(state)));
   const [filter, setFilter] = useState('');
-  const choices = useMemo(() => cookIngredients(state), [state.nutritionProfile]);
+  const choices = useMemo(() => cookIngredients(state), [state]);
   const options = useMemo(() => cookableRecipes(state, date, have), [state, date, have]);
   const price = useMemo(() => priceLookup(state.products), [state.products]);
 

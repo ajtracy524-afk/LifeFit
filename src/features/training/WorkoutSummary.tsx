@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { getExercise } from '../../data/exercises';
 import { planSummary, planVsActual, PLAN_STATUS_LABEL, workoutStats } from '../../domain/trainingHistory';
 import { recordText } from '../../domain/workoutRecords';
@@ -34,14 +34,17 @@ export function WorkoutSummary() {
   const achievements = workout?.achievements ?? [];
 
   // Right after finishing: one celebration – records first, otherwise the strongest data-based achievement.
+  const celebrated = useRef(false);
   useEffect(() => {
-    if (!justFinished) return;
-    if (records.length) celebrate({ kind: 'power', icon: '🏆', title: records.length === 1 ? 'Neue Bestleistung' : `${records.length} neue Bestleistungen`, detail: workout?.name, level: 3 });
-    else if (achievements[0]) celebrate({ kind: achievements[0].kind === 'streak' || achievements[0].kind === 'week_complete' ? 'sparkle' : 'power', icon: achievements[0].icon, title: achievements[0].title, detail: achievements[0].detail, level: achievements[0].kind === 'week_complete' ? 3 : 2 });
+    if (!justFinished || !workout || celebrated.current) return;
+    celebrated.current = true;
+    const count = workout.records?.length ?? 0;
+    const first = workout.achievements?.[0];
+    if (count) celebrate({ kind: 'power', icon: '🏆', title: count === 1 ? 'Neue Bestleistung' : `${count} neue Bestleistungen`, detail: workout.name, level: 3 });
+    else if (first) celebrate({ kind: first.kind === 'streak' || first.kind === 'week_complete' ? 'sparkle' : 'power', icon: first.icon, title: first.title, detail: first.detail, level: first.kind === 'week_complete' ? 3 : 2 });
     // Always a small, calm confirmation – finishing is itself the real event.
-    else if (workout) celebrate({ kind: 'check', icon: '✓', title: 'Training abgeschlossen', detail: `${workoutStats(workout).sets} Sätze · ${formatDuration(workoutStats(workout).durationMin * 60000)}`, level: 2 });
-    // Only on arrival.
-  }, []);
+    else celebrate({ kind: 'check', icon: '✓', title: 'Training abgeschlossen', detail: `${workoutStats(workout).sets} Sätze · ${formatDuration(workoutStats(workout).durationMin * 60000)}`, level: 2 });
+  }, [justFinished, workout]);
 
   if (!workout) {
     return (

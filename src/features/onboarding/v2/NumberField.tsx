@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { fmt } from '../../../lib/format';
 import { parseNumber } from '../../../components/ui/Controls';
 import { Icon } from '../../../components/ui/Icon';
@@ -35,8 +35,12 @@ export function NumberField({
   const id = useId();
   const show = (v: number | undefined) => (v === undefined ? '' : plain ? String(v) : decimals ? dec(v, decimals).replace(/,0$/, '') : String(v));
   const [text, setText] = useState(show(value));
-  // A value changed elsewhere (e.g. the stepper) – show it.
-  useEffect(() => setText((t) => (parseNumber(t) === value ? t : show(value))), [value]);
+  // A value changed elsewhere (e.g. the stepper) – show it, adjusted while rendering.
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) {
+    setSeen(value);
+    if (parseNumber(text) !== value) setText(show(value));
+  }
   const round = (v: number) => Math.round(v * 10 ** decimals) / 10 ** decimals;
   const commit = (v: number) => {
     const r = round(v);

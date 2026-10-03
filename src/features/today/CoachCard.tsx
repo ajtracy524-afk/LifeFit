@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DISCLAIMER, runEngine, type EngineAction, type EngineDomain, type Recommendation, type RecommendationKind } from '../../domain/engine';
 import { formatCostRange } from '../../domain/costs';
 import { Icon } from '../../components/ui/Icon';
@@ -34,21 +34,23 @@ export function CoachCard({ domains, title = 'Für dich', kinds, show = VISIBLE 
   const [expanded, setExpanded] = useState(false);
   const key = `${domains.join()}|${kinds?.join() ?? ''}`;
 
-  // `key` stands in for the `domains` / `kinds` arrays (new arrays each render).
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands in for the `domains` / `kinds` arrays (new arrays each render)
   const recs = useMemo(() => runEngine(state, { date: t, hour, minute, limit: 6, domains }).filter((r) => !kinds || kinds.includes(r.kind)), [state, t, hour, minute, key]);
 
   const visible = expanded ? recs : recs.slice(0, show);
   // The coach's memory: what was really on screen today (and which resolved patterns were acknowledged).
   const seenKey = visible.map((r) => r.id).join();
+  // Recorded only when what is visible changes (`seenKey`); the latest list is read from a ref.
+  const shown = useRef(visible);
+  shown.current = visible;
   useEffect(() => {
-    const topics = visible.filter((r) => r.topic);
+    const topics = shown.current.filter((r) => r.topic);
     if (!topics.length) return;
     recordTopics(
       t,
       topics.filter((r) => r.kind !== 'tip_progress').map((r) => r.topic!),
       topics.filter((r) => r.kind === 'tip_progress').map((r) => r.topic!),
     );
-    // Only when what is visible changes.
   }, [seenKey, t]);
 
   // No data, no recommendation – the card simply does not appear.

@@ -24,14 +24,13 @@ interface Props {
  */
 export function BudgetLine({ week, label = 'Diese Woche', className, progressUntil }: Props) {
   const state = useAppState();
-  // Only recomputed when plan, log or product prices change – not on every render.
-  const cost = useMemo(() => weekFoodCost(state, week), [state.plannedMeals, state.logEntries, state.products, week]);
+  const cost = useMemo(() => weekFoodCost(state, week), [state, week]);
   const eaten = useMemo(
     () => (progressUntil ? weekFoodCost(state, week, { eatenUntil: progressUntil }) : undefined),
-    [state.plannedMeals, state.logEntries, state.products, week, progressUntil],
+    [state, week, progressUntil],
   );
   // Heute: what the day costs (planned + eaten + extras, same prices and 80 % rule) against a seventh of the week budget.
-  const dayCost = useMemo(() => (progressUntil && weekDays(week).includes(progressUntil) ? weekFoodCost(state, week, { day: progressUntil }) : undefined), [state.plannedMeals, state.logEntries, state.products, week, progressUntil]);
+  const dayCost = useMemo(() => (progressUntil && weekDays(week).includes(progressUntil) ? weekFoodCost(state, week, { day: progressUntil }) : undefined), [state, week, progressUntil]);
   const budget = state.plannerSettings.weeklyBudgetChf;
   // Ranges glide to new values like every other number (never below 0, same rounding as formatCostRange).
   const low = useCountUp(cost?.lowChf ?? 0);
