@@ -17,6 +17,7 @@ import { Sheet } from '../../components/ui/Sheet';
 import { MicroLine, NutrientGrid } from './ProductConfirm';
 import { matchesQuery } from '../../services/foodDatabase';
 import { useFoodSearch } from './useFoodSearch';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 /** The dish saved last – its row enters "Meine Gerichte" with a short highlight (a few seconds only). */
@@ -26,14 +27,15 @@ const isFresh = (id: string) => !!lastSaved && lastSaved.id === id && Date.now()
 const PLAN_SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 const SOURCE_LABEL: Record<DishIngredient['source'], string> = { catalog: 'Katalog', database: 'Datenbank', product: 'Produkt', manual: 'Eigene Angabe' };
-const perPortionLine = (dish: CustomDish) => {
+const perPortionLine = (dish: CustomDish, kcal: (n: number) => string) => {
   const m = dishPortionNutrition(dish, 1).macros;
-  return `${fmt.kcal(m.kcal)} · ${fmt.int(m.protein)} g P · ${fmt.int(m.carbs)} g KH · ${fmt.int(m.fat)} g F pro Portion`;
+  return `${kcal(m.kcal)} · ${fmt.int(m.protein)} g P · ${fmt.int(m.carbs)} g KH · ${fmt.int(m.fat)} g F pro Portion`;
 };
 
 /** "Meine Gerichte" – own dishes, one tap to log; with a filter once there are many. */
 export function DishList({ onPick, onCreate }: { onPick: (dish: CustomDish) => void; onCreate: () => void }) {
   const state = useAppState();
+  const energy = useEnergyText();
   const [filter, setFilter] = useState('');
   const all = useMemo(() => Object.values(state.customDishes ?? {}).filter((d) => !d.archived).sort((a, b) => a.name.localeCompare(b.name, 'de')), [state.customDishes]);
   const shown = filter.trim() ? all.filter((d) => matchesQuery(d.name, filter)) : all;
@@ -62,7 +64,7 @@ export function DishList({ onPick, onCreate }: { onPick: (dish: CustomDish) => v
                 <button type="button" className={styles.optionRow} onClick={() => onPick(dish)}>
                   <span className={styles.mealText}>
                     <span className={styles.mealTitle}>🍽️ {dish.name}</span>
-                    <span className={styles.mealMeta}>{perPortionLine(dish)}</span>
+                    <span className={styles.mealMeta}>{perPortionLine(dish, energy.kcal)}</span>
                   </span>
                   <Icon name="plus" size={18} className={styles.muted} />
                 </button>
@@ -151,6 +153,7 @@ export function DishEditorSheet({
   onClose: () => void;
 }) {
   const start = dish ?? initial;
+  const energy = useEnergyText();
   const [name, setName] = useState(start?.name ?? '');
   const [portions, setPortions] = useState(start?.portions ?? 1);
   const [ingredients, setIngredients] = useState<DishIngredient[]>(start?.ingredients.map((i) => ({ ...i })) ?? []);
@@ -223,7 +226,7 @@ export function DishEditorSheet({
                   <span className={styles.mealText}>
                     <span className={styles.mealTitle}>{i.name}</span>
                     <span className={styles.mealMeta}>
-                      {SOURCE_LABEL[i.source]} · {fmt.kcal(((i.per100.kcal ?? 0) * i.grams) / 100)}
+                      {SOURCE_LABEL[i.source]}{energy.numberFree ? '' : ` · ${fmt.kcal(((i.per100.kcal ?? 0) * i.grams) / 100)}`}
                     </span>
                   </span>
                   <label className={styles.gramsInput}>
@@ -259,7 +262,7 @@ export function DishEditorSheet({
             <NutrientGrid macros={portion.macros} unknown={portion.unknown} />
             <MicroLine micros={portion.micros} />
             <p className={styles.sourceNote}>
-              Ganzes Gericht: {fmt.kcal(whole.macros.kcal)} · {fmt.int(whole.macros.protein)} g P · {fmt.int(whole.macros.carbs)} g KH · {fmt.int(whole.macros.fat)} g F
+              Ganzes Gericht: {energy.numberFree ? '' : `${fmt.kcal(whole.macros.kcal)} · `}{fmt.int(whole.macros.protein)} g P · {fmt.int(whole.macros.carbs)} g KH · {fmt.int(whole.macros.fat)} g F
               {microCount > 0 ? ` · ${microCount} Vitamine/Mineralstoffe vollständig` : ''}
             </p>
             {someWithoutMicros && <p className={styles.sourceNote}>Nicht jede Zutat hat Mikronährstoff-Daten – diese Werte bleiben offen statt 0.</p>}
@@ -306,6 +309,8 @@ export function DishEditorSheet({
 /** Search for an ingredient – same sources as "Suchen", without own dishes and only with calories. */
 function IngredientPicker({ onFood, onDb, onProduct, onClose }: { onFood: (f: Food) => void; onDb: (f: DbFood) => void; onProduct: (p: Product) => void; onClose?: () => void }) {
   const [query, setQuery] = useState('');
+  const energy = useEnergyText();
+  const kcal100 = (n: number, unit = 'g') => (energy.numberFree ? '' : ` · ${fmt.int(n)} kcal / 100 ${unit}`);
   const found = useFoodSearch(query, { dishes: false });
   const products = found.products.filter((p) => p.per100.kcal !== undefined);
   const nothing = query.trim().length >= 2 && !found.loading && !products.length && !found.catalog.length && !found.database.length;
@@ -324,13 +329,13 @@ function IngredientPicker({ onFood, onDb, onProduct, onClose }: { onFood: (f: Fo
       {nothing && <p className={styles.searchHint}>Nichts gefunden. Scanne das Produkt einmal (Barcode) – danach steht es hier als Zutat zur Verfügung.</p>}
       <ul className={styles.optionList}>
         {products.map((p) => (
-          <PickRow key={`p-${p.barcode}`} title={p.name} meta={`Produkt${p.brand ? ` · ${p.brand}` : ''} · ${fmt.int(p.per100.kcal!)} kcal / 100 ${p.unit}`} onClick={() => onProduct(p)} />
+          <PickRow key={`p-${p.barcode}`} title={p.name} meta={`Produkt${p.brand ? ` · ${p.brand}` : ''}${kcal100(p.per100.kcal!, p.unit)}`} onClick={() => onProduct(p)} />
         ))}
         {found.catalog.map((f) => (
-          <PickRow key={`f-${f.id}`} title={f.name} meta={`Katalog · ${fmt.int(f.per100.kcal)} kcal / 100 g`} onClick={() => onFood(f)} />
+          <PickRow key={`f-${f.id}`} title={f.name} meta={`Katalog${kcal100(f.per100.kcal)}`} onClick={() => onFood(f)} />
         ))}
         {found.database.map((f) => (
-          <PickRow key={f.id} title={f.name} meta={`Datenbank · ${fmt.int(f.per100.kcal)} kcal / 100 g`} onClick={() => onDb(f)} />
+          <PickRow key={f.id} title={f.name} meta={`Datenbank${kcal100(f.per100.kcal)}`} onClick={() => onDb(f)} />
         ))}
       </ul>
     </div>

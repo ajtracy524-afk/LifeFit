@@ -5,6 +5,7 @@ import { matchingTastes, recipeStyle } from '../../domain/preferences';
 import type { GoalType, MealStyle, NutritionProfile } from '../../domain/types';
 import { fmt } from '../../lib/format';
 import { Chip, OptionCard } from '../../components/ui/Controls';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 type Filter = Pick<NutritionProfile, 'diet' | 'excluded'>;
@@ -74,10 +75,11 @@ interface StyleProps {
 
 /** Kinds of meals with real examples from the catalog – described, never judged. */
 export function MealStylePicker({ filter, value, suggested, kcal, avoided, onChange }: StyleProps) {
+  const numberFree = useEnergyText().numberFree;
   const allowed = RECIPES.filter((r) => recipeAllowed(r, { ...filter, slots: [] }) && matchingTastes(r.id, avoided).length === 0);
   return (
     <div className={styles.quickForm}>
-      {kcal !== undefined && (
+      {kcal !== undefined && !numberFree && (
         <p className={styles.hubNote}>
           Dein Tagesziel: etwa {fmt.kcal(kcal)}. Leichte und energiereiche Mahlzeiten können beide gut sein – entscheidend ist, dass sie zu deinem Ziel passen. Die Portionen rechnet
           LifeFit immer passend.

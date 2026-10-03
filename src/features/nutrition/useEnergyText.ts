@@ -1,5 +1,5 @@
 import { today } from '../../domain/dates';
-import { dayPortions, isNumberFree, portionText } from '../../domain/numberFree';
+import { dayPortions, isNumberFree, portionKcal, portionText, withoutKcal, type PORTION_FACTOR } from '../../domain/numberFree';
 import type { ISODate } from '../../domain/types';
 import { dayTargetFor } from '../../domain/week';
 import { fmt } from '../../lib/format';
@@ -21,5 +21,12 @@ export function useEnergyText(date: ISODate = today()) {
     kcal: (n: number) => (on ? portionText(n, target, meals) : fmt.kcal(n)),
     /** The day in meals: "ca. 1½ von 4 Mahlzeiten". */
     day: (eatenKcal: number) => dayPortions(eatenKcal, target, meals),
+    /** "pro 100 g": the kcal part only with numbers (undefined in the number-free mode). */
+    per100: (n: number | undefined, unit = 'g') => (on || n === undefined ? undefined : `${fmt.int(n)} kcal pro 100 ${unit}`),
+    /** Engine / coach / change texts: kcal parts left out in the number-free mode (undefined = not shown). */
+    text: (t: string) => (on ? withoutKcal(t) : t),
+    texts: (list: string[]) => (on ? list.map(withoutKcal).filter((t): t is string => !!t) : list),
+    /** "klein / normal / groß" as calories in the background. */
+    portionKcal: (size: keyof typeof PORTION_FACTOR) => portionKcal(size, target, meals),
   };
 }

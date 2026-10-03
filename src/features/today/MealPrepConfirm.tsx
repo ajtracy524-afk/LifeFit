@@ -1,3 +1,4 @@
+import { pendingConfirmation } from '../../domain/onboarding/summary';
 import { onboardingV2Enabled } from '../../lib/flags';
 import { setOnboardingAnswer } from '../../store/onboardingActions';
 import { useAppState } from '../../store/store';
@@ -11,8 +12,9 @@ import styles from './today.module.css';
  * switch until the new onboarding goes live (E8).
  */
 export function MealPrepConfirm() {
-  const answer = useAppState().onboarding?.food.mealPrep;
-  if (!onboardingV2Enabled() || answer?.source !== 'migrated') return null;
+  const state = useAppState();
+  // After the allergen confirmation – one card at a time.
+  if (!onboardingV2Enabled() || pendingConfirmation(state) !== 'mealPrep') return null;
   return (
     <Card aria-label="Kurze Frage">
       <p className={styles.recheckText}>

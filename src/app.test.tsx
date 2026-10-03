@@ -3603,7 +3603,12 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       localStorage.setItem(KEY, JSON.stringify(completeState()));
       let store = await startApp();
       const card = () => container.querySelector('[aria-label="Angabe ergänzen"]');
-      expect(card()!.textContent).toContain('Körperfett'); // migrated user without body fat → the first priority
+      // A user of the old onboarding answers the one-time meal-prep question first (E18) – one card at a time.
+      expect(card()).toBeNull();
+      expect(container.querySelector('[aria-label="Kurze Frage"]')).not.toBeNull();
+      await click('Ja, beibehalten');
+      expect(container.querySelector('[aria-label="Kurze Frage"]')).toBeNull();
+      expect(card()!.textContent).toContain('Körperfett'); // no body fat yet → the first priority
       expect(container.querySelectorAll('[aria-label="Angabe ergänzen"]')).toHaveLength(1);
       await click('Später');
       expect(card()).toBeNull();
@@ -3617,6 +3622,19 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       expect(card()).not.toBeNull();
       await click('Ergänzen');
       expect(title()).toBe('Körperfett');
+    });
+
+    it('E5: a stricter reading of an old exclusion ("Nüsse") is offered once on Heute – "Ja, passt" confirms, the meal-prep question follows', async () => {
+      localStorage.setItem(KEY, JSON.stringify({ ...completeState(), nutritionProfile: { diet: 'omnivore', excluded: ['nuts'], slots: ['breakfast', 'lunch', 'dinner'] } }));
+      const store = await startApp();
+      const confirm = () => container.querySelector('[aria-label="Ausschlüsse bestätigen"]');
+      expect(confirm()!.textContent).toMatch(/Erdnüsse.*Schalenfrüchte/);
+      expect(container.querySelector('[aria-label="Kurze Frage"]')).toBeNull(); // one card at a time
+      await click('Ja, passt');
+      expect(confirm()).toBeNull();
+      expect(store.getState().onboarding!.food.allergens).toMatchObject({ value: ['peanuts', 'tree_nuts'], source: 'user' });
+      expect(store.getState().onboarding!.food.allergens!.confirmedAt).toBeTruthy();
+      expect(container.querySelector('[aria-label="Kurze Frage"]')).not.toBeNull();
     });
 
     it('profile: body data show Vorher / Nachher; confirming writes a new target version (older ones untouched), undo restores', async () => {
@@ -3639,6 +3657,46 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       await click('Rückgängig');
       expect(store.getState().targets).toEqual(before);
       expect(store.getState().profile!.activity).toBe('moderate');
+    });
+
+    it('number-free mode (E14): no kcal number on Heute, Ernährung, Fortschritt, Einkauf, Training, Profil and "Dein Plan"', async () => {
+      localStorage.setItem(KEY, JSON.stringify({ ...completeState(), weights: [{ id: 'w', date: '2026-09-28', kg: 80 }] }));
+      window.history.replaceState(null, '', '/?onboarding=v2#/today');
+      const store = await startApp();
+      const actions = await import('./store/actions');
+      const ob = await import('./store/onboardingActions');
+      await act(async () => {
+        actions.suggestMealsForWeek('2026-09-28');
+        const first = store.getState().plannedMeals.find((m) => m.date === '2026-10-01');
+        if (first) actions.markEaten(first.id);
+        ob.setOnboardingAnswer('health', 'numberFree', true);
+      });
+      const KCAL_NUMBER = /\d[\d.’']*\s*(kcal|Kilokalorien)/;
+      for (const route of ['today', 'nutrition', 'progress', 'shopping', 'training', 'profile']) {
+        await go(route);
+        expect(text().length, route).toBeGreaterThan(100);
+        expect(text(), route).not.toMatch(KCAL_NUMBER);
+      }
+      await go('progress');
+      expect(text()).toContain('Ø Essen pro Tag');
+      // The food sheet: suggestions and catalog search.
+      await go('nutrition');
+      await click('Lebensmittel hinzufügen');
+      expect(text()).toContain('Portion:');
+      expect(text()).not.toMatch(KCAL_NUMBER);
+      await click('Suchen');
+      const input = container.querySelector<HTMLInputElement>('input[placeholder^="z. B. Birne"]')!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Hafer');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await act(async () => new Promise((r) => setTimeout(r, 400)));
+      expect(text()).toContain('Haferflocken');
+      expect(text()).not.toMatch(KCAL_NUMBER);
+      // "Dein Plan" in the number-free mode: portions.
+      const { summaryOf } = await import('./domain/onboarding/summary');
+      const energy = summaryOf(store.getState(), '2026-10-01').find((c) => c.id === 'energy')!;
+      expect(energy.lines.join(' ')).not.toMatch(KCAL_NUMBER);
     });
 
     it('profile: "Nur Körperdaten speichern" keeps the target', async () => {

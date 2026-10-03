@@ -2,6 +2,7 @@ import { NUTRIENTS } from '../data/nutrients';
 import { calorieTolerance } from './calorieStatus';
 import { daySummary, VITAL_NUTRIENTS, type MicroTotal, type NutritionSummary } from './nutrition';
 import type { AppState, ISODate, MicroNutrient, NutritionTarget } from './types';
+import { withoutKcal } from './numberFree';
 import { waterOn } from './water';
 import { dayTargetFor } from './week';
 
@@ -243,4 +244,19 @@ function summarize(groups: NutrientGroup[], eatenAny: boolean): string[] {
   const vitalGreen = all.filter((r) => r.reference && !r.reference.personalized && r.reference.kind === 'min' && r.tone === 'green').length;
   if (vitalGreen) out.push(`${vitalGreen} Vitamin${vitalGreen === 1 ? '' : 'e'}/Mineralstoff${vitalGreen === 1 ? '' : 'e'} haben den Referenzwert erreicht.`);
   return out.slice(0, 5);
+}
+
+/**
+ * The report in the number-free mode (E14): the energy row is left out (the
+ * day's portions are on Heute and Ernährung), kcal numbers leave the texts.
+ */
+export function numberFreeReport(report: NutrientReport): NutrientReport {
+  return {
+    ...report,
+    groups: report.groups.map((g) => ({
+      ...g,
+      rows: g.rows.filter((r) => r.unit !== 'kcal').map((r) => ({ ...r, message: withoutKcal(r.message) ?? '' })),
+    })),
+    summary: report.summary.map(withoutKcal).filter((t): t is string => !!t),
+  };
 }

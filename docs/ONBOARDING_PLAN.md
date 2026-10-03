@@ -322,7 +322,7 @@ Reihenfolge: **1 → 2 → 3 → 3b → 4 → 5 → 6 → 7 → 8 → 9 → (10)
 
 ### Checkliste Prompt 9 (vor dem Entfernen des Schalters)
 
-- [ ] **Zahlenfreier Modus in allen übrigen Screens** (E14): Fortschritt, Wochenstatistik, Engine-Texte, Einkauf, Zusammenfassung. Erst wenn alle nachgezogen sind, darf der Schalter fallen.
+- [x] **Zahlenfreier Modus in allen übrigen Screens** (E14): Fortschritt, Wochenstatistik, Engine-Texte, Einkauf, Zusammenfassung. Erst wenn alle nachgezogen sind, darf der Schalter fallen.
 - [ ] Jedes Feld des `OnboardingProfile` hat eine Wirkung und einen Test (`docs/ONBOARDING.md`, `onboarding/trace.ts`); kein Feld läuft ins Leere.
 - [ ] Personas und Grenzfälle laut Prompt 9 grün (inkl. „keine Angabe“, Alter 17 und 70+, Schwangerschaft, BMI < 18,5).
 - [ ] Karte „Neue Angaben ergänzen“ für Bestandsnutzer (E8) = dieselbe Heute-Karte wie für fehlende Angaben (Priorität KFA > Alltagsaktivität > Wochenraster > Vorrat, nach Wegklicken 14 Tage Ruhe).

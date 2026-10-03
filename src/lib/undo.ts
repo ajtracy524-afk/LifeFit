@@ -3,6 +3,7 @@ import { applyChange } from '../store/actions';
 import type { AppState } from '../domain/types';
 import { restore, snapshot } from '../store/store';
 import { showToast } from './toast';
+import { isNumberFree, withoutKcal } from '../domain/numberFree';
 
 /**
  * Undo restores the snapshot taken before the action – but only while the state
@@ -44,7 +45,9 @@ export function applyWithUndo(change: WeekChange): boolean {
     return false;
   }
   const after = snapshot();
-  const message = [result.summary.title, ...result.summary.details].join(' · ');
+  // Number-free mode (E14): "Tagesziele: Do −150 kcal" becomes "Tagesziele angepasst".
+  const details = isNumberFree(after) ? result.summary.details.map((d) => withoutKcal(d) ?? (d.startsWith('Tagesziele') ? 'Tagesziele angepasst' : undefined)).filter((d): d is string => !!d) : result.summary.details;
+  const message = [result.summary.title, ...details].join(' · ');
   showToast(message, { action: { label: 'Rückgängig', onClick: () => undoTo(before, after) }, duration: 7000 });
   return true;
 }

@@ -11,7 +11,7 @@ import { slotPlanOn, templateOn, weekSlotOverride } from '../../domain/week/slot
 import { applyWithUndo } from '../../lib/undo';
 import { useAppState } from '../../store/store';
 import { Segmented } from '../../components/ui/Controls';
-import { isNumberFree } from '../../domain/numberFree';
+import { isNumberFree, withoutKcal } from '../../domain/numberFree';
 import { fmt, SLOT_LABEL, weekdayShort } from '../../lib/format';
 import { href } from '../../lib/router';
 import { Card } from '../../components/ui/Card';
@@ -64,7 +64,7 @@ export function WeekDayCard({ day, overview: o, today, slots, session, onOpenMea
           <span>{isToday ? 'Heute' : shortDate(day.date)}</span>
         </a>
         <span className={styles.weekDayStatus} style={{ color: TONE_COLOR[o.status.tone] }}>
-          {o.status.text}
+          {numberFree ? (withoutKcal(o.status.text) ?? 'Nicht ganz im Ziel') : o.status.text}
         </span>
         {past && (
           <button type="button" className={styles.weekDayToggle} onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? `${label} zuklappen` : `${label} aufklappen`}>

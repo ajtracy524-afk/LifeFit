@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DISCLAIMER, runEngine, type EngineAction, type EngineDomain, type Recommendation, type RecommendationKind } from '../../domain/engine';
 import { formatCostRange } from '../../domain/costs';
-import { fmt } from '../../lib/format';
 import { Icon } from '../../components/ui/Icon';
 import { today } from '../../domain/dates';
 import { navigate } from '../../lib/router';
@@ -11,6 +10,7 @@ import { getState, useAppState } from '../../store/store';
 import { celebrate } from '../../lib/celebrate';
 import { dishEntry } from '../../domain/dishes';
 import { runLog } from '../nutrition/logFeedback';
+import { useEnergyText } from '../nutrition/useEnergyText';
 import { changeWater } from '../nutrition/waterActions';
 import { Button, IconButton } from '../../components/ui/Button';
 import { Card, CardHeader } from '../../components/ui/Card';
@@ -76,6 +76,10 @@ export function CoachCard({ domains, title = 'Für dich', kinds, show = VISIBLE 
 
 function RecommendationItem({ rec }: { rec: Recommendation }) {
   const [showReasons, setShowReasons] = useState(false);
+  // Number-free mode (E14): kcal parts of the engine texts are left out.
+  const energy = useEnergyText();
+  const message = energy.text(rec.message);
+  const reasons = energy.texts(rec.reasons);
   // Meal suggestions with facts get the richer layout; everything else stays a row of buttons.
   const meals = rec.actions.filter((a): a is MealAction => (a.type === 'add_meal' || a.type === 'log_dish') && !!a.details);
 
@@ -106,10 +110,10 @@ function RecommendationItem({ rec }: { rec: Recommendation }) {
   return (
     <li className={`${styles.item} ${styles[rec.priority]}`}>
       <div className={styles.head}>
-        <strong className={styles.title}>{rec.title}</strong>
+        <strong className={styles.title}>{energy.text(rec.title) ?? 'Hinweis zu deinem Tagesziel'}</strong>
         {rec.kind !== 'safety' && <IconButton icon="close" label="Ausblenden" onClick={() => dismissRecommendation(rec.id, rec.topic)} />}
       </div>
-      <p className={styles.message}>{rec.message}</p>
+      {message && <p className={styles.message}>{message}</p>}
 
       {meals.length > 0 ? (
         <MealSuggestions actions={meals} onRun={run} />
@@ -118,20 +122,20 @@ function RecommendationItem({ rec }: { rec: Recommendation }) {
           <div className={styles.actions}>
             {rec.actions.map((a, i) => (
               <Button key={a.label} size="sm" variant={i === 0 ? 'primary' : 'secondary'} onClick={() => run(a)} className={styles.action}>
-                {a.label}
+                {energy.text(a.label) ?? 'Übernehmen'}
               </Button>
             ))}
           </div>
         )
       )}
-      {rec.reasons.length > 0 && (
+      {reasons.length > 0 && (
         <>
           <button type="button" className={styles.why} onClick={() => setShowReasons(!showReasons)} aria-expanded={showReasons}>
             Warum?
           </button>
           {showReasons && (
             <ul className={styles.reasons}>
-              {rec.reasons.map((reason) => (
+              {reasons.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
             </ul>
@@ -155,10 +159,12 @@ const key = (a: MealAction) => (a.type === 'log_dish' ? a.dishId : a.recipeId);
 function MealSuggestions({ actions, onRun }: { actions: MealAction[]; onRun: (a: EngineAction) => void }) {
   const [best, ...others] = actions;
   const d = best!.details;
+  const energy = useEnergyText();
+  const because = energy.texts(d.because);
   return (
     <div className={styles.suggestion}>
       {/* Three or more real reasons = an especially good fit: the card glows once. */}
-      <div className={d.because.length >= 3 ? `${styles.featured} ${styles.bestFit}` : styles.featured} data-fit={d.because.length >= 3 ? "best" : undefined}>
+      <div className={because.length >= 3 ? `${styles.featured} ${styles.bestFit}` : styles.featured} data-fit={because.length >= 3 ? "best" : undefined}>
         <strong className={styles.featuredTitle}>{d.title}</strong>
         <ul className={styles.facts} aria-label="Eckdaten">
           {d.prepMin !== undefined && (
@@ -167,10 +173,10 @@ function MealSuggestions({ actions, onRun }: { actions: MealAction[]; onRun: (a:
             </li>
           )}
           <li>{d.protein} g Protein</li>
-          <li>{fmt.kcal(d.kcal)}</li>
+          <li>{energy.kcal(d.kcal)}</li>
           {d.cost && <li>{formatCostRange(d.cost)}</li>}
         </ul>
-        {d.because.length > 0 && <p className={styles.because}>Empfohlen, weil {joinReasons(d.because.slice(0, 2))}.</p>}
+        {because.length > 0 && <p className={styles.because}>Empfohlen, weil {joinReasons(because.slice(0, 2))}.</p>}
         <Button size="sm" icon={best!.type === 'log_dish' ? 'check' : 'plus'} onClick={() => onRun(best!)} className={styles.featuredButton}>
           {verb(best!)}
         </Button>
@@ -182,7 +188,7 @@ function MealSuggestions({ actions, onRun }: { actions: MealAction[]; onRun: (a:
               <button type="button" className={styles.alternative} onClick={() => onRun(a)} aria-label={`${a.details.title} ${verb(a).toLowerCase()}`}>
                 <span className={styles.alternativeTitle}>{a.details.title}</span>
                 <span className={styles.alternativeMeta}>
-                  {[a.details.prepMin !== undefined && `${a.details.prepMin} min`, `${a.details.protein} g P`, fmt.kcal(a.details.kcal), a.details.cost && formatCostRange(a.details.cost)]
+                  {[a.details.prepMin !== undefined && `${a.details.prepMin} min`, `${a.details.protein} g P`, energy.kcal(a.details.kcal), a.details.cost && formatCostRange(a.details.cost)]
                     .filter(Boolean)
                     .join(' · ')}
                 </span>

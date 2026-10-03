@@ -4,7 +4,7 @@ import type { AppState } from '../types';
 import { editFromSummary, initialState, next } from './flow';
 import { migrateOnboarding } from './migrate';
 import { previewLines, recalcPreview } from './recalc';
-import { compactWeekTemplate, MISSING_HINT_REST_DAYS, missingHint, restUntil, summaryOf } from './summary';
+import { compactWeekTemplate, MISSING_HINT_REST_DAYS, missingHint, pendingConfirmation, restUntil, summaryOf } from './summary';
 
 /** Prompt 9 – "Dein Plan", the Heute card for missing answers, Vorher / Nachher. */
 
@@ -12,7 +12,7 @@ const NOW = new Date('2026-10-01T08:00:00Z');
 const TODAY = '2026-10-01';
 
 /** A user who finished the old onboarding (migrated, like on the first start after the update). */
-const user = (patch: Partial<AppState> = {}): AppState =>
+const legacy = (patch: Partial<AppState> = {}): AppState =>
   migrateOnboarding(
     {
       ...emptyState(),
@@ -26,6 +26,12 @@ const user = (patch: Partial<AppState> = {}): AppState =>
     },
     NOW,
   );
+/** … who has answered the one-time meal-prep question (E18). */
+const user = (patch: Partial<AppState> = {}): AppState => {
+  const s = legacy(patch);
+  s.onboarding!.food.mealPrep = { value: true, source: 'user', updatedAt: NOW.toISOString() };
+  return s;
+};
 
 describe('"Dein Plan"', () => {
   it('five cards – body, goal, energy, food frame, training week – each with the step "Ändern" opens', () => {
@@ -78,6 +84,17 @@ describe('"Dein Plan"', () => {
 
 describe('the Heute card for missing answers', () => {
   const at = NOW.toISOString();
+  it('one card at a time: migrated values to confirm first (allergens, then meal prep), then the missing answers', () => {
+    const s = legacy({ nutritionProfile: { diet: 'omnivore', excluded: ['nuts'], slots: ['breakfast', 'lunch', 'dinner'] } });
+    expect(pendingConfirmation(s)).toBe('allergens'); // "Nüsse" → peanuts + tree nuts (E5)
+    expect(missingHint(s, TODAY)).toBeUndefined();
+    s.onboarding!.food.allergens = { ...s.onboarding!.food.allergens!, source: 'user' };
+    expect(pendingConfirmation(s)).toBe('mealPrep'); // E18
+    s.onboarding!.food.mealPrep = { value: true, source: 'user', updatedAt: at };
+    expect(pendingConfirmation(s)).toBeUndefined();
+    expect(missingHint(s, TODAY)).toBe('bodyFat');
+  });
+
   it('priority: body fat > everyday activity > typical week > pantry; then nothing', () => {
     const s = user();
     expect(missingHint(s, TODAY)).toBe('bodyFat');

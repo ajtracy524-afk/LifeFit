@@ -22,6 +22,7 @@ import { BarcodeLookup } from './BarcodeLookup';
 import { ManualForm } from './ManualForm';
 import { ProductConfirm } from './ProductConfirm';
 import { runLog } from './logFeedback';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 type Mode = 'suggest' | 'barcode' | 'manual';
@@ -36,6 +37,7 @@ type Mode = 'suggest' | 'barcode' | 'manual';
  */
 export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDone: () => void; onBack: () => void }) {
   const state = useAppState();
+  const energy = useEnergyText(meal.date);
   const [mode, setMode] = useState<Mode>('suggest');
   const [product, setProduct] = useState<Product | null>(null);
   const [manual, setManual] = useState<ManualInput | null>(null);
@@ -74,7 +76,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
       kind: 'check',
       icon: '✓',
       title: due ? `${next.title} eingesetzt` : 'Plan angepasst',
-      detail: `${oldTitle} → ${next.title} · ${delta >= 0 ? '+' : '−'}${fmt.kcal(Math.abs(delta))}`,
+      detail: `${oldTitle} → ${next.title}${energy.numberFree ? '' : ` · ${delta >= 0 ? '+' : '−'}${fmt.kcal(Math.abs(delta))}`}`,
       level: 1,
     }));
     onDone();
@@ -164,7 +166,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
                     <span className={styles.mealText}>
                       <span className={styles.mealTitle}>{o.recipe.title}</span>
                       <span className={styles.mealMeta}>
-                        {[fmt.kcal(o.macros.kcal), `${fmt.int(o.macros.protein)} g P`, `${o.recipe.prepMin} min`, cost && formatCostRange(cost)].filter(Boolean).join(' · ')}
+                        {[energy.kcal(o.macros.kcal), `${fmt.int(o.macros.protein)} g P`, `${o.recipe.prepMin} min`, cost && formatCostRange(cost)].filter(Boolean).join(' · ')}
                       </span>
                       {reason && <span className={styles.reason}>✓ {reason}</span>}
                     </span>
@@ -201,6 +203,7 @@ export function ReplacePanel({ meal, onDone, onBack }: { meal: PlannedMeal; onDo
 const isSpecific = (reason: string) => !/^\d+ Min\. Zubereitung$/.test(reason) && !reason.includes('% deines Tagesziels') && !reason.startsWith('Von dir gewählt');
 
 function HistoryRow({ item, meal, due, onRecipe, onEntry }: { item: Replacement; meal: PlannedMeal; due: boolean; onRecipe: (r: Recipe, servings: number) => void; onEntry: (e: EntryContent) => void }) {
+  const energy = useEnergyText(meal.date);
   if (item.kind === 'recipe') {
     const recipe = getRecipe(item.recipeId)!;
     // Same calories as the meal it replaces.
@@ -215,7 +218,7 @@ function HistoryRow({ item, meal, due, onRecipe, onEntry }: { item: Replacement;
         <span className={styles.mealText}>
           <span className={styles.mealTitle}>{recipe.title}</span>
           <span className={styles.mealMeta}>
-            {fmt.kcal(recipeMacros(recipe, servings).kcal)} · {item.count}× als Ersatz
+            {energy.kcal(recipeMacros(recipe, servings).kcal)} · {item.count}× als Ersatz
           </span>
         </span>
         <Button size="sm" variant={due ? 'primary' : 'secondary'} onClick={() => onRecipe(recipe, servings)} aria-label={`${recipe.title} ${due ? 'gegessen' : 'übernehmen'}`}>
@@ -245,7 +248,7 @@ function HistoryRow({ item, meal, due, onRecipe, onEntry }: { item: Replacement;
       <span className={styles.mealText}>
         <span className={styles.mealTitle}>{e.name}</span>
         <span className={styles.mealMeta}>
-          {fmt.kcal(e.macros.kcal)} · {item.count}× als Ersatz
+          {energy.kcal(e.macros.kcal)} · {item.count}× als Ersatz
         </span>
       </span>
       {/* Food is only ever eaten, never planned – so it is always logged. */}

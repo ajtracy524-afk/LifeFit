@@ -15,6 +15,7 @@ import { Chip } from '../../components/ui/Controls';
 import { Icon } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
 import { runLog } from './logFeedback';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 /**
@@ -30,6 +31,7 @@ export function CookSheet({ date, open, onClose }: { date: ISODate; open: boolea
 
 function CookSheetInner({ date, onClose }: { date: ISODate; onClose: () => void }) {
   const state = useAppState();
+  const energy = useEnergyText(date);
   const [have, setHave] = useState<Set<string>>(() => new Set(atHome(state)));
   const [filter, setFilter] = useState('');
   const choices = useMemo(() => cookIngredients(state), [state.nutritionProfile]);
@@ -91,7 +93,7 @@ function CookSheetInner({ date, onClose }: { date: ISODate; onClose: () => void 
                       : 'Alle Zutaten da ✓'}
                   </span>
                   <span className={styles.mealMeta}>
-                    {[fmt.kcal(o.macros.kcal), `${fmt.int(o.macros.protein)} g Protein`, `${o.recipe.prepMin} min${o.fitsTime ? '' : ' (länger als heute geplant)'}`, cost && formatCostRange(cost)].filter(Boolean).join(' · ')}
+                    {[energy.kcal(o.macros.kcal), `${fmt.int(o.macros.protein)} g Protein`, `${o.recipe.prepMin} min${o.fitsTime ? '' : ' (länger als heute geplant)'}`, cost && formatCostRange(cost)].filter(Boolean).join(' · ')}
                   </span>
                   {o.because.map((b) => (
                     <span key={b} className={styles.cookAll}>

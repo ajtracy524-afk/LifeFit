@@ -16,6 +16,7 @@ import { EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
 import { RecipeDetail } from './RecipeDetail';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 export interface PickerTarget {
@@ -31,6 +32,7 @@ interface RecipePickerProps {
 /** Choose a recipe for a day and slot. Adding it puts its ingredients on the shopping list. */
 export function RecipePicker({ target, onClose }: RecipePickerProps) {
   const state = useAppState();
+  const energy = useEnergyText(target?.date);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<{ recipe: Recipe; servings: number } | null>(null);
 
@@ -118,7 +120,7 @@ export function RecipePicker({ target, onClose }: RecipePickerProps) {
                   <span className={styles.mealText}>
                     <span className={styles.mealTitle}>{r.title}</span>
                     <span className={styles.mealMeta}>
-                      {fmt.kcal(m.kcal)} · {fmt.int(m.protein)} g Protein · {r.prepMin} min
+                      {energy.kcal(m.kcal)} · {fmt.int(m.protein)} g Protein · {r.prepMin} min
                       {!fits && ' · eher für andere Mahlzeit'}
                     </span>
                   </span>

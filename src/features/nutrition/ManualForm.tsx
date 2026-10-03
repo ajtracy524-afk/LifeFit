@@ -4,6 +4,7 @@ import type { FoodUnit } from '../../domain/types';
 import { newId } from '../../lib/id';
 import { Button } from '../../components/ui/Button';
 import { Chip, Field, Segmented } from '../../components/ui/Controls';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 interface Props {
@@ -29,6 +30,11 @@ export function ManualForm({ initial, onSubmit, onBack }: Props) {
   const [errors, setErrors] = useState<ManualErrors>({});
   const [more, setMore] = useState(!!(initial.fiber || initial.sugar || initial.salt));
   const [id] = useState(newId);
+  // Number-free mode (E14): the size of the portion instead of a kcal number (the number stays in the background).
+  const energy = useEnergyText();
+  const [size, setSize] = useState<'klein' | 'normal' | 'groß' | undefined>(undefined);
+  const [ownKcal, setOwnKcal] = useState(false);
+  const bySize = energy.numberFree && !ownKcal;
   const set = (patch: Partial<ManualInput>) => {
     setInput((i) => ({ ...i, ...patch }));
     setErrors({});
@@ -37,7 +43,7 @@ export function ManualForm({ initial, onSubmit, onBack }: Props) {
   const suggestions = input.name.trim().length >= 3 ? suggestCatalogFoods(input.name) : [];
 
   const submit = () => {
-    const result = manualEntry(input);
+    const result = manualEntry(bySize ? { ...input, kcal: size ? String(energy.portionKcal(size)) : '' } : input);
     if (!result.ok) setErrors(result.errors);
     else onSubmit(result.entry, id);
   };
@@ -81,8 +87,30 @@ export function ManualForm({ initial, onSubmit, onBack }: Props) {
           ]}
         />
       )}
+      {bySize && (
+        <div>
+          <p className={styles.fieldLabel}>Wie groß war die Portion?</p>
+          <Segmented
+            label="Portion"
+            value={size ?? ('' as 'normal')}
+            onChange={(v) => {
+              setSize(v);
+              setErrors({});
+            }}
+            options={[
+              { value: 'klein', label: 'Klein' },
+              { value: 'normal', label: 'Normal' },
+              { value: 'groß', label: 'Groß' },
+            ]}
+          />
+          {errors.kcal && <p className={styles.fieldError}>Bitte wähle eine Portionsgröße.</p>}
+          <button type="button" className={styles.moreToggle} onClick={() => setOwnKcal(true)}>
+            Kalorien von der Verpackung eintragen
+          </button>
+        </div>
+      )}
       <div className={styles.fieldRow}>
-        <Field label="Kalorien" inputMode="decimal" suffix="kcal" value={input.kcal} error={errors.kcal} onChange={(e) => set({ kcal: e.target.value })} />
+        {!bySize && <Field label="Kalorien" inputMode="decimal" suffix="kcal" value={input.kcal} error={errors.kcal} onChange={(e) => set({ kcal: e.target.value })} />}
         <Field label="Preis (optional)" inputMode="decimal" suffix="CHF" placeholder="–" value={input.price ?? ''} error={errors.price} onChange={(e) => set({ price: e.target.value })} />
       </div>
       <div className={styles.fieldRow3}>
@@ -101,7 +129,7 @@ export function ManualForm({ initial, onSubmit, onBack }: Props) {
           + Ballaststoffe, Zucker, Salz
         </button>
       )}
-      <p className={styles.sourceNote}>Nur Kalorien sind nötig. Leere Felder bleiben leer – LifeFit schätzt nichts dazu, auch keinen Preis.</p>
+      <p className={styles.sourceNote}>{bySize ? 'Nur die Portionsgröße ist nötig.' : 'Nur Kalorien sind nötig.'} Leere Felder bleiben leer – LifeFit schätzt nichts dazu, auch keinen Preis.</p>
       <div className={styles.confirmFooter}>
         {onBack && (
           <Button variant="secondary" onClick={onBack}>

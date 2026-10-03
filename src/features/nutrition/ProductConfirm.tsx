@@ -11,6 +11,7 @@ import { Chip, Field, Stepper, parseNumber } from '../../components/ui/Controls'
 import { Icon } from '../../components/ui/Icon';
 import { isKnownProduct, productMeta } from './Products';
 import { Button } from '../../components/ui/Button';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 export interface ProductChoice {
@@ -203,13 +204,22 @@ export function ProductConfirm({ product, footer, onComplete, purpose = 'eat', o
 
 /** kcal and macros of an entry – unknown values show as "–", never as 0. */
 export function NutrientGrid({ macros, unknown = [] }: { macros?: Macros; unknown?: MacroKey[] }) {
+  const energy = useEnergyText();
   const cell = (key: MacroKey) => (!macros || unknown.includes(key) ? '–' : `${fmt.dec(macros[key])} g`);
   return (
     <div className={styles.macroGrid}>
-      <div className={styles.macroCellStrong}>
-        <strong>{macros ? fmt.int(macros.kcal) : '–'}</strong>
-        <span>kcal</span>
-      </div>
+      {energy.numberFree ? (
+        // Number-free mode (E14): the size of the portion instead of the kcal number.
+        <div className={styles.macroCellStrong}>
+          <strong>{macros ? energy.kcal(macros.kcal).replace('Portion: ', '') : '–'}</strong>
+          <span>Portion</span>
+        </div>
+      ) : (
+        <div className={styles.macroCellStrong}>
+          <strong>{macros ? fmt.int(macros.kcal) : '–'}</strong>
+          <span>kcal</span>
+        </div>
+      )}
       <div className={styles.macroCell}>
         <strong>{cell('protein')}</strong>
         <span>Protein</span>

@@ -29,6 +29,7 @@ import { ProductEditSheet, ProductList } from './Products';
 import { runLog, type CelebrationInput } from './logFeedback';
 import { useFoodSearch } from './useFoodSearch';
 import { MicroLine, NutrientGrid, ProductConfirm } from './ProductConfirm';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 export interface LogTarget {
@@ -226,6 +227,7 @@ type Done = (message: string, action: () => boolean | void, content?: Pick<Entry
  */
 function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; onDone: Done }) {
   const state = useAppState();
+  const energy = useEnergyText(date);
   const t = today();
   const planned = state.plannedMeals.find((m) => m.date === date && m.slot === slot && m.status === 'planned');
   const { options, open } = useMemo(() => slotSuggestions(state, date, slot, t, 3, planned ? [planned.recipeId] : []), [state, date, slot, t, planned]);
@@ -241,7 +243,7 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
     <>
       {dayTargetFor(state, date) && (
         <p className={styles.openLine}>
-          Heute noch offen: <strong>{fmt.kcal(open.kcal)}</strong> · <strong>{fmt.g(open.protein)} Protein</strong>
+          Heute noch offen: <strong>{energy.numberFree ? `ca. ${energy.day(Math.max(0, open.kcal)).amount} Mahlzeiten` : fmt.kcal(open.kcal)}</strong> · <strong>{fmt.g(open.protein)} Protein</strong>
         </p>
       )}
       {again.items.length > 0 && (
@@ -253,7 +255,7 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
             <span className={styles.mealLabel}>Wie gestern</span>
             <span className={styles.mealTitle}>{again.items.map((i) => i.name).join(', ')}</span>
             <span className={styles.mealMeta}>
-              {fmt.kcal(again.macros.kcal)} · {fmt.g(again.macros.protein)} Protein
+              {energy.kcal(again.macros.kcal)} · {fmt.g(again.macros.protein)} Protein
             </span>
           </span>
           <Button size="sm" icon="check" onClick={() => onDone('Wie gestern erfasst', () => repeatSlot(yesterday, date, slot), { macros: again.macros })}>
@@ -270,7 +272,7 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
             <span className={styles.mealLabel}>Dein Plan</span>
             <span className={styles.mealTitle}>{plannedRecipe.title}</span>
             <span className={styles.mealMeta}>
-              {fmt.kcal(recipeMacros(plannedRecipe, planned.servings).kcal)} · {fmt.g(recipeMacros(plannedRecipe, planned.servings).protein)} Protein
+              {energy.kcal(recipeMacros(plannedRecipe, planned.servings).kcal)} · {fmt.g(recipeMacros(plannedRecipe, planned.servings).protein)} Protein
             </span>
           </span>
           <Button size="sm" icon="check" onClick={() => onDone(`${plannedRecipe.title} erfasst`, () => markEaten(planned.id), logFromMeal(planned))}>
@@ -293,7 +295,7 @@ function SuggestPanel({ date, slot, onDone }: { date: ISODate; slot: MealSlot; o
                 <span className={styles.mealText}>
                   <span className={styles.mealTitle}>{o.recipe.title}</span>
                   <span className={styles.mealMeta}>
-                    {[fmt.kcal(o.macros.kcal), `${fmt.int(o.macros.protein)} g Protein`, `${o.recipe.prepMin} min`, costText(o.recipe, o.servings, price)].filter(Boolean).join(' · ')}
+                    {[energy.kcal(o.macros.kcal), `${fmt.int(o.macros.protein)} g Protein`, `${o.recipe.prepMin} min`, costText(o.recipe, o.servings, price)].filter(Boolean).join(' · ')}
                   </span>
                   {reasons.map((r) => (
                     <span key={r} className={styles.reason}>
@@ -465,6 +467,7 @@ function pick(item: SearchItem, on: { onFood: (f: Food) => void; onDb: (f: DbFoo
 
 /** One result with its source – values of different sources are never mixed. */
 function SearchRow({ item, onPick, disallowed, online }: { item: SearchItem; onPick: () => void; disallowed?: boolean; online?: boolean }) {
+  const energy = useEnergyText();
   let title: string;
   let badge: string;
   let meta: string;
@@ -472,17 +475,17 @@ function SearchRow({ item, onPick, disallowed, online }: { item: SearchItem; onP
     const m = dishPortionNutrition(item.dish, 1).macros;
     title = `🍽️ ${item.dish.name}`;
     badge = 'Mein Gericht';
-    meta = `${fmt.kcal(m.kcal)} · ${fmt.int(m.protein)} g Protein pro Portion`;
+    meta = `${energy.kcal(m.kcal)} · ${fmt.int(m.protein)} g Protein pro Portion`;
   } else if (item.kind === 'product') {
     const p = item.product;
     title = p.name;
     badge = online ? 'Online' : 'Produkt';
-    meta = `${p.brand ? `${p.brand} · ` : ''}${p.per100.kcal !== undefined ? `${fmt.int(p.per100.kcal)} kcal pro 100 ${p.unit}` : 'Kalorien unbekannt'}`;
+    meta = energy.numberFree ? (p.brand ?? 'Produkt') : `${p.brand ? `${p.brand} · ` : ''}${p.per100.kcal !== undefined ? `${fmt.int(p.per100.kcal)} kcal pro 100 ${p.unit}` : 'Kalorien unbekannt'}`;
   } else {
     const f = item.food;
     title = f.name;
     badge = item.kind === 'food' ? 'Katalog' : 'Datenbank';
-    meta = `${fmt.int(f.per100.kcal)} kcal · ${fmt.dec(f.per100.protein)} g Protein pro 100 g${disallowed ? ' · passt nicht zu deinen Vorlieben' : ''}`;
+    meta = `${energy.numberFree ? '' : `${fmt.int(f.per100.kcal)} kcal · `}${fmt.dec(f.per100.protein)} g Protein pro 100 g${disallowed ? ' · passt nicht zu deinen Vorlieben' : ''}`;
   }
   return (
     <li>

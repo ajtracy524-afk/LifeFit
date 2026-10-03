@@ -3,6 +3,7 @@ import { addDays, today } from '../../domain/dates';
 import { dayReview } from '../../domain/review/dayReview';
 import { markReviewSeen } from '../../store/actions';
 import { useAppState } from '../../store/store';
+import { useEnergyText } from '../nutrition/useEnergyText';
 import { Button } from '../../components/ui/Button';
 import { Card, CardHeader } from '../../components/ui/Card';
 import styles from './today.module.css';
@@ -15,7 +16,28 @@ import styles from './today.module.css';
 export function DayReviewCard() {
   const state = useAppState();
   const yesterday = addDays(today(), -1);
-  const review = useMemo(() => (state.coach.reviewSeen?.[yesterday] ? undefined : dayReview(state, yesterday)), [state, yesterday]);
+  const energy = useEnergyText(yesterday);
+  const review = useMemo(() => {
+    const r = state.coach.reviewSeen?.[yesterday] ? undefined : dayReview(state, yesterday);
+    if (!r || !energy.numberFree) return r;
+    // Number-free mode (E14): the same review without kcal numbers.
+    const action = r.simplest && energy.text(r.simplest.action);
+    const positive = r.positive && energy.text(r.positive);
+    const dataNote = r.dataNote && energy.text(r.dataNote);
+    const { energy: _energy, positive: _positive, dataNote: _dataNote, simplest: _simplest, ...rest } = r;
+    return {
+      ...rest,
+      good: energy.texts(r.good),
+      relevant: energy.texts(r.relevant),
+      improve: energy.texts(r.improve),
+      unusual: energy.texts(r.unusual),
+      why: energy.texts(r.why),
+      ...(positive ? { positive } : {}),
+      ...(dataNote ? { dataNote } : {}),
+      ...(r.simplest && action ? { simplest: { ...r.simplest, action } } : {}),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, yesterday, energy.numberFree]);
   const [why, setWhy] = useState(false);
   if (!review) return null;
   const nothingToImprove = !review.improve.length;

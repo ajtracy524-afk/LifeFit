@@ -5,6 +5,7 @@ import { describeQuantity } from '../../domain/shopping';
 import type { Recipe } from '../../domain/types';
 import { fmt } from '../../lib/format';
 import { Stepper } from '../../components/ui/Controls';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 interface RecipeDetailProps {
@@ -16,6 +17,7 @@ interface RecipeDetailProps {
 /** Recipe content with live-scaled macros and ingredients. */
 export function RecipeDetail({ recipe, servings, onServingsChange }: RecipeDetailProps) {
   const macros = recipeMacros(recipe, servings);
+  const energy = useEnergyText();
   return (
     <div className={styles.recipe}>
       <div className={styles.recipeHero}>
@@ -33,7 +35,7 @@ export function RecipeDetail({ recipe, servings, onServingsChange }: RecipeDetai
       </div>
 
       <div className={styles.macroGrid}>
-        <Macro label="kcal" value={fmt.int(macros.kcal)} strong />
+        {energy.numberFree ? <Macro label="Portion" value={energy.kcal(macros.kcal).replace('Portion: ', '')} strong /> : <Macro label="kcal" value={fmt.int(macros.kcal)} strong />}
         <Macro label="Protein" value={`${fmt.int(macros.protein)} g`} />
         <Macro label="Kohlenh." value={`${fmt.int(macros.carbs)} g`} />
         <Macro label="Fett" value={`${fmt.int(macros.fat)} g`} />

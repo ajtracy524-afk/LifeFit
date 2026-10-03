@@ -13,6 +13,7 @@ import { Button, IconButton } from '../../components/ui/Button';
 import { Chip, Field, Segmented, parseNumber } from '../../components/ui/Controls';
 import { Icon } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
+import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 /** "500 g · CHF 1.19" – pack and the user's own price (never a price from the product source). */
@@ -124,6 +125,7 @@ export function ProductEditSheet({
   onClose: () => void;
 }) {
   const isNew = !product;
+  const numberFree = useEnergyText().numberFree;
   const [name, setName] = useState(product?.name ?? '');
   const [brand, setBrand] = useState(product?.brand ?? '');
   const [unit, setUnit] = useState<Product['unit']>(product?.unit ?? 'g');
@@ -240,6 +242,8 @@ export function ProductEditSheet({
           <Field label="Packungspreis" inputMode="decimal" suffix="CHF" value={price} onChange={(e) => (setPrice(e.target.value), setError(undefined))} />
         </div>
         <p className={styles.fieldLabel}>Nährwerte pro 100 {u} – leer = unbekannt</p>
+        {/* Number-free mode (E14): label data is still needed to count – it is not shown back as numbers. */}
+        {numberFree && <p className={styles.sourceNote}>Die Werte von der Verpackung braucht LifeFit zum Rechnen – angezeigt bekommst du danach Portionen, keine Kalorienzahlen.</p>}
         {
           <div className={styles.formGrid}>
             {(['kcal', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'salt'] as const).map((k) => (

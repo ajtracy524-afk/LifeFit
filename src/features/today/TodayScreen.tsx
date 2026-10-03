@@ -30,6 +30,7 @@ import { DayTypeBadge } from './DayTypeBadge';
 import { DayGoals } from './DayGoals';
 import { DayReviewCard } from './DayReviewCard';
 import { MealPrepConfirm } from './MealPrepConfirm';
+import { AllergenConfirm } from './AllergenConfirm';
 import { MissingHintCard } from './MissingHintCard';
 import { PregnancyRecheck } from './PregnancyRecheck';
 import { ActivityControl } from './ActivityControl';
@@ -169,6 +170,7 @@ export function TodayScreen() {
       {/* Yesterday, reviewed once: good things, patterns, one simple step – until read. */}
       <DayReviewCard />
       <PregnancyRecheck />
+      <AllergenConfirm />
       <MealPrepConfirm />
       <MissingHintCard />
 

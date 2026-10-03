@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { getExercise } from '../../data/exercises';
 import { addDays, today, weekStart, weekdayIndex } from '../../domain/dates';
 import { formatLitres, waterWeek } from '../../domain/water';
+import { dayPortions, isNumberFree } from '../../domain/numberFree';
 import { goalProgress, latestWeight, weekStats, weightsInRange } from '../../domain/progress';
 import { formatSet } from '../../domain/training';
 import type { GoalType } from '../../domain/types';
@@ -39,6 +40,9 @@ export function ProgressScreen() {
   const points = useMemo(() => weightsInRange(state.weights, range === 'all' ? 'all' : Number(range)), [state.weights, range]);
   const thisWeek = useMemo(() => weekStats(state, start), [state, start]);
   const lastWeek = useMemo(() => weekStats(state, addDays(start, -7)), [state, start]);
+  // Number-free mode (E14): the average day in meals instead of kcal.
+  const numberFree = isNumberFree(state);
+  const meals = state.nutritionProfile?.slots.length ?? 3;
   const records = useMemo(
     () =>
       state.workouts
@@ -134,9 +138,9 @@ export function ProgressScreen() {
       <Section title="Diese Woche">
         <div className={styles.statGrid}>
           <StatCard
-            label="Ø Kalorien"
-            value={thisWeek.loggedDays ? fmt.int(thisWeek.avgKcal) : '–'}
-            sub={thisWeek.loggedDays ? `Ziel ${fmt.int(thisWeek.targetKcal)}` : 'Noch nichts erfasst'}
+            label={numberFree ? 'Ø Essen pro Tag' : 'Ø Kalorien'}
+            value={!thisWeek.loggedDays ? '–' : numberFree ? `${dayPortions(thisWeek.avgKcal, thisWeek.targetKcal, meals).amount} / ${meals}` : fmt.int(thisWeek.avgKcal)}
+            sub={!thisWeek.loggedDays ? 'Noch nichts erfasst' : numberFree ? 'Mahlzeiten' : `Ziel ${fmt.int(thisWeek.targetKcal)}`}
             ratio={thisWeek.targetKcal ? thisWeek.avgKcal / thisWeek.targetKcal : undefined}
           />
           <StatCard

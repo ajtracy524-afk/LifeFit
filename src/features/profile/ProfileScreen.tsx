@@ -75,6 +75,7 @@ export function ProfileScreen() {
   const close = () => setPanel(null);
 
   const { profile, goal, nutritionProfile, training } = state;
+  const numberFree = state.onboarding?.health.numberFree?.value === true;
   if (!profile || !goal || !nutritionProfile || !training) return null;
   const target = [...state.targets].sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
   const program = getProgram(training.programId);
@@ -105,7 +106,7 @@ export function ProfileScreen() {
         <div>
           <strong className={styles.name}>{profile.name || 'Dein Profil'}</strong>
           <p className={styles.muted}>
-            {GOAL_LABEL[goal.type]} · {target ? fmt.kcal(target.kcal) : '–'}
+            {GOAL_LABEL[goal.type]} · {!target ? '–' : numberFree ? 'Portionen statt Zahlen' : fmt.kcal(target.kcal)}
           </p>
         </div>
       </Card>
@@ -143,7 +144,7 @@ export function ProfileScreen() {
 
       <Section title="Mein Plan">
         <Card padded={false}>
-          <Row icon="flame" label="Ziel & Kalorien" value={`${GOAL_LABEL[goal.type]} · ${target ? `${fmt.int(target.kcal)} kcal · ${target.protein} g P` : ''}`} onClick={() => setPanel('goal')} />
+          <Row icon="flame" label="Ziel & Kalorien" value={`${GOAL_LABEL[goal.type]} · ${target ? (numberFree ? `Portionen statt Zahlen · ${target.protein} g P` : `${fmt.int(target.kcal)} kcal · ${target.protein} g P`) : ''}`} onClick={() => setPanel('goal')} />
           <Row
             icon="food"
             label="Ernährung"
@@ -477,17 +478,24 @@ function GoalForm({ onDone }: { onDone: () => void }) {
           }}
         />
       )}
-      <div className={styles.stepRow}>
-        <span>Kalorien</span>
-        <Stepper label="Kalorien" value={macros.kcal} onChange={setKcal} step={50} min={1200} max={5000} format={(v) => `${fmt.int(v)} kcal`} />
-      </div>
+      {/* Number-free mode (E14): the calories stay in the background; protein grams stay. */}
+      {numberFree ? (
+        <p className={styles.muted}>Zahlenfreier Modus: Dein Tagesziel wird im Hintergrund berechnet und als Portionen gezeigt.</p>
+      ) : (
+        <div className={styles.stepRow}>
+          <span>Kalorien</span>
+          <Stepper label="Kalorien" value={macros.kcal} onChange={setKcal} step={50} min={1200} max={5000} format={(v) => `${fmt.int(v)} kcal`} />
+        </div>
+      )}
       <div className={styles.stepRow}>
         <span>Protein</span>
         <Stepper label="Protein" value={macros.protein} onChange={setProtein} step={5} min={40} max={300} format={(v) => `${v} g`} />
       </div>
-      <p className={styles.muted}>
-        Kohlenhydrate {macros.carbs} g · Fett {macros.fat} g
-      </p>
+      {!numberFree && (
+        <p className={styles.muted}>
+          Kohlenhydrate {macros.carbs} g · Fett {macros.fat} g
+        </p>
+      )}
       <Button variant="secondary" icon="sparkle" onClick={() => recalc(type)}>
         Mit aktuellem Gewicht neu berechnen
       </Button>

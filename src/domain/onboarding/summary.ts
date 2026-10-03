@@ -212,7 +212,7 @@ export const MISSING_HINT: Record<MissingHint, { text: string; step: OnboardingS
  */
 export function missingHint(state: AppState, today: ISODate): MissingHint | undefined {
   const p = state.onboarding;
-  if (!p || !isSetupComplete(state) || p.progress.active) return undefined;
+  if (!p || !isSetupComplete(state) || p.progress.active || pendingConfirmation(state)) return undefined;
   const until = p.notices?.completeCard?.dismissedUntil;
   if (until && today < until) return undefined;
   const fat = p.body.bodyFat ?? (state.measurements ?? []).some((m) => m.kind === 'body_fat');
@@ -220,6 +220,17 @@ export function missingHint(state: AppState, today: ISODate): MissingHint | unde
   if (!p.body.activity || p.body.activity.source === 'default') return 'activity';
   if (!p.food.weekTemplate) return 'weekTemplate';
   if (!Object.keys(state.pantry ?? {}).length) return 'pantry';
+  return undefined;
+}
+
+/**
+ * Migrated values still to confirm (E5, E18) – one card at a time on Heute,
+ * the stricter allergen reading first; the missing-answer card waits.
+ */
+export function pendingConfirmation(state: Pick<AppState, 'onboarding'>): 'allergens' | 'mealPrep' | undefined {
+  const food = state.onboarding?.food;
+  if (food?.allergens?.source === 'migrated' || food?.intolerances?.source === 'migrated') return 'allergens';
+  if (food?.mealPrep?.source === 'migrated') return 'mealPrep';
   return undefined;
 }
 

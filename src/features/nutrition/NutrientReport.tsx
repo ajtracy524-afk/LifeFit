@@ -3,7 +3,8 @@ import { FOODS } from '../../data/foods';
 import { isDayFinished } from '../../domain/calorieStatus';
 import { today } from '../../domain/dates';
 import { foodAllowed } from '../../domain/nutrition';
-import { nutrientReport, type NutrientGroup, type NutrientRow } from '../../domain/nutrientReport';
+import { nutrientReport, numberFreeReport, type NutrientGroup, type NutrientRow } from '../../domain/nutrientReport';
+import { isNumberFree } from '../../domain/numberFree';
 import type { ISODate } from '../../domain/types';
 import { relativeDay } from '../../lib/format';
 import { useAppState } from '../../store/store';
@@ -37,7 +38,12 @@ export function NutrientReportEntry({ date, onLog }: { date: ISODate; onLog?: ()
   const state = useAppState();
   const [open, setOpen] = useState(false);
   const finished = isDayFinished(date, today(), new Date().getHours());
-  const report = useMemo(() => nutrientReport(state, date, finished), [state.logEntries, state.targets, state.closedDayTargets, state.water, state.nutritionProfile, state.training, state.workoutOverrides, date, finished]);
+  const numberFree = isNumberFree(state);
+  const report = useMemo(() => {
+    const r = nutrientReport(state, date, finished);
+    return numberFree ? numberFreeReport(r) : r;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.logEntries, state.targets, state.closedDayTargets, state.water, state.nutritionProfile, state.training, state.workoutOverrides, date, finished, numberFree]);
   const alert = report.groups.flatMap((g) => g.rows).find((r) => r.tone === 'red');
   return (
     <>
@@ -67,7 +73,11 @@ export function NutrientReportEntry({ date, onLog }: { date: ISODate; onLog?: ()
 
 function NutrientReportSheet({ open, date, finished, onClose, onLog }: { open: boolean; date: ISODate; finished: boolean; onClose: () => void; onLog?: () => void }) {
   const state = useAppState();
-  const report = useMemo(() => (open ? nutrientReport(state, date, finished) : undefined), [open, state, date, finished]);
+  const report = useMemo(() => {
+    if (!open) return undefined;
+    const r = nutrientReport(state, date, finished);
+    return isNumberFree(state) ? numberFreeReport(r) : r;
+  }, [open, state, date, finished]);
   if (!open || !report) return <Sheet open={false} onClose={onClose} title="" children={null} />;
   const rows = report.groups.flatMap((g) => g.rows);
   const get = (k: string) => rows.find((r) => r.key === k);
