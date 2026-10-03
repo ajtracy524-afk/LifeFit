@@ -255,3 +255,34 @@ describe('engine · body trend & guardrails', () => {
     expect(byKind(recs, 'nutrition_over')).toBeUndefined();
   });
 });
+
+describe('engine · number-free mode (E14)', () => {
+  /** Every text the coach card can show. */
+  const texts = (recs: Recommendation[]) =>
+    recs.flatMap((r) => [r.title, r.message, ...r.reasons, ...r.actions.map((a) => a.label), ...r.actions.flatMap((a) => ('details' in a && a.details ? a.details.because : []))]);
+  const flatWeights = Array.from({ length: 6 }, (_, i) => ({ id: `w${i}`, date: addDays('2026-09-01', i * 4), kg: 80 }));
+  const logs = Array.from({ length: 12 }, (_, i) => quick(addDays(SATURDAY, -(i + 1)), 'lunch', 2500, 160));
+  const scenarios: [AppState, Parameters<typeof runEngine>[1]][] = [
+    [baseState({ training: null, logEntries: [quick(SATURDAY, 'breakfast', 600, 35), quick(SATURDAY, 'lunch', 900, 50)] }), { date: SATURDAY, hour: 18, limit: 20 }],
+    [baseState({ training: null, logEntries: [quick(SATURDAY, 'breakfast', 1200, 50), quick(SATURDAY, 'lunch', 1250, 60)] }), { date: SATURDAY, hour: 16, limit: 20 }],
+    [baseState({ training: null, logEntries: [quick(SATURDAY, 'lunch', 3200, 150)] }), { date: SATURDAY, hour: 20, limit: 20 }],
+    [baseState({ weights: flatWeights, logEntries: logs }), { date: SATURDAY, limit: 20 }],
+    [baseState({ workouts: [completed('ppl-legs', addDays(SATURDAY, -1))] }), { date: SATURDAY, limit: 20 }],
+    [baseState(), { date: SATURDAY, availableMinutes: 30, limit: 20 }],
+  ];
+
+  it('the coach texts of real scenarios carry no kcal number once filtered – and the advice stays', async () => {
+    const { withoutKcal } = await import('../numberFree');
+    const all = scenarios.flatMap(([state, opts]) => texts(runEngine(state, opts)));
+    const withKcal = all.filter((t) => /kcal/i.test(t));
+    expect(withKcal.length).toBeGreaterThan(3); // the test has teeth
+    for (const t of all) {
+      const shown = withoutKcal(t);
+      if (shown !== undefined) expect(shown, t).not.toMatch(/\d[\d.’']*\s*(kcal|Kilokalorien)/i);
+    }
+    expect(withoutKcal('Heute fehlen noch 650 kcal und 50 g Protein')).toBe('Heute fehlen noch 50 g Protein');
+    // Most texts keep something to say.
+    const kept = withKcal.filter((t) => withoutKcal(t) !== undefined).length;
+    expect(kept / withKcal.length).toBeGreaterThan(0.5);
+  });
+});

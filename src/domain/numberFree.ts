@@ -50,6 +50,8 @@ const KCAL = /kcal|kilokalorien/i;
  */
 export function withoutKcal(text: string): string | undefined {
   let s = text.replace(/\s*\([^()]*(kcal|kilokalorien)[^()]*\)/gi, '');
+  // "650 kcal und 50 g Protein" → "50 g Protein" (grams stay).
+  s = s.replace(/\d[\d.'’]*\s*kcal\s+und\s+/gi, '');
   const parts = s.split(' · ');
   if (parts.length > 1) s = parts.filter((part) => !KCAL.test(part)).join(' · ');
   // A side clause with the number: "Gut gemacht – 300 kcal unter dem Ziel" → "Gut gemacht".
