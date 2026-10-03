@@ -36,6 +36,8 @@ export interface FlowState {
   skipped: OnboardingStepId[];
   /** Re-opened from the profile: only this section. */
   scope?: OnboardingSection;
+  /** Opened from the summary ("Ändern"): the next step is the summary again (Prompt 9). */
+  returnTo?: 'summary';
 }
 
 export const SECTION_LABEL: Record<OnboardingSection, string> = {
@@ -125,6 +127,10 @@ export interface FlowResult {
 }
 
 export function next(state: FlowState, answers: FlowAnswers): FlowResult {
+  if (state.returnTo === 'summary') {
+    const { returnTo: _back, ...rest } = state;
+    return { state: { ...rest, step: 'summary' }, done: false };
+  }
   const steps = stepsFor(state.mode, answers, state.scope);
   const i = position(steps, state.step);
   const following = steps[i + 1];
@@ -169,6 +175,11 @@ export function jumpTo(state: FlowState, id: OnboardingStepId, answers: FlowAnsw
   return stepsFor(state.mode, answers, state.scope).some((s) => s.id === id) ? { ...state, step: id } : state;
 }
 
+/** "Ändern" on the summary: straight into the step (also one the quick mode left out) and back to the summary. */
+export function editFromSummary(state: FlowState, id: OnboardingStepId): FlowState {
+  return BY_ID.has(id) ? { ...state, step: id, returnTo: 'summary' } : state;
+}
+
 export interface SectionProgress {
   section: OnboardingSection;
   /** Steps behind the current one (answered or skipped). */
@@ -205,5 +216,5 @@ export function flowStateOf(profile: OnboardingProfile | undefined): FlowState {
   const p = profile?.progress;
   const step = p?.step ? (RENAMED[p.step] ?? p.step) : undefined;
   if (!profile || !p || !step || !BY_ID.has(step)) return initialState(profile?.mode ?? 'full');
-  return { mode: profile.mode ?? 'full', step, skipped: (p.skipped ?? []).map((id) => RENAMED[id] ?? id), ...(p.scope ? { scope: p.scope } : {}) };
+  return { mode: profile.mode ?? 'full', step, skipped: (p.skipped ?? []).map((id) => RENAMED[id] ?? id), ...(p.scope ? { scope: p.scope } : {}), ...(p.returnTo ? { returnTo: p.returnTo } : {}) };
 }

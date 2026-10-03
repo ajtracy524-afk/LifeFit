@@ -724,3 +724,22 @@
   font-size: 13px;
   color: var(--text-2);
 }
+
+/* ---------- Summary "Dein Plan" (Prompt 9) ---------- */
+
+.summaryCard {
+  display: grid;
+  gap: 4px;
+}
+
+.summaryLine {
+  margin: 0;
+  font-size: 14px;
+}
+
+.estimated {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-3, var(--text-2));
+  font-style: italic;
+}

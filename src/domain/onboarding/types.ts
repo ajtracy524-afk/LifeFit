@@ -69,6 +69,8 @@ export interface OnboardingProgress {
   /** Position of the unfinished main flow while a section is re-opened – restored when it closes. */
   mainStep?: OnboardingStepId;
   mainMode?: OnboardingMode;
+  /** A step opened from the summary returns there (Prompt 9). */
+  returnTo?: 'summary';
   completed: Partial<Record<OnboardingSection, string>>;
   skipped: OnboardingStepId[];
   finishedAt?: string;

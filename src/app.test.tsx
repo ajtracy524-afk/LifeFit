@@ -3558,4 +3558,99 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       expect(text()).toContain('Plan übernommen – er steht ab heute in deinem Training und auf Heute.');
     });
   });
+  describe('Prompt 9: "Dein Plan", the Heute card, Vorher / Nachher', () => {
+    const toPlan = async () => {
+      for (let i = 0; i < 20 && title() !== 'Dein Plan'; i++) await click('Weiter');
+      expect(title()).toBe('Dein Plan');
+    };
+    beforeEach(() => {
+      HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+        this.setAttribute('open', '');
+      };
+      HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+        this.removeAttribute('open');
+      };
+    });
+
+    it('summary cards; "Ändern" jumps into the step and back; "Los geht’s" plans the week, the shopping list and the training → Heute', async () => {
+      const store = await startApp();
+      await click('Schnellstart (ca. 1 Minute)');
+      await toPlan();
+      const cards = [...container.querySelectorAll('main [aria-label]')].map((c) => c.getAttribute('aria-label'));
+      for (const t of ['Körper', 'Ziel & Tempo', 'Kalorien & Makros', 'Essensrahmen', 'Trainingswoche']) expect(cards).toContain(t);
+      expect(text()).toContain('geschätzt – ergänzen?'); // Schnellstart: defaults are marked
+      expect(text()).toContain('LifeFit ersetzt keine ärztliche oder ernährungswissenschaftliche Beratung.');
+
+      await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Körper ändern"]')!.click());
+      expect(title()).toBe('Körperfett'); // no body fat yet → the step that makes the body card more precise
+      await click('Zurück zur Zusammenfassung');
+      expect(title()).toBe('Dein Plan');
+      expect(store.getState().onboarding!.progress.returnTo).toBeUndefined();
+
+      await click('Los geht’s');
+      const s = store.getState();
+      const { weekStart } = await import('./domain/dates');
+      const { weekShopping } = await import('./domain/week');
+      const week = weekStart('2026-10-01');
+      expect(s.plannedMeals.filter((m) => m.date >= week).length).toBeGreaterThan(0);
+      expect(weekShopping(s, week, '2026-10-01').length).toBeGreaterThan(0);
+      expect(s.training!.programId).toMatch(/^program:plan-/);
+      expect(s.onboarding!.training.plan).toBeTruthy();
+      expect(text()).toMatch(/Guten Morgen/);
+    });
+
+    it('Heute: one quiet card for the most effective missing answer; "Später" → 14 days of rest; "Ergänzen" opens the step', async () => {
+      localStorage.setItem(KEY, JSON.stringify(completeState()));
+      let store = await startApp();
+      const card = () => container.querySelector('[aria-label="Angabe ergänzen"]');
+      expect(card()!.textContent).toContain('Körperfett'); // migrated user without body fat → the first priority
+      expect(container.querySelectorAll('[aria-label="Angabe ergänzen"]')).toHaveLength(1);
+      await click('Später');
+      expect(card()).toBeNull();
+      expect(store.getState().onboarding!.notices!.completeCard!.dismissedUntil).toBe('2026-10-15');
+
+      vi.setSystemTime(new Date(2026, 9, 14, 9, 0));
+      store = await restart();
+      expect(card()).toBeNull(); // still quiet on day 13
+      vi.setSystemTime(new Date(2026, 9, 15, 9, 0));
+      store = await restart();
+      expect(card()).not.toBeNull();
+      await click('Ergänzen');
+      expect(title()).toBe('Körperfett');
+    });
+
+    it('profile: body data show Vorher / Nachher; confirming writes a new target version (older ones untouched), undo restores', async () => {
+      localStorage.setItem(KEY, JSON.stringify(completeState()));
+      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      const store = await startApp();
+      const before = structuredClone(store.getState().targets);
+      await click('Körperdaten');
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent === 'Sehr')!.click());
+      const preview = container.querySelector('[aria-label="Vorher und Nachher"]')!;
+      expect(preview.textContent).toMatch(/Kalorien: 2\.700 → [\d.]+ kcal \(\+\d+/);
+      expect(store.getState().targets).toEqual(before); // nothing saved yet
+      await clickInDialog('Speichern und Tagesziele übernehmen');
+      const s = store.getState();
+      expect(s.targets).toHaveLength(2);
+      expect(s.targets[0]).toEqual(before[0]); // the old version stays byte-identical (E10)
+      expect(s.targets[1]!.kcal).toBeGreaterThan(2700);
+      expect(s.profile!.activity).toBe('active');
+      expect(s.onboarding!.body.activity).toMatchObject({ value: 'active', source: 'user' });
+      await click('Rückgängig');
+      expect(store.getState().targets).toEqual(before);
+      expect(store.getState().profile!.activity).toBe('moderate');
+    });
+
+    it('profile: "Nur Körperdaten speichern" keeps the target', async () => {
+      localStorage.setItem(KEY, JSON.stringify(completeState()));
+      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      const store = await startApp();
+      await click('Körperdaten');
+      await act(async () => [...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent === 'Sitzend')!.click());
+      await clickInDialog('Nur Körperdaten speichern');
+      expect(store.getState().targets).toHaveLength(1);
+      expect(store.getState().profile!.activity).toBe('sedentary');
+    });
+  });
+
 });

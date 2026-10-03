@@ -2,9 +2,10 @@ import { today, weekStart } from '../domain/dates';
 import { nutritionProfileFrom, plannerSettingsFrom } from '../domain/onboarding/food';
 import { trainingSetupFrom } from '../domain/onboarding/training';
 import { applyTemplateChange, fillWeek, replanForbidden } from '../domain/week';
-import { answersOf, flowStateOf, initialState, sectionState, type FlowState } from '../domain/onboarding/flow';
+import { answersOf, flowStateOf, initialState, jumpTo, sectionState, type FlowState } from '../domain/onboarding/flow';
+import { currentPlanDraft } from '../domain/onboarding/summary';
 import { defaultAnswers, defaultCoreSetup, emptyOnboarding, isSetupComplete } from '../domain/onboarding/migrate';
-import type { AnswerGroup, Field, OnboardingMode, OnboardingProfile, OnboardingSection } from '../domain/onboarding/types';
+import type { AnswerGroup, Field, OnboardingMode, OnboardingProfile, OnboardingSection, OnboardingStepId } from '../domain/onboarding/types';
 import type { AppState, CardioType, GoalType, Macros, Profile, WorkoutTemplate } from '../domain/types';
 import type { PlanDraft } from '../domain/onboarding/types';
 import { CARDIO } from '../domain/constants';
@@ -31,9 +32,11 @@ function writeFlow(s: AppState, flow: FlowState, active: boolean) {
       skipped: flow.skipped,
       active,
       ...(flow.scope ? { scope: flow.scope } : {}),
+      ...(flow.returnTo ? { returnTo: flow.returnTo } : {}),
     },
   };
   if (!flow.scope) delete s.onboarding.progress.scope;
+  if (!flow.returnTo) delete s.onboarding.progress.returnTo;
 }
 
 /** Start (or restart) the whole flow in a mode. */
@@ -54,6 +57,23 @@ export function openOnboardingSection(section: OnboardingSection): void {
     const main = !p.progress.scope && p.progress.step && !p.progress.finishedAt ? { mainStep: p.progress.step, mainMode: p.mode ?? 'full' } : {};
     s.onboarding = { ...p, progress: { ...p.progress, ...main } };
     writeFlow(s, sectionState(section, answersOf(s.onboarding)), true);
+  });
+}
+
+/** From the Heute card: one step of a section, back to Heute when done (Prompt 9). */
+export function openOnboardingStep(section: OnboardingSection, step: OnboardingStepId): void {
+  openOnboardingSection(section);
+  update((s) => {
+    const flow = flowStateOf(s.onboarding);
+    writeFlow(s, jumpTo(flow, step, answersOf(s.onboarding)), true);
+  });
+}
+
+/** "Später" on the Heute card: quiet for the rest days (Prompt 9). */
+export function dismissMissingHint(until: string): void {
+  update((s) => {
+    const p = profileOf(s);
+    s.onboarding = { ...p, notices: { ...p.notices, completeCard: { dismissedUntil: until } } };
   });
 }
 
@@ -120,7 +140,13 @@ export function closeOnboardingSection(section: OnboardingSection): void {
 /** Finish: the core setup exists (defaults where nothing was given), the flow is closed. */
 export function finishOnboarding(): void {
   ensureCoreSetup();
+  // The training plan of "Dein Trainingsplan" (as edited, or as generated) – unless one was adopted already.
+  const s0 = getState();
+  if (!s0.onboarding?.training.plan) adoptPlan(currentPlanDraft(s0));
   update((s) => {
+    // The first week plan right away – the shopping list follows from it.
+    const t = today();
+    fillWeek(s, weekStart(t), t);
     const p = profileOf(s);
     const at = new Date().toISOString();
     const progress = { ...p.progress, active: false, finishedAt: at, completed: { A: at, B: at, C: at, ...p.progress.completed } };
@@ -149,6 +175,28 @@ export function applyGoalAsTarget(goal: { type: GoalType; targetWeightKg?: numbe
     }
   });
   setTargets(macros, 'formula');
+}
+
+/**
+ * Body data from the profile (Prompt 9): stored in the profile and mirrored into
+ * the answers (source 'user' – the Heute card stops asking). With `macros`
+ * (the confirmed "Nachher" of the preview) a new target version follows;
+ * older versions stay untouched (E10).
+ */
+export function applyProfileChange(patch: Partial<Pick<Profile, 'name' | 'age' | 'heightCm' | 'activity'>>, macros?: Macros): void {
+  update((s) => {
+    if (!s.profile) return;
+    const before = s.profile;
+    s.profile = { ...before, ...patch };
+    const p = profileOf(s);
+    const at = new Date().toISOString();
+    const body = { ...p.body };
+    if (patch.heightCm !== undefined && patch.heightCm !== before.heightCm) body.heightCm = { value: patch.heightCm, source: 'user', updatedAt: at };
+    if (patch.activity !== undefined && (patch.activity !== before.activity || body.activity?.source !== 'user')) body.activity = { value: patch.activity, source: 'user', updatedAt: at };
+    if (patch.age !== undefined && patch.age !== before.age) body.birthYear = { value: Number(today().slice(0, 4)) - patch.age, source: 'user', updatedAt: at };
+    s.onboarding = { ...p, body };
+  });
+  if (macros) setTargets(macros, 'formula');
 }
 
 type FoodAnswers = OnboardingProfile['food'];

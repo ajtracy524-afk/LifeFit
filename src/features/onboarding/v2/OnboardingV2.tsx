@@ -5,18 +5,18 @@ import {
   canGoBack,
   flowStateOf,
   initialState,
-  jumpTo,
+  editFromSummary,
   next,
   SECTION_LABEL,
   sectionProgress,
-  SECTIONS,
   skipSection,
   skipStep,
   stepDef,
-  stepsFor,
   type FlowResult,
 } from '../../../domain/onboarding/flow';
 import type { Field, OnboardingMode, OnboardingProfile, OnboardingStepId } from '../../../domain/onboarding/types';
+import { today } from '../../../domain/dates';
+import { summaryOf } from '../../../domain/onboarding/summary';
 import { navigate } from '../../../lib/router';
 import { showToast } from '../../../lib/toast';
 import { closeOnboardingSection, finishOnboarding, pauseOnboarding, saveOnboardingFlow } from '../../../store/onboardingActions';
@@ -139,25 +139,22 @@ export function OnboardingV2() {
 
           {isSummary && (
             <div className={styles.stack}>
-              {SECTIONS.map((section) => {
-                const steps = stepsFor(flow.mode, answers).filter((s) => s.section === section);
-                const skipped = steps.filter((s) => flow.skipped.includes(s.id)).length;
-                return (
-                  <Card key={section} className={styles.summaryRow}>
-                    <div>
-                      <strong>{SECTION_LABEL[section]}</strong>
-                      <p className={styles.hint}>
-                        {steps.length === 0 ? 'Standardwerte – im Profil ergänzen' : skipped ? `${skipped} von ${steps.length} übersprungen – Standardwerte` : `${steps.length} ${steps.length === 1 ? 'Schritt' : 'Schritte'} beantwortet`}
-                      </p>
-                    </div>
-                    {steps[0] && (
-                      <Button variant="secondary" size="sm" onClick={() => saveOnboardingFlow(jumpTo(flow, steps[0]!.id, answers))}>
-                        Ändern
-                      </Button>
-                    )}
-                  </Card>
-                );
-              })}
+              {summaryOf(state, today()).map((card) => (
+                <Card key={card.id} className={styles.summaryCard} aria-label={card.title}>
+                  <div className={styles.subgroup}>
+                    <strong>{card.title}</strong>
+                    <Button variant="secondary" size="sm" onClick={() => saveOnboardingFlow(editFromSummary(flow, card.step))} aria-label={`${card.title} ändern`}>
+                      Ändern
+                    </Button>
+                  </div>
+                  {card.lines.map((line) => (
+                    <p key={line} className={styles.summaryLine}>
+                      {line}
+                    </p>
+                  ))}
+                  {card.estimated.length > 0 && <p className={styles.estimated}>{card.estimated.join(', ')}: geschätzt – ergänzen?</p>}
+                </Card>
+              ))}
               <p className={styles.hint}>LifeFit ersetzt keine ärztliche oder ernährungswissenschaftliche Beratung.</p>
             </div>
           )}
@@ -166,7 +163,7 @@ export function OnboardingV2() {
 
       <footer className={styles.footer}>
         <Button block size="lg" onClick={onNext}>
-          {isSummary ? 'Los geht’s' : isAnalysis ? 'Körperfett ergänzen (empfohlen)' : lastOfScope ? 'Fertig' : 'Weiter'}
+          {isSummary ? 'Los geht’s' : flow.returnTo === 'summary' ? 'Zurück zur Zusammenfassung' : isAnalysis ? 'Körperfett ergänzen (empfohlen)' : lastOfScope ? 'Fertig' : 'Weiter'}
         </Button>
         <div className={styles.secondary}>
           <Button variant="secondary" onClick={onSkip}>

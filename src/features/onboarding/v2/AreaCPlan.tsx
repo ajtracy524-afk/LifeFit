@@ -5,6 +5,7 @@ import { today } from '../../../domain/dates';
 import { MUSCLE_LABEL } from '../../../domain/exerciseLibrary';
 import { calculateTargets, targetForDate } from '../../../domain/nutrition';
 import type { PlanDraft } from '../../../domain/onboarding/types';
+import { planInputOf, planKeyOf } from '../../../domain/onboarding/summary';
 import { currentWeight } from '../../../domain/progress';
 import { estimateMinutes } from '../../../domain/training';
 import {
@@ -15,10 +16,8 @@ import {
   swapDays,
   validatePlan,
   type DayPlan,
-  type PlanInput,
   type SplitId,
 } from '../../../domain/training/recommendPlan';
-import type { AppState } from '../../../domain/types';
 import { weekdayLong } from '../../../lib/format';
 import { showToast } from '../../../lib/toast';
 import { withUndo } from '../../../lib/undo';
@@ -30,23 +29,7 @@ import { OptionCard } from '../../../components/ui/Controls';
 import { Sheet } from '../../../components/ui/Sheet';
 import styles from './onboardingV2.module.css';
 
-/** What the plan is made of: the answers of area C, the setup as fallback. */
-export function planInputOf(state: AppState): PlanInput {
-  const t = state.onboarding?.training ?? {};
-  const setup = state.training;
-  return {
-    weekdays: t.weekdays?.value ?? setup?.weekdays ?? [0, 2, 4],
-    level: t.level?.value ?? state.profile?.experience ?? 'beginner',
-    sessionMinutes: t.sessionMinutes?.value ?? setup?.sessionMinutes ?? 60,
-    ...(setup?.equipmentItems ? { equipmentItems: setup.equipmentItems } : {}),
-    ...(setup?.limitations ? { limitations: setup.limitations } : {}),
-    ...(setup?.musclePriorities?.length ? { focus: setup.musclePriorities } : {}),
-    ...(setup?.cardio ? { cardio: setup.cardio } : {}),
-    ...(setup?.dislikedExercises?.length ? { dislikedExercises: setup.dislikedExercises } : {}),
-  };
-}
-
-const keyOf = (i: PlanInput) => JSON.stringify(i);
+const keyOf = planKeyOf;
 
 /**
  * "Dein Trainingsplan" (Prompt 8): the generated week – 7 cards, swap days

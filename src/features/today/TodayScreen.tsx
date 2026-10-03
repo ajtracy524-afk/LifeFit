@@ -30,6 +30,7 @@ import { DayTypeBadge } from './DayTypeBadge';
 import { DayGoals } from './DayGoals';
 import { DayReviewCard } from './DayReviewCard';
 import { MealPrepConfirm } from './MealPrepConfirm';
+import { MissingHintCard } from './MissingHintCard';
 import { PregnancyRecheck } from './PregnancyRecheck';
 import { ActivityControl } from './ActivityControl';
 import { WeekProgressCard } from './WeekProgressCard';
@@ -169,6 +170,7 @@ export function TodayScreen() {
       <DayReviewCard />
       <PregnancyRecheck />
       <MealPrepConfirm />
+      <MissingHintCard />
 
       {/* Training or rest day – at a glance, a training day links to the session. */}
       <DayTypeBadge

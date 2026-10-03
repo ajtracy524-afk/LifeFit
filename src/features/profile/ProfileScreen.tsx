@@ -32,7 +32,6 @@ import {
   updateGoal,
   updateNutritionProfile,
   updatePlannerSettings,
-  updateProfile,
   updateTraining,
   updateTrainingProfile,
 } from '../../store/actions';
@@ -45,7 +44,9 @@ import { Icon, type IconName } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
 import { flowStateOf, SECTION_LABEL, SECTIONS, stepDef } from '../../domain/onboarding/flow';
 import { onboardingV2Enabled } from '../../lib/flags';
-import { openOnboardingSection, saveOnboardingFlow } from '../../store/onboardingActions';
+import { applyProfileChange, openOnboardingSection, saveOnboardingFlow } from '../../store/onboardingActions';
+import { previewLines, recalcPreview } from '../../domain/onboarding/recalc';
+import { RecalcPreview } from './RecalcPreview';
 import styles from './profile.module.css';
 
 type Panel = 'goal' | 'nutrition' | 'training' | 'body' | 'budget' | 'schedule' | 'water' | 'reset' | null;
@@ -441,9 +442,10 @@ function GoalForm({ onDone }: { onDone: () => void }) {
       ...(goalChanged ? { startWeightKg: currentWeight(state.weights) ?? goal.startWeightKg, startedAt: today() } : {}),
     });
     setTargets(macros, method);
-    showToast('Ziele gespeichert');
     onDone();
   };
+  const changedMacros = (['kcal', 'protein', 'carbs', 'fat'] as const).some((k) => macros[k] !== current[k]);
+  const numberFree = state.onboarding?.health.numberFree?.value === true;
 
   return (
     <SheetForm>
@@ -489,8 +491,9 @@ function GoalForm({ onDone }: { onDone: () => void }) {
       <Button variant="secondary" icon="sparkle" onClick={() => recalc(type)}>
         Mit aktuellem Gewicht neu berechnen
       </Button>
-      <Button block size="lg" onClick={save}>
-        Speichern
+      {changedMacros && <RecalcPreview preview={{ before: current, after: macros, changed: true, lines: previewLines(current, macros, numberFree) }} />}
+      <Button block size="lg" onClick={() => withUndo(changedMacros ? 'Neue Tagesziele gespeichert' : 'Ziel gespeichert', save)}>
+        {changedMacros ? 'Neue Tagesziele übernehmen' : 'Speichern'}
       </Button>
     </SheetForm>
   );
@@ -590,6 +593,23 @@ function TrainingForm({ onDone }: { onDone: () => void }) {
     limitationAreas: current.limitations?.areas ?? [],
   });
   const [items, setItems] = useState<EquipmentItem[]>(current.equipmentItems ?? DEFAULT_ITEMS[current.equipment ?? 'gym']);
+  // More or fewer training days change the training surcharge – shown before saving (Prompt 9).
+  const preview = weekdays.length && weekdays.length !== current.weekdays.length ? recalcPreview(state, { trainingDays: weekdays.length }, today()) : undefined;
+  const save = (adopt: boolean) =>
+    withUndo(adopt ? 'Trainingsplan und Tagesziele aktualisiert' : 'Trainingsplan aktualisiert', () => {
+      updateTraining({ ...current, programId, weekdays, startedAt: programId === current.programId ? current.startedAt : undefined });
+      updateTrainingProfile({
+        trainingYears: tp.trainingYears,
+        freeWeights: tp.freeWeights,
+        sessionMinutes: tp.sessionMinutes,
+        focus: tp.focus,
+        musclePriorities: tp.musclePriorities,
+        equipmentItems: items,
+        limitations: { areas: tp.limitationAreas, excludedExercises: current.limitations?.excludedExercises ?? [] },
+      });
+      if (adopt && preview) setTargets(preview.after, 'formula');
+      onDone();
+    });
 
   return (
     <SheetForm>
@@ -601,27 +621,15 @@ function TrainingForm({ onDone }: { onDone: () => void }) {
       <p className={styles.label}>Dein Trainingsprofil</p>
       <TrainingProfileFields value={tp} onChange={setTp} />
       <EquipmentItemsField items={items} onChange={setItems} />
-      <Button
-        block
-        size="lg"
-        disabled={weekdays.length === 0}
-        onClick={() => {
-          updateTraining({ ...current, programId, weekdays, startedAt: programId === current.programId ? current.startedAt : undefined });
-          updateTrainingProfile({
-            trainingYears: tp.trainingYears,
-            freeWeights: tp.freeWeights,
-            sessionMinutes: tp.sessionMinutes,
-            focus: tp.focus,
-            musclePriorities: tp.musclePriorities,
-            equipmentItems: items,
-            limitations: { areas: tp.limitationAreas, excludedExercises: current.limitations?.excludedExercises ?? [] },
-          });
-          showToast('Trainingsplan aktualisiert');
-          onDone();
-        }}
-      >
-        {weekdays.length === 0 ? 'Wähle mindestens einen Tag' : 'Speichern'}
+      {preview?.changed && <RecalcPreview preview={preview} />}
+      <Button block size="lg" disabled={weekdays.length === 0} onClick={() => save(!!preview?.changed)}>
+        {weekdays.length === 0 ? 'Wähle mindestens einen Tag' : preview?.changed ? 'Speichern und Tagesziele übernehmen' : 'Speichern'}
       </Button>
+      {preview?.changed && (
+        <Button block variant="ghost" onClick={() => save(false)}>
+          Nur Trainingsplan speichern
+        </Button>
+      )}
     </SheetForm>
   );
 }
@@ -637,23 +645,30 @@ function BodySheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 function BodyForm({ onDone }: { onDone: () => void }) {
-  const profile = useAppState().profile!;
+  const state = useAppState();
+  const profile = state.profile!;
   const [name, setName] = useState(profile.name);
   const [age, setAge] = useState(String(profile.age));
   const [height, setHeight] = useState(String(profile.heightCm));
   const [activity, setActivity] = useState<ActivityLevel>(profile.activity);
   const [errors, setErrors] = useState<{ age?: string; height?: string }>({});
 
-  const save = () => {
-    const a = parseNumber(age);
-    const h = parseNumber(height);
+  const a = parseNumber(age);
+  const h = parseNumber(height);
+  const valid = Number.isFinite(a) && a >= 14 && a <= 100 && Number.isFinite(h) && h >= 120 && h <= 230;
+  // Age, height and activity change the daily target – "Vorher / Nachher" before saving (Prompt 9).
+  const touched = a !== profile.age || h !== profile.heightCm || activity !== profile.activity;
+  const preview = valid && touched ? recalcPreview(state, { profile: { age: a, heightCm: h, activity } }, today()) : undefined;
+
+  const save = (adopt: boolean) => {
     const e: typeof errors = {};
     if (!Number.isFinite(a) || a < 14 || a > 100) e.age = 'Alter zwischen 14 und 100';
     if (!Number.isFinite(h) || h < 120 || h > 230) e.height = 'Größe zwischen 120 und 230 cm';
     setErrors(e);
     if (Object.keys(e).length) return;
-    updateProfile({ name: name.trim(), age: a, heightCm: h, activity });
-    showToast('Gespeichert. Tipp: Unter „Ziel & Kalorien“ kannst du neu berechnen.');
+    withUndo(adopt ? 'Körperdaten und Tagesziele gespeichert' : 'Körperdaten gespeichert', () =>
+      applyProfileChange({ name: name.trim(), age: a, heightCm: h, activity }, adopt ? preview?.after : undefined),
+    );
     onDone();
   };
 
@@ -676,9 +691,15 @@ function BodyForm({ onDone }: { onDone: () => void }) {
           { value: 'active', label: 'Sehr' },
         ]}
       />
-      <Button block size="lg" onClick={save}>
-        Speichern
+      {preview?.changed && <RecalcPreview preview={preview} />}
+      <Button block size="lg" onClick={() => save(!!preview?.changed)}>
+        {preview?.changed ? 'Speichern und Tagesziele übernehmen' : 'Speichern'}
       </Button>
+      {preview?.changed && (
+        <Button block variant="ghost" onClick={() => save(false)}>
+          Nur Körperdaten speichern
+        </Button>
+      )}
     </SheetForm>
   );
 }
