@@ -1,6 +1,5 @@
 import { today } from '../../domain/dates';
 import { MISSING_HINT, missingHint, restUntil } from '../../domain/onboarding/summary';
-import { onboardingV2Enabled } from '../../lib/flags';
 import { navigate } from '../../lib/router';
 import { dismissMissingHint, openOnboardingStep } from '../../store/onboardingActions';
 import { useAppState } from '../../store/store';
@@ -15,7 +14,7 @@ import styles from './today.module.css';
  */
 export function MissingHintCard() {
   const state = useAppState();
-  const hint = onboardingV2Enabled() ? missingHint(state, today()) : undefined;
+  const hint = missingHint(state, today());
   if (!hint) return null;
   const { text, section, step } = MISSING_HINT[hint];
   return (

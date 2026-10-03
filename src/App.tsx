@@ -9,9 +9,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { TabBar } from './components/TabBar';
 import { Banner, ToastHost } from './components/ui/Feedback';
 import { CelebrationHost } from './components/ui/Celebration';
-import { Onboarding } from './features/onboarding/Onboarding';
 import { OnboardingV2 } from './features/onboarding/v2/OnboardingV2';
-import { onboardingV2Enabled } from './lib/flags';
 import { TodayScreen } from './features/today/TodayScreen';
 import { NutritionScreen } from './features/nutrition/NutritionScreen';
 import { TrainingScreen } from './features/training/TrainingScreen';
@@ -36,18 +34,16 @@ export function App() {
   useDayClose();
   useWaterNotifications();
 
-  // The new onboarding is built behind ?onboarding=v2 (dev only) – the old one stays the default until Prompt 9.
-  const v2 = onboardingV2Enabled();
-  // An open v2 flow resumes at its step after a restart; the profile re-opens single sections via #/onboarding.
-  const v2Open = v2 && isSetupComplete(state) && (route.path === 'onboarding' || !!state.onboarding?.progress.active);
+  // An open flow resumes at its step after a restart; the profile and Heute re-open single sections via #/onboarding.
+  const onboardingOpen = isSetupComplete(state) && (route.path === 'onboarding' || !!state.onboarding?.progress.active);
 
   // Incomplete saved data also leads here – nothing is deleted, onboarding fills the gaps.
-  if (!isSetupComplete(state) || v2Open) {
+  if (!isSetupComplete(state) || onboardingOpen) {
     return (
       <>
         <StorageBanner ok={storage.ok} notice={storage.notice} />
         <ErrorBoundary homeLink={false}>
-          {v2 ? <OnboardingV2 /> : <Onboarding />}
+          <OnboardingV2 />
         </ErrorBoundary>
         <ToastHost />
       <CelebrationHost />
@@ -62,8 +58,7 @@ export function App() {
     <>
       <StorageBanner ok={storage.ok} notice={storage.notice} />
       <ErrorBoundary resetKey={route.path}>
-        {/* #/onboarding without the v2 switch simply shows Heute. */}
-        {(route.path === 'today' || route.path === 'onboarding') && <TodayScreen />}
+        {route.path === 'today' && <TodayScreen />}
         {route.path === 'nutrition' && <NutritionScreen />}
         {route.path === 'training' && <TrainingScreen />}
         {route.path === 'session' && <SessionScreen />}

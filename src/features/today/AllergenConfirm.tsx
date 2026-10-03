@@ -1,6 +1,5 @@
 import { ALLERGEN_LABEL } from '../../domain/catalogTags';
 import { pendingConfirmation } from '../../domain/onboarding/summary';
-import { onboardingV2Enabled } from '../../lib/flags';
 import { navigate } from '../../lib/router';
 import { confirmFoodAnswers, openOnboardingStep } from '../../store/onboardingActions';
 import { useAppState } from '../../store/store';
@@ -15,7 +14,7 @@ import styles from './today.module.css';
  */
 export function AllergenConfirm() {
   const state = useAppState();
-  if (!onboardingV2Enabled() || pendingConfirmation(state) !== 'allergens') return null;
+  if (pendingConfirmation(state) !== 'allergens') return null;
   const names = (state.onboarding?.food.allergens?.value ?? []).map((a) => ALLERGEN_LABEL[a]);
   return (
     <Card aria-label="Ausschlüsse bestätigen">

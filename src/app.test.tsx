@@ -20,7 +20,8 @@ vi.setConfig({ testTimeout: 20_000 });
 
 const KEY = 'lifefit:v1';
 const BACKUP_KEY = 'lifefit:corrupt-backup';
-const WELCOME = 'Plane deine Woche.';
+/** The first screen of the onboarding. */
+const WELCOME = 'Willkommen bei LifeFit';
 
 let container: HTMLDivElement;
 let root: Root | undefined;
@@ -83,22 +84,19 @@ async function type(label: string, value: string) {
   });
 }
 
+/** Schnellstart with the required minimum (80 kg, 180 cm, 30 years, male) → "Dein Plan" → "Los geht's". */
 async function completeOnboardingFlow() {
-  await click('Los geht');
-  await click('Weiter'); // goal
-  await type('Alter', '30');
-  await type('Größe', '180');
+  await click('Schnellstart (ca. 1 Minute)');
+  await click('Weiter');
   await type('Gewicht', '80');
-  await click('Weiter'); // body
-  await click('Weiter'); // training
-  await click('Weiter'); // nutrition
-  await click('Haferflocken / Porridge'); // favourite
-  await click('Weiter'); // tastes
-  await click('Weiter'); // meal style
-  await click('übernehmen'); // program
-  await click('Meine Woche erstellen');
-  // The "creating" step saves after a short animation (1.4 s).
-  await act(() => new Promise((r) => setTimeout(r, 1600)));
+  await click('Weiter');
+  await type('Größe', '180');
+  await click('Weiter');
+  await type('Geburtsjahr', String(new Date().getFullYear() - 30));
+  await click('Weiter');
+  await click('Männlich');
+  for (let i = 0; i < 20 && container.querySelector('h1')?.textContent !== 'Dein Plan'; i++) await click('Weiter');
+  await click('Los geht’s');
 }
 
 function storedState(): AppState | null {
@@ -131,28 +129,38 @@ describe('first start', () => {
   it('shows the welcome screen when storage is empty', async () => {
     await startApp();
     expect(text()).toContain(WELCOME);
-    expect(button('Los geht')).toBeTruthy();
+    expect(button('Schnellstart (ca. 1 Minute)')).toBeTruthy();
+    expect(button('Ohne Angaben starten')).toBeTruthy();
   });
 
   it('does not crash when scrollTo() returns a Promise', async () => {
     await startApp();
-    await click('Los geht');
+    await click('Weiter');
     expect(container.innerHTML).not.toBe('');
     expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining('must not return anything besides a function'), expect.anything(), expect.anything());
   });
 
-  it('"Los geht’s" leads to the next onboarding step', async () => {
+  it('"Weiter" leads to the next onboarding step', async () => {
     await startApp();
-    await click('Los geht');
-    expect(text()).toContain('Was ist dein Ziel?');
+    await click('Weiter');
+    expect(container.querySelector('h1')?.textContent).toBe('Dein Gewicht');
     expect(text()).not.toContain(WELCOME);
   });
 
-  it('stores nothing before onboarding is completed', async () => {
+  it('before the onboarding is completed only the answers and the position are stored – no setup, no plan', async () => {
     await startApp();
-    await click('Los geht');
     await click('Weiter');
-    expect(localStorage.getItem(KEY)).toBeNull();
+    await type('Gewicht', '80');
+    await click('Weiter');
+    // The flow resumes after a restart (E8), so the answers are saved – but nothing of the app setup exists yet.
+    const saved = storedState()!;
+    expect(saved.onboarding!.progress.step).toBe('height');
+    expect(saved.profile).toBeNull();
+    expect(saved.goal).toBeNull();
+    expect(saved.training).toBeNull();
+    expect(saved.targets).toEqual([]);
+    expect(saved.plannedMeals).toEqual([]);
+    expect(saved.weights).toEqual([]);
   });
 
   it('completing onboarding starts the regular app and persists the setup', async () => {
@@ -655,8 +663,8 @@ describe('undo safety', () => {
 
 describe('error boundary', () => {
   it('shows a fallback with "Neu laden" instead of a blank page', async () => {
-    vi.doMock('./features/onboarding/Onboarding', () => ({
-      Onboarding: () => {
+    vi.doMock('./features/onboarding/v2/OnboardingV2', () => ({
+      OnboardingV2: () => {
         throw new Error('boom');
       },
     }));
@@ -666,7 +674,7 @@ describe('error boundary', () => {
       expect(button('Neu laden')).toBeTruthy();
       expect(text()).not.toContain('Zur Startseite');
     } finally {
-      vi.doUnmock('./features/onboarding/Onboarding');
+      vi.doUnmock('./features/onboarding/v2/OnboardingV2');
     }
   });
 });
@@ -2846,16 +2854,14 @@ describe('coach phase 1 (UI): yesterday, next step, tips with memory, activity, 
   });
 });
 
-describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open', () => {
+describe('onboarding – frame, resume, re-open', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 9, 1, 9, 0)); // Thursday 09:00
-    window.history.replaceState(null, '', '/?onboarding=v2#/today');
+    window.history.replaceState(null, '', '/#/today');
   });
   afterEach(() => {
     vi.useRealTimers();
-    // The switch is remembered for the session – never leak it into the old onboarding's tests.
-    sessionStorage.clear();
   });
 
   const restart = async () => {
@@ -2869,12 +2875,12 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
     await act(async () => new Promise((r) => setTimeout(r, 0)));
   };
 
-  it('without the switch the old onboarding stays', async () => {
+  it('the new onboarding is the only one – no switch, no old welcome screen', async () => {
     window.history.replaceState(null, '', '/');
-    sessionStorage.clear();
     await startApp();
-    expect(text()).toContain(WELCOME);
-    expect(text()).not.toContain('Warum fragen wir das?');
+    expect(title()).toBe(WELCOME);
+    expect(text()).toContain('Warum fragen wir das?');
+    expect(text()).not.toContain('Plane deine Woche.');
   });
 
   it('click through the Schnellstart, close the app mid-way, resume at the same step, finish → Heute', async () => {
@@ -2947,7 +2953,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
 
   it('each section can be re-opened from the profile with the known values pre-filled; "Fertig" returns to the profile', async () => {
     localStorage.setItem(KEY, JSON.stringify({ ...completeState(), nutritionProfile: { diet: 'vegetarian', excluded: ['nuts'], slots: ['breakfast', 'lunch', 'dinner'] } }));
-    window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+    window.history.replaceState(null, '', '/#/profile');
     const store = await startApp();
     // Finished with the old onboarding → no new run.
     expect(text()).toContain('Deine Angaben');
@@ -3162,7 +3168,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
 
     it('an existing user takes the goal over as a new target version – only on confirmation, the old version stays', async () => {
       localStorage.setItem(KEY, JSON.stringify(completeState()));
-      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      window.history.replaceState(null, '', '/#/profile');
       const store = await startApp();
       const before = JSON.stringify(store.getState().targets);
       await click('Körper & Ziel');
@@ -3198,20 +3204,21 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
       expect(text()).not.toContain('Gilt das noch?');
     });
 
-    it('meal prep (E18): existing users are asked once whether to keep the leftovers – only behind the v2 switch', async () => {
+    it('meal prep (E18): existing users are asked once whether to keep the leftovers; the answer sticks', async () => {
       const ask = 'Möchtest du das beibehalten?';
-      sessionStorage.removeItem('lifefit:onboarding-v2');
       localStorage.setItem(KEY, JSON.stringify(completeState()));
       window.history.replaceState(null, '', '/#/today');
       let store = await startApp();
       expect(store.getState().onboarding!.food.mealPrep).toMatchObject({ value: true, source: 'migrated' });
-      expect(text()).not.toContain(ask);
-
-      await act(async () => root?.unmount());
-      window.history.replaceState(null, '', '/?onboarding=v2#/today');
-      store = await startApp();
       expect(text()).toContain(ask);
       await click('Nein, lieber frisch');
+      expect(store.getState().onboarding!.food.mealPrep).toMatchObject({ value: false, source: 'user' });
+      expect(text()).not.toContain(ask);
+
+      // Asked once: not again after a restart.
+      await act(async () => root?.unmount());
+      window.history.replaceState(null, '', '/#/today');
+      store = await startApp();
       expect(store.getState().onboarding!.food.mealPrep).toMatchObject({ value: false, source: 'user' });
       expect(text()).not.toContain(ask);
     });
@@ -3221,7 +3228,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
     const planned = (date: string, slot: string, recipeId: string) => ({ id: `${date}-${slot}`, date, slot, recipeId, servings: 1, status: 'planned', source: 'suggest' });
     const open = async (patch: Record<string, unknown> = {}) => {
       localStorage.setItem(KEY, JSON.stringify({ ...completeState(), ...patch }));
-      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      window.history.replaceState(null, '', '/#/profile');
       const store = await startApp();
       await click('Essen & Einkauf');
       return store;
@@ -3317,7 +3324,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
 
     it('the grid: tap cycles the four states with icon and text, quick action Mo–Fr, place of an out meal', async () => {
       localStorage.setItem(KEY, JSON.stringify(completeState()));
-      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      window.history.replaceState(null, '', '/#/profile');
       const store = await startApp();
       await click('Essen & Einkauf');
       for (let i = 0; i < 4; i++) await click('Weiter');
@@ -3384,7 +3391,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
   describe('area B (Prompt 6): what is at home', () => {
     it('checklist with fill level and "leer", then a scan: offline → later → looked up → into the pantry with MHD', async () => {
       localStorage.setItem(KEY, JSON.stringify(completeState()));
-      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      window.history.replaceState(null, '', '/#/profile');
       const store = await startApp();
       const lookup = await import('./services/productLookup');
       // The lookup is asynchronous – let it settle before looking at the screen.
@@ -3433,7 +3440,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
   describe('area C (Prompt 7): experience, frame, cardio, focus', () => {
     const openTraining = async () => {
       localStorage.setItem(KEY, JSON.stringify(completeState()));
-      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      window.history.replaceState(null, '', '/#/profile');
       const store = await startApp();
       await click('Training');
       return store;
@@ -3512,7 +3519,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
   describe('area C (Prompt 8): your training plan', () => {
     it('week overview: 7 days, swap with a live hint, switch the split, "Warum?", adopt into the rotation', async () => {
       localStorage.setItem(KEY, JSON.stringify(completeState()));
-      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      window.history.replaceState(null, '', '/#/profile');
       const store = await startApp();
       await click('Training');
       for (let i = 0; i < 4; i++) await click('Weiter');
@@ -3639,7 +3646,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
 
     it('profile: body data show Vorher / Nachher; confirming writes a new target version (older ones untouched), undo restores', async () => {
       localStorage.setItem(KEY, JSON.stringify(completeState()));
-      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      window.history.replaceState(null, '', '/#/profile');
       const store = await startApp();
       const before = structuredClone(store.getState().targets);
       await click('Körperdaten');
@@ -3661,7 +3668,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
 
     it('number-free mode (E14): no kcal number on Heute, Ernährung, Fortschritt, Einkauf, Training, Profil and "Dein Plan"', async () => {
       localStorage.setItem(KEY, JSON.stringify({ ...completeState(), weights: [{ id: 'w', date: '2026-09-28', kg: 80 }] }));
-      window.history.replaceState(null, '', '/?onboarding=v2#/today');
+      window.history.replaceState(null, '', '/#/today');
       const store = await startApp();
       const actions = await import('./store/actions');
       const ob = await import('./store/onboardingActions');
@@ -3701,7 +3708,7 @@ describe('new onboarding (v2, behind ?onboarding=v2) – frame, resume, re-open'
 
     it('profile: "Nur Körperdaten speichern" keeps the target', async () => {
       localStorage.setItem(KEY, JSON.stringify(completeState()));
-      window.history.replaceState(null, '', '/?onboarding=v2#/profile');
+      window.history.replaceState(null, '', '/#/profile');
       const store = await startApp();
       await click('Körperdaten');
       await act(async () => [...container.querySelectorAll<HTMLButtonElement>('dialog[open] button')].find((b) => b.textContent === 'Sitzend')!.click());

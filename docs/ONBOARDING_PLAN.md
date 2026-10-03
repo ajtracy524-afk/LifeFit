@@ -323,14 +323,14 @@ Reihenfolge: **1 → 2 → 3 → 3b → 4 → 5 → 6 → 7 → 8 → 9 → (10)
 ### Checkliste Prompt 9 (vor dem Entfernen des Schalters)
 
 - [x] **Zahlenfreier Modus in allen übrigen Screens** (E14): Fortschritt, Wochenstatistik, Engine-Texte, Einkauf, Zusammenfassung. Erst wenn alle nachgezogen sind, darf der Schalter fallen.
-- [ ] Jedes Feld des `OnboardingProfile` hat eine Wirkung und einen Test (`docs/ONBOARDING.md`, `onboarding/trace.ts`); kein Feld läuft ins Leere.
-- [ ] Personas und Grenzfälle laut Prompt 9 grün (inkl. „keine Angabe“, Alter 17 und 70+, Schwangerschaft, BMI < 18,5).
-- [ ] Karte „Neue Angaben ergänzen“ für Bestandsnutzer (E8) = dieselbe Heute-Karte wie für fehlende Angaben (Priorität KFA > Alltagsaktivität > Wochenraster > Vorrat, nach Wegklicken 14 Tage Ruhe).
-- [ ] Migrierte Werte (`source: 'migrated'`) wurden zur Bestätigung angeboten (E5).
-- [ ] Profil-Änderungen: Vorher/Nachher-Vorschau, neue Zielversion nur nach Bestätigung, alte Versionen bytegleich (E10).
-- [ ] **Altes Onboarding (`Onboarding.tsx`) und Schalter `?onboarding=v2` entfernen** (E8). Die App-Tests zum alten Onboarding (ca. 10) werden auf den neuen Flow umgestellt, ohne sie abzuschwächen.
-- [ ] `FEATURES.md` neu anlegen, `README.md` aktualisieren.
-- [ ] `npm run typecheck`, `npm test`, `npm run build` grün.
+- [x] Jedes Feld des `OnboardingProfile` hat eine Wirkung und einen Test (`docs/ONBOARDING.md`, `onboarding/trace.test.ts`); kein Feld läuft ins Leere (`goal.overrides`, `notices.confirmMigratedAt` entfernt, `goal.targetBodyFat` angebunden).
+- [x] Personas und Grenzfälle laut Prompt 9 grün (inkl. „keine Angabe“, Alter 17 und 70+, Schwangerschaft, BMI < 18,5).
+- [x] Karte „Neue Angaben ergänzen“ für Bestandsnutzer (E8) = dieselbe Heute-Karte wie für fehlende Angaben (Priorität KFA > Alltagsaktivität > Wochenraster > Vorrat, nach Wegklicken 14 Tage Ruhe).
+- [x] Migrierte Werte (`source: 'migrated'`) wurden zur Bestätigung angeboten (E5).
+- [x] Profil-Änderungen: Vorher/Nachher-Vorschau, neue Zielversion nur nach Bestätigung, alte Versionen bytegleich (E10).
+- [x] **Altes Onboarding (`Onboarding.tsx`) und Schalter `?onboarding=v2` entfernen** (E8). Die App-Tests zum alten Onboarding (ca. 10) werden auf den neuen Flow umgestellt, ohne sie abzuschwächen.
+- [x] `FEATURES.md` neu anlegen, `README.md` aktualisieren.
+- [x] `npm run typecheck`, `npm test`, `npm run build` grün.
 
 ---
 

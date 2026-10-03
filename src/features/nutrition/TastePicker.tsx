@@ -3,9 +3,7 @@ import { MEAL_STYLES, TASTE_RECIPES, TASTES, type Taste } from '../../data/taste
 import { recipeAllowed } from '../../domain/nutrition';
 import { matchingTastes, recipeStyle } from '../../domain/preferences';
 import type { GoalType, MealStyle, NutritionProfile } from '../../domain/types';
-import { fmt } from '../../lib/format';
 import { Chip, OptionCard } from '../../components/ui/Controls';
-import { useEnergyText } from './useEnergyText';
 import styles from './nutrition.module.css';
 
 type Filter = Pick<NutritionProfile, 'diet' | 'excluded'>;
@@ -67,24 +65,16 @@ interface StyleProps {
   filter: Filter;
   value: MealStyle;
   suggested: MealStyle;
-  kcal?: number;
   /** Examples never show what the user wants to eat rarely. */
   avoided?: string[];
   onChange: (style: MealStyle) => void;
 }
 
 /** Kinds of meals with real examples from the catalog – described, never judged. */
-export function MealStylePicker({ filter, value, suggested, kcal, avoided, onChange }: StyleProps) {
-  const numberFree = useEnergyText().numberFree;
+export function MealStylePicker({ filter, value, suggested, avoided, onChange }: StyleProps) {
   const allowed = RECIPES.filter((r) => recipeAllowed(r, { ...filter, slots: [] }) && matchingTastes(r.id, avoided).length === 0);
   return (
     <div className={styles.quickForm}>
-      {kcal !== undefined && !numberFree && (
-        <p className={styles.hubNote}>
-          Dein Tagesziel: etwa {fmt.kcal(kcal)}. Leichte und energiereiche Mahlzeiten können beide gut sein – entscheidend ist, dass sie zu deinem Ziel passen. Die Portionen rechnet
-          LifeFit immer passend.
-        </p>
-      )}
       {MEAL_STYLES.map((s) => {
         const examples = s.id === 'balanced' ? [] : allowed.filter((r) => recipeStyle(r) === s.id).slice(0, 3);
         return (

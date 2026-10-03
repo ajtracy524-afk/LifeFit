@@ -30,7 +30,7 @@ import { AREA_C_STEPS, AreaCStep } from './AreaC';
 import styles from './onboardingV2.module.css';
 
 /**
- * The new onboarding (behind `?onboarding=v2` until Prompt 9). Prompt 1 is the
+ * The onboarding (the old one and its switch were removed in Prompt 9). Prompt 1 is the
  * frame: sections A/B/C with progress, "Warum fragen wir das?", Weiter /
  * Überspringen, resume and re-open per section. The steps are placeholders
  * that show the answers already known (pre-filled when re-opened).

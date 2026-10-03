@@ -1,5 +1,4 @@
 import { pendingConfirmation } from '../../domain/onboarding/summary';
-import { onboardingV2Enabled } from '../../lib/flags';
 import { setOnboardingAnswer } from '../../store/onboardingActions';
 import { useAppState } from '../../store/store';
 import { Button } from '../../components/ui/Button';
@@ -8,13 +7,12 @@ import styles from './today.module.css';
 
 /**
  * E18: existing users were migrated to "Ich koche gern vor" (they know the
- * leftover logic) – asked once, with a short explanation. Behind the v2
- * switch until the new onboarding goes live (E8).
+ * leftover logic) – asked once, with a short explanation.
  */
 export function MealPrepConfirm() {
   const state = useAppState();
   // After the allergen confirmation – one card at a time.
-  if (!onboardingV2Enabled() || pendingConfirmation(state) !== 'mealPrep') return null;
+  if (pendingConfirmation(state) !== 'mealPrep') return null;
   return (
     <Card aria-label="Kurze Frage">
       <p className={styles.recheckText}>

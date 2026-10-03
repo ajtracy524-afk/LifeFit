@@ -43,7 +43,6 @@ import { Chip, Field, OptionCard, Segmented, Stepper, WeekdayPicker, parseNumber
 import { Icon, type IconName } from '../../components/ui/Icon';
 import { Sheet } from '../../components/ui/Sheet';
 import { flowStateOf, SECTION_LABEL, SECTIONS, stepDef } from '../../domain/onboarding/flow';
-import { onboardingV2Enabled } from '../../lib/flags';
 import { applyProfileChange, openOnboardingSection, saveOnboardingFlow } from '../../store/onboardingActions';
 import { previewLines, recalcPreview } from '../../domain/onboarding/recalc';
 import { RecalcPreview } from './RecalcPreview';
@@ -111,36 +110,34 @@ export function ProfileScreen() {
         </div>
       </Card>
 
-      {/* New onboarding (behind ?onboarding=v2): each area can be opened again, answers pre-filled. */}
-      {onboardingV2Enabled() && (
-        <Section title="Deine Angaben">
-          <Card padded={false}>
-            {resumable && (
-              <Row
-                icon="play"
-                label="Onboarding fortsetzen"
-                value={`Weiter bei „${stepDef(resumable.step).title}“`}
-                onClick={() => {
-                  saveOnboardingFlow(resumable);
-                  navigate('onboarding');
-                }}
-              />
-            )}
-            {SECTIONS.map((section) => (
-              <Row
-                key={section}
-                icon={section === 'A' ? 'scale' : section === 'B' ? 'food' : 'dumbbell'}
-                label={SECTION_LABEL[section]}
-                value={state.onboarding?.progress.completed[section] ? 'Angaben ansehen und ändern' : 'Noch offen – jetzt ergänzen'}
-                onClick={() => {
-                  openOnboardingSection(section);
-                  navigate('onboarding');
-                }}
-              />
-            ))}
-          </Card>
-        </Section>
-      )}
+      {/* Each area of the onboarding can be opened again, answers pre-filled. */}
+      <Section title="Deine Angaben">
+        <Card padded={false}>
+          {resumable && (
+            <Row
+              icon="play"
+              label="Onboarding fortsetzen"
+              value={`Weiter bei „${stepDef(resumable.step).title}“`}
+              onClick={() => {
+                saveOnboardingFlow(resumable);
+                navigate('onboarding');
+              }}
+            />
+          )}
+          {SECTIONS.map((section) => (
+            <Row
+              key={section}
+              icon={section === 'A' ? 'scale' : section === 'B' ? 'food' : 'dumbbell'}
+              label={SECTION_LABEL[section]}
+              value={state.onboarding?.progress.completed[section] ? 'Angaben ansehen und ändern' : 'Noch offen – jetzt ergänzen'}
+              onClick={() => {
+                openOnboardingSection(section);
+                navigate('onboarding');
+              }}
+            />
+          ))}
+        </Card>
+      </Section>
 
       <Section title="Mein Plan">
         <Card padded={false}>
