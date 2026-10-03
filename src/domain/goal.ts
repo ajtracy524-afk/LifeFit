@@ -294,6 +294,22 @@ export interface Forecast {
   label: string;
 }
 
+/** The weight at a target body fat with the same fat-free mass (rounded to 0.5 kg). */
+export function targetWeightFromBodyFat(weightKg: number, bodyFatPct: number, targetBodyFat: number): number {
+  return Math.round((fatFreeMass(weightKg, bodyFatPct) / (1 - targetBodyFat / 100)) * 2) / 2;
+}
+
+/**
+ * The goal weight of the answers: the target weight, else (losing fat) the one
+ * the target body fat implies – it becomes goal.targetWeightKg (Fortschritt,
+ * forecast, protein reference) instead of staying a forecast-only number.
+ */
+export function goalWeightOf(i: { goal: string; weightKg?: number; targetWeightKg?: number; targetBodyFat?: number; bodyFatPct?: number }): number | undefined {
+  if (i.targetWeightKg) return i.targetWeightKg;
+  if (i.goal !== 'fat_loss' || i.targetBodyFat === undefined || i.bodyFatPct === undefined || !i.weightKg) return undefined;
+  return targetWeightFromBodyFat(i.weightKg, i.bodyFatPct, i.targetBodyFat);
+}
+
 /**
  * When a target weight (or target body fat) would be reached at the planned
  * pace – as a period: the real pace is assumed between 75 % and 125 % of the

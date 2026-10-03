@@ -1,4 +1,4 @@
-import { recommendGoal } from '../goal';
+import { goalWeightOf, recommendGoal } from '../goal';
 import { estimateTrainingLevel, trainingSetupFrom } from './training';
 import { ffmi } from '../body';
 import { nutritionProfileFrom } from './food';
@@ -211,7 +211,7 @@ export function defaultCoreSetup(p: OnboardingProfile, today: string, nowIso: st
   });
   const chosen = p.goal.type?.value;
   const goalType = rec.locked ? 'maintain' : chosen && !rec.blocked.some((b) => b.goal === chosen) ? chosen : rec.recommended;
-  const targetWeightKg = p.goal.targetWeightKg?.value;
+  const targetWeightKg = goalWeightOf({ goal: goalType, weightKg, targetWeightKg: p.goal.targetWeightKg?.value, targetBodyFat: p.goal.targetBodyFat?.value, bodyFatPct: fat?.percent });
   const weekdays = [...(p.training.weekdays?.value ?? D.weekdays)].sort((a, b) => a - b);
   const diet = p.food.diet?.value ?? 'omnivore';
   const calc = calculateTargets(profile, goalType, weightKg, weekdays.length, {

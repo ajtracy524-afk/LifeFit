@@ -1,6 +1,6 @@
 import type { CardioPlan, ComplaintSeverity, CookingTime, Intolerance, LmivAllergen, SlotPlan, TrainingPlace, Weekday } from '../types';
 import type { DayPlan, PlanSession, SplitId } from '../training/recommendPlan';
-import type { ActivityLevel, BodyArea, EquipmentItem, Experience, Macros, MealSlot, MuscleGroup } from '../types';
+import type { ActivityLevel, BodyArea, EquipmentItem, Experience, MealSlot, MuscleGroup } from '../types';
 
 /**
  * The new onboarding (docs/ONBOARDING_PLAN.md, section c): every answer knows
@@ -103,8 +103,8 @@ export interface OnboardingProfile {
     type?: Field<'fat_loss' | 'recomp' | 'muscle_gain' | 'maintain'>;
     pace?: Field<'gentle' | 'normal' | 'brisk'>;
     targetWeightKg?: Field<number>;
+    /** Losing fat: the goal weight follows from it when no target weight is given (goalWeightOf). */
     targetBodyFat?: Field<number>;
-    overrides?: Field<Partial<Macros>>;
   };
   food: {
     diet?: Field<'omnivore' | 'pescatarian' | 'vegetarian' | 'vegan'>;
@@ -141,8 +141,8 @@ export interface OnboardingProfile {
     /** The plan being edited in "Dein Trainingsplan" (Prompt 8) – kept between visits; `key` = the answers it was made for. */
     planDraft?: Field<PlanDraft>;
   };
-  /** One-time hints: confirmation of migrated values, the "Neue Angaben ergänzen" card. */
-  notices?: { confirmMigratedAt?: string; completeCard?: { dismissedUntil?: string } };
+  /** The Heute card for missing answers ("Neue Angaben ergänzen" for users of the old onboarding): rest after "Später". */
+  notices?: { completeCard?: { dismissedUntil?: string } };
 }
 
 /** The groups of answers, as stored in OnboardingProfile. */

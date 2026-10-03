@@ -213,8 +213,7 @@ interface OnboardingProfile {
     type?: Field<'fat_loss' | 'recomp' | 'muscle_gain' | 'maintain'>;
     pace?: Field<'gentle' | 'normal' | 'brisk'>;
     targetWeightKg?: Field<number>;
-    targetBodyFat?: Field<number>;
-    overrides?: Field<Partial<Macros>>;
+    targetBodyFat?: Field<number>;                           // → Zielgewicht, wenn keins angegeben (Prompt 9)
   };
   food: {
     diet?: Field<'omnivore' | 'pescatarian' | 'vegetarian' | 'vegan'>;
@@ -242,7 +241,7 @@ interface OnboardingProfile {
     plan?: Field<{ programId: string; weekdays: number[] }>; // aus Prompt 8
   };
   /** One-time hints: confirmation of migrated values, the "Neue Angaben ergänzen" card (dismissed until …). */
-  notices?: { confirmMigrated?: string; completeCard?: { dismissedUntil?: string } };
+  notices?: { completeCard?: { dismissedUntil?: string } }; // Prompt 9: overrides und confirmMigrated entfernt (nie benutzt, siehe docs/ONBOARDING.md)
 }
 
 type SlotPlan =

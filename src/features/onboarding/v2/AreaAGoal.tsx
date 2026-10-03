@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ageFromBirthYear, energyEstimate } from '../../../domain/body';
 import { GOAL_BODY_FAT, KCAL_PER_KG, MAX_DEFICIT_SHARE, PACE } from '../../../domain/constants';
 import { today } from '../../../domain/dates';
-import { calorieFloorFor, forecast, GOAL_LABEL, GOAL_SUBTITLE, goalCalories, isMinor, macroTargets, recommendGoal, type Pace } from '../../../domain/goal';
+import { calorieFloorFor, forecast, GOAL_LABEL, GOAL_SUBTITLE, goalCalories, goalWeightOf, isMinor, macroTargets, recommendGoal, type Pace } from '../../../domain/goal';
 import { asksPregnancy } from '../../../domain/onboarding/flow';
 import { isSetupComplete } from '../../../domain/onboarding/migrate';
 import type { GoalType, Sex } from '../../../domain/types';
@@ -253,7 +253,10 @@ export function GoalStep() {
             <Button
               variant="secondary"
               onClick={() =>
-                withUndo('Neues Tagesziel gespeichert', () => applyGoalAsTarget({ type: chosen, ...(a.targetWeightKg ? { targetWeightKg: a.targetWeightKg } : {}) }, macros))
+                withUndo('Neues Tagesziel gespeichert', () => {
+                  const goalWeight = goalWeightOf({ goal: chosen, weightKg: a.weightKg, targetWeightKg: a.targetWeightKg, targetBodyFat: a.targetBodyFat, bodyFatPct: a.bodyFat?.percent });
+                  applyGoalAsTarget({ type: chosen, ...(goalWeight ? { targetWeightKg: goalWeight } : {}) }, macros);
+                })
               }
             >
               Als neues Tagesziel übernehmen

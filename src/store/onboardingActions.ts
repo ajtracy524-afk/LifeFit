@@ -12,6 +12,7 @@ import { CARDIO } from '../domain/constants';
 import { ensurePlanBaseline, recordPlanVersion } from '../domain/planVersions';
 import { completeOnboarding, setTargets } from './actions';
 import { getState, update } from './store';
+import { newId } from '../lib/id';
 
 /**
  * Store actions of the new onboarding. Every navigation is saved right away –
@@ -88,7 +89,30 @@ export function setOnboardingAnswer<G extends AnswerGroup, K extends keyof Onboa
     const p = profileOf(s);
     const at = new Date().toISOString();
     s.onboarding = { ...p, [group]: { ...p[group], [key]: { value, source, updatedAt: at } } };
+    if (group === 'body' && isSetupComplete(s)) mirrorBodyAnswer(s, key as keyof OnboardingProfile['body'], value);
   });
+}
+
+/**
+ * Body answers of a running app (a section re-opened from the profile or the
+ * Heute card) reach the core data at once: profile, weight log, body fat
+ * measurement. The daily target changes only on confirmation (E10).
+ */
+function mirrorBodyAnswer(s: AppState, key: keyof OnboardingProfile['body'], value: unknown): void {
+  const t = today();
+  if (!s.profile) return;
+  if (key === 'heightCm') s.profile = { ...s.profile, heightCm: value as number };
+  else if (key === 'activity') s.profile = { ...s.profile, activity: value as Profile['activity'] };
+  else if (key === 'sex') s.profile = { ...s.profile, sex: value as Profile['sex'] };
+  else if (key === 'birthYear') s.profile = { ...s.profile, age: Number(t.slice(0, 4)) - (value as number) };
+  else if (key === 'weightKg') s.weights = [...s.weights.filter((w) => w.date !== t), { id: newId(), date: t, kg: value as number }];
+  else if (key === 'bodyFat') {
+    const fat = value as { method: string; percent: number };
+    s.measurements = [
+      ...(s.measurements ?? []).filter((m) => !(m.kind === 'body_fat' && m.date === t)),
+      { id: newId(), date: t, kind: 'body_fat', value: Math.round(fat.percent * 10) / 10, method: fat.method === 'measured' ? 'measured' : 'estimate' },
+    ];
+  }
 }
 
 /** Without a core setup the app cannot run – the answers so far plus defaults (marked 'default') make it usable. */
